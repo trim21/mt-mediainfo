@@ -1,0 +1,40 @@
+[workspace]
+authors = ["Trim21 <trim21.me@gmail.com>"]
+channels = ["conda-forge", 'https://prefix.dev/trim21-pkgs']
+name = "pt-repost"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+python = "3.10.*"
+
+orjson = ">=3.10.16,<4"
+rich = ">=14.0.0,<15"
+xxhash = ">=0.8.3,<0.9"
+click = ">=8.1.8,<9"
+pydantic = ">=2.11.2,<3"
+httpx = ">=0.28.1,<0.29"
+tomli = ">=2.2.1,<3"
+yarl = ">=1.18.3,<2"
+ffmpeg = ">=7.1.1,<8"
+oxipng = ">=9.1.4,<10"
+regex = ">=2024.11.6,<2025"
+pillow = ">=11.1.0,<12"
+fastapi = ">=0.115.12,<0.116"
+asyncpg = ">=0.30.0,<0.31"
+jinja2 = ">=3.1.6,<4"
+pyyaml = ">=6.0.2,<7"
+uvicorn = ">=0.34.0,<0.35"
+onnxruntime = ">=1.20.1,<2"
+psycopg = ">=3.2.6,<4"
+psycopg-pool = ">=3.2.6,<4"
+uuid-utils = ">=0.10.0,<0.11"
+bencode2 = ">=0.3.26, <0.4"
+
+[pypi-dependencies]
+qbittorrent-api = ">=2025.2.0, <2026"
+durationpy = ">=0.9, <0.10"
+sslog = ">=0.0.0a52, <0.0.0a53"
+rapidocr-onnxruntime = ">=1.4.4, <2"
