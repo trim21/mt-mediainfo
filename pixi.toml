@@ -1,6 +1,6 @@
 [workspace]
 authors = ["Trim21 <trim21.me@gmail.com>"]
-channels = ["conda-forge", 'https://prefix.dev/trim21-pkgs']
+channels = ["conda-forge", 'https://prefix.dev/trim21-pkgs','https://prefix.dev/pypi-mirrors']
 name = "pt-repost"
 platforms = ["win-64"]
 version = "0.1.0"
@@ -32,9 +32,7 @@ psycopg = ">=3.2.6,<4"
 psycopg-pool = ">=3.2.6,<4"
 uuid-utils = ">=0.10.0,<0.11"
 bencode2 = ">=0.3.26, <0.4"
-
-[pypi-dependencies]
+rapidocr-onnxruntime = ">=1.4.4, <2"
 qbittorrent-api = ">=2025.2.0, <2026"
 durationpy = ">=0.9, <0.10"
 sslog = ">=0.0.0a52, <0.0.0a53"
-rapidocr-onnxruntime = ">=1.4.4, <2"
