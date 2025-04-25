@@ -7,8 +7,8 @@ from psycopg import RawCursor
 from psycopg_pool import ConnectionPool
 from typing_extensions import LiteralString
 
-from pt_repost import dlock
-from pt_repost.config import Config
+from app import dlock
+from app.config import Config
 
 
 class Connection(psycopg.connection.Connection):

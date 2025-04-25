@@ -1,3 +1,3 @@
-from pt_repost.main import cli
+from app.main import cli
 
 cli()

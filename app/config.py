@@ -1,0 +1,66 @@
+import dataclasses
+import os
+import sys
+import uuid
+from pathlib import Path
+from typing import Annotated, Any
+
+import durationpy
+import yarl
+from pydantic import BeforeValidator, Field, HttpUrl
+
+from app.utils import parse_obj_as
+
+
+def parse_go_duration_str(s: Any) -> Any:
+    if isinstance(s, float | int):
+        return int(s)
+
+    if isinstance(s, str):
+        return int(durationpy.from_str(s).total_seconds())
+
+    return s
+
+
+@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+class Config:
+    debug: Annotated[bool, Field(os.getenv("DEBUG") or False, validate_default=False)]
+    node_id: Annotated[str, Field(alias="node-id", min_length=1)] = os.getenv(
+        "NODE_ID"
+    ) or uuid.UUID(int=uuid.getnode())
+
+    mt_token: Annotated[str, Field(min_length=1)] = os.environ["MT_API_TOKEN"]
+
+    # filter empty string
+    http_proxy: Annotated[str | None, BeforeValidator(lambda x: x or None)] = None
+
+    pg_host: Annotated[str, Field(os.environ.get("PG_HOST", "127.0.0.1"), validate_default=True)]
+    pg_port: Annotated[int, Field(os.environ.get("PG_PORT", "5432"), validate_default=True)]
+    pg_user: Annotated[
+        str | None, Field(os.environ.get("PG_PASSWORD", "postgres"), validate_default=True)
+    ]
+    pg_password: Annotated[
+        str | None, None, Field(os.environ.get("PG_PASSWORD", "postgres"), validate_default=True)
+    ]
+
+    qb_url: Annotated[
+        HttpUrl, Field(os.environ.get("QB_URL", "http://127.0.0.1:8080"), validate_default=True)
+    ]
+
+    def pg_dsn(self) -> str:
+        return str(
+            yarl.URL.build(
+                scheme="postgresql",
+                user=self.pg_user,
+                password=self.pg_password,
+                host=self.pg_host,
+                port=self.pg_port,
+            )
+        )
+
+
+def load_config() -> Config:
+    return parse_obj_as(Config, {})
+
+
+video_ext = (".mkv", ".mp4", ".ts")

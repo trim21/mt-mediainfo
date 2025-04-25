@@ -5,37 +5,29 @@ requires-python = '~=3.10.0'
 description = ''
 dependencies = [
     'orjson==3.10.16',
-    'uuid-utils==0.10.0',
+    "uuid-utils==0.10.0",
     'rich==14.0.0',
     'xxhash==3.5.0',
     'qbittorrent-api==2025.2.0',
     'click==8.1.8',
-    'sslog==0.0.0a52',
     'pydantic==2.11.2',
     'httpx==0.28.1',
     'bencode2==0.3.24',
     'tomli==2.2.1',
     'yarl==1.19.0',
-    'guessit==3.8.0',
-    'six==1.17.0',
     'psycopg[binary,pool]==3.2.6',
-    'regex==2024.11.6',
-    'rapidocr-onnxruntime==1.4.4', # 识别硬字幕
-    'pillow==11.1.0',
     'durationpy==0.9',
     'fastapi==0.115.12',
-    'uvicorn==0.34.0',
-    'asyncpg==0.30.0',
     'jinja2==3.1.6',
-    'pyyaml==6.0.2',
     'tzdata',
+    "six>=1.17.0",
+    "loguru>=0.7.3",
+    "asyncpg>=0.30.0",
+    "tenacity>=9.1.2",
 ]
 
 [dependency-groups]
 dev = [
-    'types-regex==2024.11.6.20250403',
-    'types-six==1.17.0.20250403',
-    'types-PyYAML==6.0.12.20250402',
     'mypy',
 ]
 
