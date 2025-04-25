@@ -2,57 +2,23 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-import functools
 import io
-import re
 import sys
-import tempfile
 import time
 from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime as _parsedate_to_datetime
 from pathlib import Path
-from typing import Annotated, Any, TypeVar, cast
+from typing import Annotated, Any, TypeVar
 
 import annotated_types
-import bencode2
-import orjson
 import packaging.version
 import qbittorrentapi
-from loguru import logger
 from pydantic import Field
 from qbittorrentapi import TorrentState
 from rich.console import Console
-from uuid_utils import uuid7
 
-from app.config import Config, video_ext
-from app.const import (
-    DEFAULT_HEADERS,
-    LOCK_KEY_SCHEDULE_RSS,
-    QB_CATEGORY,
-    RSS_ITEM_STATUS_DONE,
-    RSS_ITEM_STATUS_DOWNLOADING,
-    RSS_ITEM_STATUS_FAILED,
-    RSS_ITEM_STATUS_PENDING,
-    RSS_ITEM_STATUS_PROCESSING,
-    RSS_ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-    RSS_ITEM_STATUS_REMOVED_FROM_SITE,
-    RSS_ITEM_STATUS_SKIPPED,
-    RSS_ITEM_STATUS_UPLOADING,
-    SSD_REMOVED_MESSAGE,
-    TASK_STATUS_FAILED,
-    TASK_STATUS_RUNNING,
-    TASK_STATUS_SUCCESS,
-)
+from app.config import Config
 from app.db import Database
-from app.mediainfo import extract_mediainfo_from_file
 from app.mt import MTeamAPI
-from app.patterns import pattern_2160p, pattern_dovi, pattern_web_dl
-from app.utils import (
-    an2cn,
-    get_info_hash_v1_from_content,
-    parse_json_as,
-    parse_obj_as,
-)
 
 
 def format_exc(e: Exception) -> str:
@@ -168,10 +134,8 @@ class Application:
             except Exception as e:
                 print("failed to run", e)
 
-    def __run_at_interval(self) -> None: ...
-
-    def __fetch_new_torrents(self):
-        pass
+    def __run_at_interval(self) -> None:
+        self.__fetch_new_torrents()
 
     def __heart_beat(self) -> None:
         self.db.execute(
@@ -181,6 +145,15 @@ class Application:
             """,
             [self.config.node_id, datetime.now(tz=timezone.utc)],
         )
+
+    def __fetch_new_torrents(self):
+        torrents = self.db.fetch_all(
+            """
+            select * from torrent where mediainfo = '' and  pick_node is null order by tid asc
+            """
+        )
+
+        print(len(torrents))
 
     def export_torrent(self, info_hash: str) -> bytes:
         return self.qb.torrents_export(info_hash)
