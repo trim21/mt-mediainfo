@@ -149,10 +149,12 @@ class Application:
     def __fetch_new_torrents(self):
         torrents = self.db.fetch_all(
             """
-            select * from torrent where mediainfo = '' and  pick_node is null order by tid asc
+            select * from torrent
+            where mediainfo = '' and
+                  pick_node is null
+            order by tid asc
             """
         )
-
         print(len(torrents))
 
     def export_torrent(self, info_hash: str) -> bytes:
