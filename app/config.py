@@ -1,8 +1,6 @@
 import dataclasses
 import os
-import sys
 import uuid
-from pathlib import Path
 from typing import Annotated, Any
 
 import durationpy
@@ -44,7 +42,7 @@ class Config:
     ]
 
     qb_url: Annotated[
-        HttpUrl, Field(os.environ.get("QB_URL", "http://127.0.0.1:8080"), validate_default=True)
+        HttpUrl, Field(os.environ.get("QB_URL", "http://127.0.0.1:8084"), validate_default=True)
     ]
 
     def pg_dsn(self) -> str:

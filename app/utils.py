@@ -3,7 +3,6 @@ import hashlib
 import shlex
 import subprocess
 import sys
-import tempfile
 from collections.abc import Hashable
 from pathlib import Path
 from shutil import which
@@ -90,43 +89,3 @@ def dedupe(seq: list[_J]) -> list[_J]:
     seen: set[_J] = set()
     seen_add = seen.add
     return [x for x in seq if not (x in seen or seen_add(x))]
-
-
-def an2cn(i: int) -> str:
-    match i:
-        case 1:
-            return "一"
-        case 2:
-            return "二"
-        case 3:
-            return "三"
-        case 4:
-            return "四"
-        case 5:
-            return "五"
-        case 6:
-            return "六"
-        case 7:
-            return "七"
-        case 8:
-            return "八"
-        case 9:
-            return "九"
-        case 10:
-            return "十"
-
-    if i >= 100:
-        raise NotImplementedError(f"an2cn({i!r})")
-
-    if i < 20:
-        return "十" + an2cn(i // 10)
-
-    if i % 10 == 0:
-        return an2cn(i // 10) + "十"
-
-    return an2cn(i // 10) + "十" + an2cn(i % 10)
-
-
-if __name__ == "__main__":
-    with tempfile.TemporaryDirectory(prefix="pt-repost") as d:
-        generate_images(Path(sys.argv[1]), Path(d))

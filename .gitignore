@@ -10,3 +10,5 @@ config.toml
 data/
 
 a.py
+
+.env

@@ -1,11 +1,9 @@
 import dataclasses
-import time
 from contextvars import ContextVar
 from typing import Any, Final
 
 import httpcore
 import httpx
-import tenacity
 from pydantic import TypeAdapter
 
 from app.config import Config
@@ -65,73 +63,12 @@ class MTeamAPI:
 
     __slots__ = ("_httpx",)
 
-    def __init__(self, c: Config):
+    def __init__(self, c: Config) -> None:
         self._httpx = httpx.Client(
             timeout=10,
             proxy=c.http_proxy or None,
             headers={"x-api-key": c.mt_token},
         )
-
-    @tenacity.retry(
-        stop=tenacity.stop_after_attempt(3),
-        wait=tenacity.wait_exponential(2),
-        retry=tenacity.retry_if_exception_type(httpx_network_errors),
-        reraise=True,
-    )
-    def search(
-        self,
-        *,
-        mode: str,
-        discount: str | None = None,
-        page: int = 1,
-        page_size: int = 200,
-    ) -> list[tuple[Any, Torrent]]:
-        if nested_depth.get() > 5:
-            nested_depth.set(0)
-            raise RecursionError("too many recursive call")
-        data = {
-            "mode": mode,
-            "categories": [],
-            "visible": 1,
-            "pageNumber": page,
-            "pageSize": page_size,
-        }
-
-        if discount is not None:
-            data["discount"] = discount
-
-        r = self._httpx.post(
-            f"https://{MTeamApiDomain}/api/torrent/search",
-            json=data,
-        )
-
-        try:
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                send_critical_message("[pt.rolling]: mteam api token 失效")
-            elif e.response.status_code == 400:
-                data = r.json()
-                if data["message"] == "未知錯誤":
-                    send_critical_message(
-                        "[pt.rolling]: api search 未知错误 (cf-ray: {!r})".format(
-                            r.headers.get("cf-ray"),
-                        ),
-                    )
-                    time.sleep(5)
-                    nested_depth.set(nested_depth.get() + 1)
-                    return self.search(mode=mode, discount=discount, page=page, page_size=page_size)
-            raise
-
-        data = r.json()
-
-        if data["code"] != "0":
-            raise MTeamRequestError(data["code"], data["message"])
-            # if data["message"] == _Too_Many_Request_Msg:
-            #     time.sleep(10)
-            #     return self.search(mode=mode, discount=discount, page=page, page_size=page_size)
-
-        return TT.validate_python([(x, x) for x in data["data"]["data"]])
 
     def get_download_url(self, id: str) -> str:
         try:
@@ -139,7 +76,7 @@ class MTeamAPI:
                 f"https://{MTeamApiDomain}/api/torrent/genDlToken",
                 data={"id": id},
             ).raise_for_status()
-        except httpx.HTTPStatusError as e:
+        except httpx.HTTPStatusError:
             raise
 
         data = r.json()
@@ -172,7 +109,11 @@ class MTeamAPI:
 
         r.raise_for_status()
 
-        return parse_obj_as(TorrentDetail, r.json()["data"])
+        data = r.json()
+        if data["code"] != "0":
+            raise MTeamRequestError.from_req(data)
+
+        return parse_obj_as(TorrentDetail, data["data"])
 
 
 @dataclasses.dataclass
@@ -185,21 +126,18 @@ class TorrentDetail:
     imdb: str
     imdbRating: Any
     douban: str
-    doubanRating: str
-    dmmCode: Any
     author: Any
     category: str
     source: str
     standard: str
     videoCodec: str
     audioCodec: Any
-    team: str
     numfiles: str
-    size: str
+    size: int
     labels: str
     msUp: int
     anonymous: bool
-    infoHash: str
+    # info_hash: Annotated[str, pydantic.Field(alias="infoHash")]
     editedBy: Any
     editDate: Any
     collection: bool
