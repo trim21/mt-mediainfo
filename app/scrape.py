@@ -54,7 +54,7 @@ class Scrape:
                     category = excluded.category,
                     deleted = false
                     """,
-                    [i, r.size, r.mediainfo, r.category],
+                    [i, r.size, r.mediainfo or "", r.category],
                 )
 
 

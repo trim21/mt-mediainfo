@@ -27,7 +27,9 @@ class Config:
         "NODE_ID"
     ) or uuid.UUID(int=uuid.getnode())
 
-    mt_token: Annotated[str, Field(min_length=1)] = os.environ["MT_API_TOKEN"]
+    mt_token: Annotated[
+        str, Field(min_length=1, default_factory=lambda: os.environ["MT_API_TOKEN"])
+    ]
 
     # filter empty string
     http_proxy: Annotated[str | None, BeforeValidator(lambda x: x or None)] = None
