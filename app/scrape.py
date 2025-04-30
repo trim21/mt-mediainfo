@@ -28,7 +28,7 @@ class Scrape:
             missing = [x for x in ids if x not in current_ids]
 
             for i in missing:
-                print(logger.info("fetch {}", i))
+                logger.info("fetch {}", i)
                 try:
                     r = self.mteam_client.torrent_detail(i)
                 except MTeamRequestError as e:
