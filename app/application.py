@@ -150,11 +150,12 @@ class Application:
                     update job set
                       progress = $1,
                       updated_at = current_timestamp
-                    where info_hash = $2 and node_id = $3
+                    where info_hash = $2 and node_id = $3 and status = $4
                     """,
-                    [t.progress, t.hash, self.config.node_id],
+                    [t.progress, t.hash, self.config.node_id, ITEM_STATUS_DOWNLOADING],
                 )
                 continue
+
             try:
                 self.__process_local_torrent(t)
             except Exception as e:
