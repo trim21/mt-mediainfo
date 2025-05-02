@@ -333,8 +333,8 @@ class Application:
 
                     conn.execute(
                         """
-                    insert into job (tid, node_id, info_hash, start_download_time, status)
-                    VALUES ($1, $2, $3, current_timestamp, $4)
+                insert into job (tid, node_id, info_hash, start_download_time, updated_at, status)
+                VALUES ($1, $2, $3, current_timestamp, current_timestamp, $4)
                     """,
                         [tid, self.config.node_id, info_hash, ITEM_STATUS_DOWNLOADING],
                     )
