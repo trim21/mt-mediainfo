@@ -67,7 +67,7 @@ def generate_images(
     duration = get_video_duration(video_file)
 
     # long enough
-    if duration > 30 * 60:
+    if duration > 20 * 60:
         start = 10 * 60
         step = (duration - start * 2) // count
     else:
@@ -111,7 +111,7 @@ def check_hardcode_chinese_subtitle(video_file: Path) -> bool:
     engine = RapidOCR()
 
     with tempfile.TemporaryDirectory(prefix="mt-") as tempdir:
-        image_files = generate_images(video_file, Path(tempdir))
+        image_files = generate_images(video_file, Path(tempdir), count=10)
 
         for file in image_files:
             with PIL.Image.open(file) as img:

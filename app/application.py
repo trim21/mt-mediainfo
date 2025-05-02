@@ -101,14 +101,14 @@ class Application:
     def __post_init__(self) -> None:
         try:
             self.db.fetch_val("select version()")
-        except Exception as e:
-            print("failed to connect to database", e)
+        except Exception:
+            logger.exception("failed to connect to database")
             sys.exit(1)
 
-        print("successfully connect to database")
+        logger.info("successfully connect to database")
 
         version = self.qb.app_version()
-        print("successfully connect to qBittorrent", version)
+        logger.info("successfully connect to qBittorrent {}", version)
 
     def start(self) -> None:
         interval = 1
@@ -176,7 +176,10 @@ class Application:
 
     def __add_picked_to_qb(self, picked: list[tuple[int, str]]) -> None:
         for tid, info_hash in picked:
-            tc = self.db.fetch_val("select content from torrent where tid = $1 limit 1", [tid])
+            tc = self.db.fetch_val(
+                "select content from torrent where tid = $1 limit 1",
+                [tid],
+            )
             t = parse_torrent(tc)
 
             video_files = [tf for tf in t.as_files() if tf.name.lower().endswith(video_ext)]
