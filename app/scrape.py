@@ -60,7 +60,7 @@ class Scrape:
 
                 size = r.size
                 info_hash = ""
-                if not r.status.seeders:
+                if r.status.seeders:
                     tc = self.mteam_client.download_torrent(tid=i)
 
                     t = parse_torrent(tc)
