@@ -5,7 +5,7 @@ from typing import Annotated, Any
 
 import durationpy
 import yarl
-from pydantic import BeforeValidator, Field, HttpUrl
+from pydantic import BeforeValidator, ByteSize, Field, HttpUrl
 
 from app.utils import parse_obj_as
 
@@ -52,9 +52,20 @@ class Config:
         HttpUrl, Field(os.environ.get("QB_URL", "http://127.0.0.1:8084"), validate_default=True)
     ]
 
+    download_path: Annotated[
+        str,
+        Field(
+            os.environ.get("DOWNLOAD_PATH", os.path.expanduser("~/downloads")),
+            validate_default=True,
+        ),
+    ]
+
     total_process_size: Annotated[
         int,
-        Field(os.environ.get("TOTAL_SIZE", str(1024 * 1024 * 10)), validate_default=True),
+        Field(
+            os.environ.get("TOTAL_SIZE", str(int(parse_obj_as(ByteSize, "100G")))),
+            validate_default=True,
+        ),
     ]
 
     def pg_dsn(self) -> str:
@@ -73,4 +84,4 @@ def load_config() -> Config:
     return parse_obj_as(Config, {})
 
 
-video_ext = (".mkv", ".mp4", ".ts")
+video_ext = (".mkv", ".mp4")

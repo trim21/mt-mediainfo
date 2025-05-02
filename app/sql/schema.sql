@@ -3,6 +3,7 @@ create table if not exists thread (
     size int8 not null default 0,
     mediainfo text not null default '',
     info_hash text not null default '',
+    seeders int8 not null default 0,
     category int4 not null default 0,
     deleted bool default false
 );

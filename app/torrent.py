@@ -1,6 +1,6 @@
 import dataclasses
 from functools import cached_property
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import annotated_types
 import bencode2
@@ -79,6 +79,11 @@ class Torrent:
     @cached_property
     def total_length(self) -> int:
         return self.info.length or sum(x.length for x in self.info.files)
+
+    def as_files(self) -> list[File]:
+        if self.info.files:
+            return list(self.info.files)
+        return [File(length=cast(int, self.info.length), path=(self.info.name,))]
 
 
 __t = pydantic.TypeAdapter(Torrent)

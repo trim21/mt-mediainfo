@@ -16,6 +16,7 @@ class Connection(psycopg.connection.Connection):
         row = self.execute(sql, args).fetchone()
         if row:
             return row[0]
+        return None
 
     def fetch_one(self, sql: LiteralString, args: Sequence[Any] = ()) -> tuple[Any, ...] | None:
         return self.execute(sql, args).fetchone()

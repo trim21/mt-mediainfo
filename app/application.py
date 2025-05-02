@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import io
+import os.path
 import sys
 import time
 from datetime import datetime, timezone
@@ -15,15 +16,11 @@ from qbittorrentapi import TorrentState
 from rich.console import Console
 from sslog import logger
 
-from app.config import Config
-from app.const import (
-    ITEM_STATUS_DOWNLOADING,
-    ITEM_STATUS_FAILED,
-    ITEM_STATUS_PENDING,
-    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-)
+from app.config import Config, video_ext
+from app.const import ITEM_STATUS_DONE, ITEM_STATUS_DOWNLOADING, ITEM_STATUS_SKIPPED
 from app.db import Database
-from app.mt import MTeamAPI
+from app.mediainfo import extract_mediainfo_from_file
+from app.torrent import parse_torrent
 from app.utils import parse_obj_as
 
 QB_CATEGORY = "mt-mediainfo"
@@ -87,8 +84,6 @@ class Application:
     config: Config
     qb: qbittorrentapi.Client
 
-    mteam_client: MTeamAPI
-
     @classmethod
     def new(cls, cfg: Config) -> Application:
         return Application(
@@ -104,7 +99,6 @@ class Application:
                 RAISE_NOTIMPLEMENTEDERROR_FOR_UNIMPLEMENTED_API_ENDPOINTS=True,
                 REQUESTS_ARGS={"timeout": 10},
             ),
-            mteam_client=MTeamAPI(cfg),
         )
 
     def __post_init__(self) -> None:
@@ -140,11 +134,13 @@ class Application:
             try:
                 self.__run_at_interval()
             except Exception as e:
+                console.print_exception()
                 print("failed to run", e)
 
     def __run_at_interval(self) -> None:
-        self.__process_downloading()
-        self.__pick_job()
+        self.__process_local_torrents()
+        picked = self.__pick_job()
+        self.__add_picked_to_qb(picked)
 
     def __heart_beat(self) -> None:
         self.db.execute(
@@ -155,12 +151,57 @@ class Application:
             [self.config.node_id, datetime.now(tz=timezone.utc)],
         )
 
-    def __process_downloading(self) -> None:
-        torrents = self.qb.torrents_info()
-        for t in torrents:
-            print(t)
+    def __process_local_torrents(self) -> None:
+        for t in parse_obj_as(list[QbTorrent], self.qb.torrents_info()):
+            if not t.state.is_uploading:
+                continue
 
-    def __pick_job(self) -> None:
+            video_files: list[QbFile] = []
+
+            files = parse_obj_as(list[QbFile], self.qb.torrents_files(torrent_hash=t.hash))
+            for file in files:
+                if file.name.lower().endswith(video_ext):
+                    video_files.append(file)
+
+            video_files.sort(key=lambda x: x.size, reverse=True)
+            print(video_files[0])
+            path = os.path.join(t.save_path, video_files[0].name)
+            print(t.name, path)
+            assert os.path.exists(path)
+
+            media_info = extract_mediainfo_from_file(Path(path))
+
+            self.db.execute(
+                "update thread set mediainfo = $1 where info_hash = $2", [media_info, t.hash]
+            )
+            self.db.execute(
+                "update job set status = $1 where info_hash = $2 and node_id = $3",
+                [ITEM_STATUS_DONE, t.hash, self.config.node_id],
+            )
+            self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+
+    def __add_picked_to_qb(self, picked: list[tuple[int, str]]) -> None:
+        for tid, info_hash in picked:
+            tc = self.db.fetch_val("select content from torrent where tid = $1 limit 1", [tid])
+            t = parse_torrent(tc)
+
+            video_files = [tf for tf in t.as_files() if tf.name.lower().endswith(video_ext)]
+            if not video_files:
+                self.db.execute(
+                    "update job set status = $1 where tid = $2 and node_id = $3",
+                    [ITEM_STATUS_SKIPPED, tid, self.config.node_id],
+                )
+                continue
+
+            self.qb.torrents_add(
+                torrent_files=[tc],
+                save_path=os.path.join(self.config.download_path, info_hash),
+                use_auto_torrent_management=False,
+                is_paused=False,
+                is_stopped=False,
+            )
+
+    def __pick_job(self) -> list[tuple[int, str]]:
         logger.debug("__pick_job")
 
         current_total_size = sum(
@@ -168,126 +209,50 @@ class Application:
         )
         left_size = self.config.total_process_size - current_total_size
         if left_size < 0:
-            return
+            return []
 
         picked: list[tuple[int, str]] = []
 
-        # add distributed lock here when we have multiple nodes.
-        with self.db.connection() as conn:
+        with self.db.lock("pick-job"), self.db.connection() as conn:
             with conn.transaction():
-                conn.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
-
-                row: tuple[int, str] | None = conn.fetch_one(
+                rows: list[tuple[int, str, int]] = conn.fetch_all(
                     """
-                    select thread.tid, thread.info_hash from thread
-                    left join job on (job.tid = thread.tid and job.node_id = $1)
+                    select thread.tid, thread.info_hash, thread.size from thread
+                    left join job on (job.tid = thread.tid)
                     where
                         mediainfo = '' and
-                        size < $2 and
-                        thread.info_hash != ''
-                    order by size desc
+                        size < $1 and
+                        thread.info_hash != '' and
+                        category = any ($2) and
+                        job.tid is null
+                    order by size asc
                     limit 1
                     """,
-                    [self.config.node_id, left_size],
-                )
-                # all threads already have mediainfo
-                if not row:
-                    logger.info("no new job to pick")
-                    return
-
-                print(row)
-
-                tid, info_hash = row
-
-                conn.execute(
-                    """
-                insert into job (tid, node_id, info_hash, start_download_time)
-                VALUES ($1, $2, $3, current_timestamp)
-                """,
-                    [tid, self.config.node_id, info_hash],
-                )
-                picked.append(row)
-
-        print(picked)
-
-    def __process_local_downloading(self) -> None:
-        """
-        may move torrent from download status to uploading status
-        """
-        self.db.execute(
-            """
-            update thread
-             set status = $1
-             where status = $2 and info_hash = $3 and pick_node = $4
-            """,
-            [
-                ITEM_STATUS_PENDING,
-                ITEM_STATUS_DOWNLOADING,
-                "",
-                self.config.node_id,
-            ],
-        )
-        downloading = {
-            row[0]
-            for row in self.db.fetch_all(
-                """select info_hash from thread where status = $1""",
-                [ITEM_STATUS_DOWNLOADING],
-            )
-        }
-
-        local_torrents = parse_obj_as(list[QbTorrent], self.qb.torrents_info(category=QB_CATEGORY))
-        local_hashes = {t.hash for t in local_torrents}
-
-        missing_in_local_downloads = {h for h in downloading if h not in local_hashes}
-        if missing_in_local_downloads:
-            self.db.execute(
-                """
-                update thread
-                 set status = $1, updated_at = current_timestamp
-                where info_hash = any($2)
-                """,
-                [
-                    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-                    list(missing_in_local_downloads),
-                ],
-            )
-
-        for t in local_torrents:
-            if t.hash not in downloading:
-                continue
-            if not t.state.is_uploading:
-                try:
-                    self.db.execute(
-                        "update job set progress = $1 where info_hash = $2",
-                        [t.completed / t.total_size, t.hash],
-                    )
-                except Exception as e:
-                    logger.warning("failed to update torrent progress {}", e)
-                continue
-
-            try:
-                self.process_task(t=t)
-            except Exception as e:
-                logger.warning("failed to process task {!r} {}", e, e)
-                self.db.execute(
-                    """
-                    update thread set status = $1,
-                     failed_reason = $2,
-                     updated_at = current_timestamp
-                    where info_hash = $3
-                    """,
                     [
-                        ITEM_STATUS_FAILED,  # 1
-                        format_exc(e),  # 2
-                        t.hash,
+                        left_size,
+                        [419, 407, 405, 402, 404],
                     ],
                 )
+                # all threads already have mediainfo
+                if not rows:
+                    logger.info("no new job to pick")
+                    return []
 
-    def process_task(self, t: QbTorrent) -> None:
-        pass
+                for tid, info_hash, size in rows:
+                    if left_size - size <= 0:
+                        continue
+                    left_size = left_size - size
 
-    def export_torrent(self, info_hash: str) -> bytes:
-        return self.qb.torrents_export(info_hash)
+                    conn.execute(
+                        """
+                    insert into job (tid, node_id, info_hash, start_download_time, status)
+                    VALUES ($1, $2, $3, current_timestamp, $4)
+                    """,
+                        [tid, self.config.node_id, info_hash, ITEM_STATUS_DOWNLOADING],
+                    )
+                    picked.append((tid, info_hash))
+
+        return picked
 
 
 @dataclasses.dataclass(kw_only=True, slots=True)

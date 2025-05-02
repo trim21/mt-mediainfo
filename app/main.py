@@ -5,7 +5,7 @@ from sslog import logger
 
 from app.application import Application
 from app.config import load_config
-from app.mt import MTeamRequestError
+from app.mt import MTeamRequestError, httpx_network_errors
 from app.scrape import Scrape
 
 
@@ -33,9 +33,12 @@ def scrape() -> None:
         try:
             s.scrape(limit=2)
             time.sleep(60)
+        except httpx_network_errors:
+            time.sleep(60)
+            continue
         except MTeamRequestError as e:
             if e.message == "請求過於頻繁":
-                logger.info("rate limited, sleep for 1h")
-                time.sleep(3601)
+                logger.info("rate limited, sleep for 10m")
+                time.sleep(360)
                 continue
             raise

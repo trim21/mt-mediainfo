@@ -120,33 +120,31 @@ class MTeamAPI:
 
 
 @dataclasses.dataclass
+class TorrentStatus:
+    seeders: int
+    leechers: int
+
+
+@dataclasses.dataclass
 class TorrentDetail:
     id: str
     createdDate: str
     lastModifiedDate: str
+    status: TorrentStatus
     name: str
-    smallDescr: str
-    imdb: str
-    imdbRating: Any
-    douban: str
-    author: Any
     category: str
     source: str
     standard: str
     videoCodec: str
     audioCodec: Any
-    numfiles: str
     size: int
     labels: str
     msUp: int
     anonymous: bool
     # info_hash: Annotated[str, pydantic.Field(alias="infoHash")]
-    editedBy: Any
-    editDate: Any
     collection: bool
     inRss: bool
     canVote: bool
-    imageList: Any
     originFileName: str
     descr: str
     mediainfo: str | None

@@ -55,26 +55,35 @@ class Scrape:
                 tc = self.mteam_client.download_torrent(tid=i)
 
                 t = parse_torrent(tc)
+                info_hash = get_info_hash_v1_from_content(tc)
 
                 self.__db.execute(
                     """
                     insert into torrent (tid, info_hash, content)
                     VALUES ($1, $2, $3)
                 """,
-                    [i, get_info_hash_v1_from_content(tc), tc],
+                    [i, info_hash, tc],
                 )
 
                 self.__db.execute(
                     """
-                    insert into thread (tid, size, mediainfo, category, deleted)
-                    values ($1, $2, $3, $4, false)
+                    insert into thread (tid, size, mediainfo, info_hash, category, seeders, deleted)
+                    values ($1, $2, $3, $4, $5, $6, false)
                     on conflict (tid) do update set
                     size = excluded.size,
                     mediainfo = excluded.category,
                     category = excluded.category,
+                    info_hash = excluded.info_hash,
                     deleted = false
                     """,
-                    [i, t.total_length, r.mediainfo or "", r.category],
+                    [
+                        i,
+                        t.total_length,
+                        r.mediainfo or "",
+                        info_hash,
+                        r.category,
+                        r.status.seeders,
+                    ],
                 )
 
                 c += 1
