@@ -22,7 +22,7 @@ dependencies = [
     'jinja2==3.1.6',
     'tzdata',
     "six==1.17.0",
-    "asyncpg>=0.30.0",
+    "asyncpg==0.30.0",
     "tenacity==9.1.2",
     "more-itertools==10.7.0",
     "sslog==0.0.0a52",
