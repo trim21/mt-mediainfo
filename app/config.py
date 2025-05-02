@@ -65,6 +65,11 @@ class Config:
         Field(os.environ.get("TOTAL_SIZE", "100G"), validate_default=True),
     ]
 
+    single_torrent_size_limit: Annotated[
+        ByteSize,
+        Field(os.environ.get("SINGLE_TORRENT_SIZE_LIMIT", "10G"), validate_default=True),
+    ]
+
     def pg_dsn(self) -> str:
         return str(
             yarl.URL.build(

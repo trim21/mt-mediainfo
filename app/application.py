@@ -219,7 +219,7 @@ class Application:
                     order by size asc
                     """,
                     [
-                        left_size,
+                        min(int(self.config.single_torrent_size_limit), left_size),
                         [419, 407, 405, 402, 404],
                     ],
                 )
