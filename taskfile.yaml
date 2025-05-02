@@ -24,3 +24,9 @@ tasks:
     dotenv:
       - .env
     cmd: python ./main.py scrape
+
+  dev:server:
+    dotenv:
+      - .env
+    cmds:
+      - watchexec -r -e py,sql,j2 --delay-run 1s --shell=none --verbose -- uvicorn app.server:create_app --factory --port=8745

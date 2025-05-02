@@ -27,7 +27,7 @@
     <thead>
     <tr>
       <th scope="col">#</th>
-      <th scope="col">title</th>
+      {#      <th scope="col">title</th>#}
       {#      <th scope="col">Last</th>#}
       {#      <th scope="col">Handle</th>#}
     </tr>
@@ -48,19 +48,18 @@
       {% endif %}
 
       <tr class="{{ row_style }}">
-        <th scope="row">{{ torrent.website }}</th>
-        <td>{{ torrent.title }}</td>
+        <th scope="row">{{ torrent.tid }}</th>
 
         <td>{{ torrent.updated_at.replace(microsecond=0).astimezone() }}</td>
 
         {% if torrent.status == 'downloading' %}
           <td>{{ "{:05.2f} %".format(torrent.progress * 100) }}</td>
-        {% elif torrent.status == 'failed' %}
-          <td>
-            <a href="/{{ torrent.website }}/{{ torrent.guid }}">{{ torrent.status }}</a>
-          </td>
+          {#        {% elif torrent.status == 'failed' %}#}
         {% else %}
-          <td>{{ torrent.status }}</td>
+          {#          <td>{{ torrent.status }}</td>#}
+          <td>
+            <a href="/thread/{{ torrent.tid }}">{{ torrent.status }}</a>
+          </td>
         {% endif %}
 
       </tr>

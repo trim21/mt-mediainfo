@@ -16,7 +16,7 @@ from app.const import ITEM_STATUS_SKIPPED as RSS_ITEM_STATUS_SKIPPED
 
 class ORJSONResponse(JSONResponse):
     def render(self, content: Any) -> bytes:
-        return orjson.dumps(content, option=orjson.OPT_INDENT_2)
+        return orjson.dumps(content, option=orjson.OPT_INDENT_2, default=str)
 
 
 class _Render(Protocol):
@@ -71,7 +71,7 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/")
     async def index(render: Render) -> HTMLResponse:
         torrents = await pool.fetch(
-            """select * from thread where status != $1 order by updated_at desc""",
+            """select * from job where status != $1 order by updated_at desc""",
             RSS_ITEM_STATUS_SKIPPED,
         )
 
@@ -80,17 +80,18 @@ def create_app() -> fastapi.FastAPI:
             ctx={"torrents": torrents},
         )
 
-    @app.get("/{website}/{guid}")
-    async def rss_item(website: str, guid: str, render: Render) -> HTMLResponse:
-        torrent = await pool.fetchrow(
-            """select * from job where website = $1 and guid = $2""",
-            website,
-            guid,
+    @app.get("/thread/{tid}")
+    async def rss_item(tid: int, render: Render) -> ORJSONResponse:
+        rows = await pool.fetch(
+            """select * from job where tid = $1""",
+            tid,
         )
 
-        return render(
-            "rss-item.html.j2",
-            ctx={"torrent": torrent},
-        )
+        return ORJSONResponse([dict(t) for t in rows])
+
+        # return render(
+        #     "rss-item.html.j2",
+        #     ctx={"torrent": torrent},
+        # )
 
     return app

@@ -75,6 +75,7 @@ class QbTorrent:
     amount_left: int
 
     num_seeds: int
+    progress: float
 
 
 console = Console(emoji=False, force_terminal=True, no_color=False, legacy_windows=True)
@@ -144,6 +145,14 @@ class Application:
     def __process_local_torrents(self) -> None:
         for t in parse_obj_as(list[QbTorrent], self.qb.torrents_info()):
             if not t.state.is_uploading:
+                self.db.execute(
+                    """
+                    update job set
+                      progress = $1
+                    where info_hash = $2 and node_id = $3
+                    """,
+                    [t.progress, t.hash, self.config.node_id],
+                )
                 continue
             try:
                 self.__process_local_torrent(t)
