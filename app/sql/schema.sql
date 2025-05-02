@@ -2,6 +2,7 @@ create table if not exists thread (
     tid int primary key,
     size int8 not null default 0,
     mediainfo text not null default '',
+    hard_coded_subtitle bool not null default false,
     info_hash text not null default '',
     seeders int8 not null default 0,
     category int4 not null default 0,

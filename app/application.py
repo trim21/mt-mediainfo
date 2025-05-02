@@ -8,7 +8,6 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TypeVar
 
 import packaging.version
 import qbittorrentapi
@@ -19,11 +18,10 @@ from sslog import logger
 from app.config import Config, video_ext
 from app.const import ITEM_STATUS_DONE, ITEM_STATUS_DOWNLOADING, ITEM_STATUS_SKIPPED
 from app.db import Database
+from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
 from app.torrent import parse_torrent
 from app.utils import parse_obj_as
-
-QB_CATEGORY = "mt-mediainfo"
 
 
 def format_exc(e: Exception) -> str:
@@ -163,16 +161,22 @@ class Application:
                 if file.name.lower().endswith(video_ext):
                     video_files.append(file)
 
-            video_files.sort(key=lambda x: x.size, reverse=True)
-            print(video_files[0])
-            path = os.path.join(t.save_path, video_files[0].name)
-            print(t.name, path)
-            assert os.path.exists(path)
+            if not video_files:
+                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+                return
 
-            media_info = extract_mediainfo_from_file(Path(path))
+            video_files.sort(key=lambda x: x.size, reverse=True)
+            path = Path(t.save_path, video_files[0].name)
+
+            media_info = extract_mediainfo_from_file(path)
+
+            hard_code_subtitle = check_hardcode_chinese_subtitle(path)
 
             self.db.execute(
-                "update thread set mediainfo = $1 where info_hash = $2", [media_info, t.hash]
+                """
+                update thread set mediainfo = $1, hard_coded_subtitle = $2 where info_hash = $3
+                """,
+                [media_info, hard_code_subtitle, t.hash],
             )
             self.db.execute(
                 "update job set status = $1 where info_hash = $2 and node_id = $3",
@@ -207,7 +211,7 @@ class Application:
         current_total_size = sum(
             t.total_size for t in parse_obj_as(list[QbTorrent], self.qb.torrents_info())
         )
-        left_size = self.config.total_process_size - current_total_size
+        left_size = int(self.config.total_process_size) - current_total_size
         if left_size < 0:
             return []
 
@@ -226,7 +230,6 @@ class Application:
                         category = any ($2) and
                         job.tid is null
                     order by size asc
-                    limit 1
                     """,
                     [
                         left_size,
@@ -265,13 +268,3 @@ class Pick:
     size: int
     imdb_id: str = ""
     douban_id: str = ""
-
-
-T = TypeVar("T")
-
-
-def first(s: list[T], default: T) -> T:
-    if s:
-        return s[0]
-
-    return default

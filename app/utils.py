@@ -21,18 +21,6 @@ def must_find_executable(e: str) -> str:
     return tool
 
 
-def run_command(
-    command: list[str],
-    cwd: str | Path | None = None,
-    check: bool = False,
-    stdout: int | None = None,
-    stderr: int | None = None,
-    **kwargs: Any,
-) -> subprocess.CompletedProcess[str]:
-    logger.debug("executing command {!r}", shlex.join(command))
-    return subprocess.run(command, **kwargs, cwd=cwd, stdout=stdout, stderr=stderr, check=check)
-
-
 def must_run_command(
     executable: str,
     command: list[str],

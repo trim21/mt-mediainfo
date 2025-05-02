@@ -61,11 +61,8 @@ class Config:
     ]
 
     total_process_size: Annotated[
-        int,
-        Field(
-            os.environ.get("TOTAL_SIZE", str(int(parse_obj_as(ByteSize, "100G")))),
-            validate_default=True,
-        ),
+        ByteSize,
+        Field(os.environ.get("TOTAL_SIZE", "100G"), validate_default=True),
     ]
 
     def pg_dsn(self) -> str:
