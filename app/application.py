@@ -148,7 +148,8 @@ class Application:
                 self.db.execute(
                     """
                     update job set
-                      progress = $1
+                      progress = $1,
+                      updated_at = current_timestamp
                     where info_hash = $2 and node_id = $3
                     """,
                     [t.progress, t.hash, self.config.node_id],
