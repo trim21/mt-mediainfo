@@ -313,7 +313,8 @@ class Application:
                         size < $1 and
                         thread.info_hash != '' and
                         category = any ($2) and
-                        job.tid is null
+                        job.tid is null and
+                        seeders != 0
                     order by size asc
                     """,
                     [
