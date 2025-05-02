@@ -9,7 +9,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import packaging.version
 import qbittorrentapi
 from qbittorrentapi import TorrentState
 from rich.console import Console
@@ -109,15 +108,12 @@ class Application:
         print("successfully connect to database")
 
         try:
-            version = packaging.version.parse(self.qb.app_version())
+            version = self.qb.app_version()
         except Exception as e:
             print("failed to connect to qBittorrent", e)
             sys.exit(1)
 
-        print("successfully connect to qBittorrent")
-        if version < packaging.version.parse("v4.5.0"):
-            print("qb版本太旧，请升级到 >=4.5.0")
-            sys.exit(1)
+        print("successfully connect to qBittorrent", version)
 
     def start(self) -> None:
         interval = 1
