@@ -180,7 +180,8 @@ class Application:
                     """
                     update job set
                       status = $1,
-                      failed_reason = $2
+                      failed_reason = $2,
+                      updated_at = current_timestamp
                     where info_hash = $3 and node_id = $4
                     """,
                     [ITEM_STATUS_FAILED, format_exc(e), t.hash, self.config.node_id],
@@ -232,7 +233,13 @@ class Application:
             video_files = [tf for tf in t.as_files() if tf.name.lower().endswith(video_ext)]
             if not video_files:
                 self.db.execute(
-                    "update job set status = $1 where tid = $2 and node_id = $3",
+                    """
+                    update job set
+                      status = $1,
+                      updated_at = current_timestamp
+                    where
+                      tid = $2 and node_id = $3
+                    """,
                     [ITEM_STATUS_SKIPPED, tid, self.config.node_id],
                 )
                 continue
@@ -249,7 +256,8 @@ class Application:
                     """
                     update job set
                       status = $1,
-                      failed_reason = $2
+                      failed_reason = $2,
+                      updated_at = current_timestamp
                     where tid = $3 and node_id = $4
                     """,
                     [ITEM_STATUS_FAILED, "failed to add", tid, self.config.node_id],
