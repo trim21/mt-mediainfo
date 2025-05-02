@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, JSONResponse
 
 from app.config import load_config
-from app.const import ITEM_STATUS_SKIPPED as RSS_ITEM_STATUS_SKIPPED
+from app.const import ITEM_STATUS_DONE, ITEM_STATUS_SKIPPED
 
 
 class ORJSONResponse(JSONResponse):
@@ -88,8 +88,8 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/")
     async def index(render: Render) -> HTMLResponse:
         torrents = await pool.fetch(
-            """select * from job where status != $1 order by updated_at desc""",
-            RSS_ITEM_STATUS_SKIPPED,
+            """select * from job where (not status = any($1)) order by updated_at desc""",
+            [ITEM_STATUS_SKIPPED, ITEM_STATUS_DONE],
         )
 
         return render(
