@@ -18,11 +18,7 @@ concurrency:
 
 jobs:
   docker:
-    runs-on: "${{ matrix.os }}"
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04-arm, ubuntu-24.04]
+    runs-on: "ubuntu-24.04"
     permissions:
       packages: write
     steps:
@@ -44,7 +40,8 @@ jobs:
         with:
           images: "ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}"
           tags: |
-            type=ref,event=branch,suffix=-${{ github.sha }}-${{ runner.arch }}
+            type=ref,event=branch,suffix=-${{ github.sha }}
+            type=ref,event=branch
 
       - name: Build and push
         uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4 # v6
@@ -57,40 +54,3 @@ jobs:
           cache-from: type=gha,scope=buildkit-${{ runner.arch }}
           cache-to: type=gha,mode=max,scope=buildkit-${{ runner.arch }}
           github-token: ${{ github.token }}
-
-  merge:
-    if: "${{ github.event_name == 'push' }}"
-    needs:
-      - docker
-    runs-on: "ubuntu-24.04"
-    permissions:
-      packages: write
-    env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
-
-    steps:
-      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-
-      - name: Create SHA manifest and push
-        run: |
-          docker manifest create \
-            ${{ env.IMAGE }}:daemon-${{ github.sha }} \
-            --amend ${{ env.IMAGE }}:daemon-${{ github.sha }}-X64 \
-            --amend ${{ env.IMAGE }}:daemon-${{ github.sha }}-ARM64 \
-
-      - name: push sha image
-        run: docker manifest push ${{ env.IMAGE }}:daemon-${{ github.sha }}
-
-      - name: Create branch manifest and push
-        run: |
-          docker manifest create \
-            ${{ env.IMAGE }}:daemon \
-            --amend ${{ env.IMAGE }}:daemon-${{ github.sha }}-X64 \
-            --amend ${{ env.IMAGE }}:daemon-${{ github.sha }}-ARM64 \
-
-      - name: push branch image
-        run: docker manifest push ${{ env.IMAGE }}:daemon
