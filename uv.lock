@@ -623,7 +623,7 @@ requires-dist = [
     { name = "rapidocr-onnxruntime", specifier = "==1.4.4" },
     { name = "regex", specifier = "==2024.11.6" },
     { name = "rich", specifier = "==14.0.0" },
-    { name = "six", specifier = ">=1.17.0" },
+    { name = "six", specifier = "==1.17.0" },
     { name = "sslog", specifier = "==0.0.0a52" },
     { name = "tenacity", specifier = "==9.1.2" },
     { name = "tomli", specifier = "==2.2.1" },
@@ -637,7 +637,7 @@ requires-dist = [
 dev = [
     { name = "mypy" },
     { name = "types-regex", specifier = "==2024.11.6.20250403" },
-    { name = "types-six", specifier = ">=1.17.0.20250403" },
+    { name = "types-six", specifier = "==1.17.0.20250403" },
 ]
 
 [[package]]
