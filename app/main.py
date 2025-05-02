@@ -1,3 +1,4 @@
+import os
 import time
 
 import click
@@ -7,6 +8,7 @@ from app.application import Application
 from app.config import load_config
 from app.mt import MTeamRequestError, httpx_network_errors
 from app.scrape import Scrape
+from app.utils import parse_obj_as
 
 
 @click.group()
@@ -31,7 +33,7 @@ def scrape() -> None:
 
     while True:
         try:
-            s.scrape(limit=2)
+            s.scrape(limit=parse_obj_as(int, os.environ.get("SCRAPE_LIMIT", 100)))
             time.sleep(60)
         except httpx_network_errors:
             time.sleep(60)
