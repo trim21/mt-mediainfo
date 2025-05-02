@@ -68,6 +68,23 @@ def create_app() -> fastapi.FastAPI:
 
     Render = Annotated[_Render, Depends(__render)]
 
+    @app.get("/nodes")
+    async def nodes() -> ORJSONResponse:
+        torrents = await pool.fetch("""select * from node order by last_seen desc""")
+
+        return ORJSONResponse([dict(t) for t in torrents])
+
+    @app.get("/threads")
+    async def threads(render: Render) -> HTMLResponse:
+        torrents = await pool.fetch(
+            """select * from thread where deleted = true order by tid asc"""
+        )
+
+        return render(
+            "index.html.j2",
+            ctx={"torrents": torrents},
+        )
+
     @app.get("/")
     async def index(render: Render) -> HTMLResponse:
         torrents = await pool.fetch(
