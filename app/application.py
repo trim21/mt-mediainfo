@@ -65,8 +65,8 @@ class QbTorrent:
 
     uploaded: int
 
-    total_size: int
-    size: int
+    total_size: int  # total file size
+    size: int  # select file size
     amount_left: int
 
     num_seeds: int
@@ -145,6 +145,9 @@ class Application:
 
             files = parse_obj_as(list[QbFile], self.qb.torrents_files(torrent_hash=t.hash))
             for file in files:
+                if file.priority == 0:
+                    continue
+
                 if file.name.lower().endswith(video_ext):
                     video_files.append(file)
 
@@ -192,11 +195,37 @@ class Application:
                 is_stopped=False,
             )
 
+            # only download lartest single video file
+            if t.info.files:
+                files = list(enumerate(list(t.info.files)))
+                file_ids = set()
+                find_video_file = False
+
+                for index, file in sorted(
+                    [(index, file) for index, file in files],
+                    key=lambda y: y[1].length,
+                    reverse=True,
+                ):
+                    if file.name.lower().endswith(video_ext):
+                        if not find_video_file:
+                            find_video_file = True
+                            continue
+                    file_ids.add(index)
+
+                if file_ids:
+                    # give qbittorrent some time to process the torrent
+                    time.sleep(1)
+                    self.qb.torrents_file_priority(
+                        torrent_hash=info_hash,
+                        file_ids=list(file_ids),
+                        priority=0,
+                    )
+
     def __pick_job(self) -> list[tuple[int, str]]:
         logger.debug("__pick_job")
 
         current_total_size = sum(
-            t.total_size for t in parse_obj_as(list[QbTorrent], self.qb.torrents_info())
+            t.size for t in parse_obj_as(list[QbTorrent], self.qb.torrents_info())
         )
         left_size = int(self.config.total_process_size) - current_total_size
         if left_size < 0:
