@@ -107,12 +107,7 @@ class Application:
 
         print("successfully connect to database")
 
-        try:
-            version = self.qb.app_version()
-        except Exception as e:
-            print("failed to connect to qBittorrent", e)
-            sys.exit(1)
-
+        version = self.qb.app_version()
         print("successfully connect to qBittorrent", version)
 
     def start(self) -> None:
