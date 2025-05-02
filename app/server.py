@@ -75,15 +75,12 @@ def create_app() -> fastapi.FastAPI:
         return ORJSONResponse([dict(t) for t in torrents])
 
     @app.get("/threads")
-    async def threads(render: Render) -> HTMLResponse:
+    async def threads() -> ORJSONResponse:
         torrents = await pool.fetch(
-            """select * from thread where deleted = true order by tid asc"""
+            """select * from thread where deleted = false order by tid desc"""
         )
 
-        return render(
-            "index.html.j2",
-            ctx={"torrents": torrents},
-        )
+        return ORJSONResponse([dict(x) for x in torrents])
 
     @app.get("/")
     async def index(render: Render) -> HTMLResponse:
