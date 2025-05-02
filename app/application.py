@@ -15,7 +15,12 @@ from rich.console import Console
 from sslog import logger
 
 from app.config import Config, video_ext
-from app.const import ITEM_STATUS_DONE, ITEM_STATUS_DOWNLOADING, ITEM_STATUS_SKIPPED
+from app.const import (
+    ITEM_STATUS_DONE,
+    ITEM_STATUS_DOWNLOADING,
+    ITEM_STATUS_FAILED,
+    ITEM_STATUS_SKIPPED,
+)
 from app.db import Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
@@ -190,13 +195,24 @@ class Application:
                 )
                 continue
 
-            self.qb.torrents_add(
+            r = self.qb.torrents_add(
                 torrent_files=[tc],
                 save_path=os.path.join(self.config.download_path, info_hash),
                 use_auto_torrent_management=False,
                 is_paused=False,
                 is_stopped=False,
             )
+            if r != "Ok.":
+                self.db.execute(
+                    """
+                    update job set
+                      status = $1,
+                      failed_reason = $2
+                    where tid = $3 and node_id = $4
+                    """,
+                    [ITEM_STATUS_FAILED, "failed to add", tid, self.config.node_id],
+                )
+                continue
 
             # only download lartest single video file
             if t.info.files:
