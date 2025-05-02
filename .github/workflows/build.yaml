@@ -5,12 +5,12 @@ on:
     paths-ignore:
       - "*.md"
     branches:
-      - daemon
+      - master
   pull_request:
     paths-ignore:
       - "*.md"
     branches:
-      - daemon
+      - master
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
