@@ -15,7 +15,7 @@ ENV PIP_ROOT_USER_ACTION=ignore \
 
 ENTRYPOINT ["python", "main.py"]
 
-RUN apt-get update && apt-get install -y mediainfo &&\
+RUN apt-get update && apt-get install -y mediainfo ffmpeg &&\
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
 COPY --from=uv /app/requirements.txt .
