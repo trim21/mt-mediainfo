@@ -143,7 +143,24 @@ class Application:
         )
 
     def __process_local_torrents(self) -> None:
-        for t in parse_obj_as(list[QbTorrent], self.qb.torrents_info()):
+        torrents = parse_obj_as(list[QbTorrent], self.qb.torrents_info())
+        if torrents:
+            self.db.execute(
+                """
+                    update job set
+                      status = $1,
+                      updated_at = current_timestamp
+                    where (not info_hash = any($2)) and node_id = $3 and status = $4
+                    """,
+                [
+                    ITEM_STATUS_SKIPPED,
+                    [x.hash for x in torrents],
+                    self.config.node_id,
+                    ITEM_STATUS_DOWNLOADING,
+                ],
+            )
+
+        for t in torrents:
             if not t.state.is_uploading:
                 self.db.execute(
                     """
