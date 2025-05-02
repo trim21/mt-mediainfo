@@ -145,39 +145,53 @@ class Application:
         for t in parse_obj_as(list[QbTorrent], self.qb.torrents_info()):
             if not t.state.is_uploading:
                 continue
+            try:
+                self.__process_local_torrent(t)
+            except Exception as e:
+                self.db.execute(
+                    """
+                    update job set
+                      status = $1,
+                      failed_reason = $2
+                    where info_hash = $3 and node_id = $4
+                    """,
+                    [ITEM_STATUS_FAILED, format_exc(e), t.hash, self.config.node_id],
+                )
+                logger.error("failed to process local torrent {}", e)
 
-            video_files: list[QbFile] = []
+    def __process_local_torrent(self, t: QbTorrent) -> None:
+        video_files: list[QbFile] = []
 
-            files = parse_obj_as(list[QbFile], self.qb.torrents_files(torrent_hash=t.hash))
-            for file in files:
-                if file.priority == 0:
-                    continue
+        files = parse_obj_as(list[QbFile], self.qb.torrents_files(torrent_hash=t.hash))
+        for file in files:
+            if file.priority == 0:
+                continue
 
-                if file.name.lower().endswith(video_ext):
-                    video_files.append(file)
+            if file.name.lower().endswith(video_ext):
+                video_files.append(file)
 
-            if not video_files:
-                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
-                return
+        if not video_files:
+            self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+            return
 
-            video_files.sort(key=lambda x: x.size, reverse=True)
-            path = Path(t.save_path, video_files[0].name)
+        video_files.sort(key=lambda x: x.size, reverse=True)
+        path = Path(t.save_path, video_files[0].name)
 
-            media_info = extract_mediainfo_from_file(path)
+        media_info = extract_mediainfo_from_file(path)
 
-            hard_code_subtitle = check_hardcode_chinese_subtitle(path)
+        hard_code_subtitle = check_hardcode_chinese_subtitle(path)
 
-            self.db.execute(
-                """
+        self.db.execute(
+            """
                 update thread set mediainfo = $1, hard_coded_subtitle = $2 where info_hash = $3
                 """,
-                [media_info, hard_code_subtitle, t.hash],
-            )
-            self.db.execute(
-                "update job set status = $1 where info_hash = $2 and node_id = $3",
-                [ITEM_STATUS_DONE, t.hash, self.config.node_id],
-            )
-            self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+            [media_info, hard_code_subtitle, t.hash],
+        )
+        self.db.execute(
+            "update job set status = $1 where info_hash = $2 and node_id = $3",
+            [ITEM_STATUS_DONE, t.hash, self.config.node_id],
+        )
+        self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
     def __add_picked_to_qb(self, picked: list[tuple[int, str]]) -> None:
         for tid, info_hash in picked:
