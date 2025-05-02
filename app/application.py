@@ -310,7 +310,7 @@ class Application:
                     """,
                     [
                         min(int(self.config.single_torrent_size_limit), left_size),
-                        [419, 407, 405, 402, 404, 410, 429, 424],
+                        [419, 407, 405, 402, 404, 410, 429, 424, 425],
                     ],
                 )
                 # all threads already have mediainfo
