@@ -324,7 +324,7 @@ class Application:
                 )
                 # all threads already have mediainfo
                 if not rows:
-                    logger.info("no new job to pick")
+                    logger.debug("no new job to pick")
                     return []
 
                 for tid, info_hash, size in rows:
