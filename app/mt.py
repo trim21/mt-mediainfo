@@ -100,7 +100,7 @@ class MTeamAPI:
                 data = rr.json()
                 if data["message"] == "種子未找到" or data["message"] == "檔案缺失，請聯系管理員":
                     raise TorrentFileError
-                raise MTeamRequestError.from_req(data)
+                raise MTeamRequestError.from_req(data, "download torrent")
             return rr.content
 
         raise Exception("too much retry")
