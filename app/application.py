@@ -108,10 +108,6 @@ class Application:
 
         print("successfully connect to database")
 
-        for sql_file in Path(__file__, "../sql/").resolve().iterdir():
-            print("executing {}".format(sql_file.name))
-            self.db.execute(sql_file.read_text(encoding="utf-8"))
-
         try:
             version = packaging.version.parse(self.qb.app_version())
         except Exception as e:

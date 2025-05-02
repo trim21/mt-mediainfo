@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from more_itertools import chunked
 from sslog import logger
 
@@ -17,6 +19,10 @@ class Scrape:
     def __init__(self, c: Config):
         self.__db = Database(c)
         self.mteam_client = MTeamAPI(c)
+
+        for sql_file in Path(__file__, "../sql/").resolve().iterdir():
+            print("executing {}".format(sql_file.name))
+            self.__db.execute(sql_file.read_text(encoding="utf-8"))
 
     def scrape(self, limit: int = 0) -> None:
         fetched_max_id = (
