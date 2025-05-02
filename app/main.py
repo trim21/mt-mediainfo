@@ -40,7 +40,7 @@ def scrape() -> None:
             continue
         except MTeamRequestError as e:
             if e.message == "請求過於頻繁":
-                logger.info("rate limited, sleep for 10m")
+                logger.info("operator {} get rate limited, sleep for 10m", e.op)
                 time.sleep(360)
                 continue
             raise

@@ -58,18 +58,23 @@ class Scrape:
                         continue
                     raise
 
-                tc = self.mteam_client.download_torrent(tid=i)
+                size = r.size
+                info_hash = ""
+                if r.status.seeders:
+                    tc = self.mteam_client.download_torrent(tid=i)
 
-                t = parse_torrent(tc)
-                info_hash = get_info_hash_v1_from_content(tc)
+                    t = parse_torrent(tc)
+                    info_hash = get_info_hash_v1_from_content(tc)
 
-                self.__db.execute(
-                    """
-                    insert into torrent (tid, info_hash, content)
-                    VALUES ($1, $2, $3)
-                """,
-                    [i, info_hash, tc],
-                )
+                    size = t.total_length
+
+                    self.__db.execute(
+                        """
+                        insert into torrent (tid, info_hash, content)
+                        VALUES ($1, $2, $3)
+                    """,
+                        [i, info_hash, tc],
+                    )
 
                 self.__db.execute(
                     """
@@ -84,7 +89,7 @@ class Scrape:
                     """,
                     [
                         i,
-                        t.total_length,
+                        size,
                         r.mediainfo or "",
                         info_hash,
                         r.category,

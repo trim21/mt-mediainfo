@@ -31,14 +31,15 @@ nested_depth = ContextVar("nested_depth", default=0)
 
 
 class MTeamRequestError(Exception):
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, op: str | None = None):
         super().__init__(code, message)
         self.code = code
         self.message = message
+        self.op = op
 
     @classmethod
-    def from_req(cls, data: dict[str, str]) -> Self:
-        return cls(data["code"], data["message"])
+    def from_req(cls, data: dict[str, str], op: str | None = None) -> Self:
+        return cls(data["code"], data["message"], op=op)
 
 
 network_errors: Final[tuple[type[Exception], ...]] = (
@@ -84,7 +85,7 @@ class MTeamAPI:
 
         data = r.json()
         if data["code"] != "0":
-            raise MTeamRequestError.from_req(data)
+            raise MTeamRequestError.from_req(data, op="genDlToken")
 
         return data["data"]
 
@@ -114,7 +115,7 @@ class MTeamAPI:
 
         data = r.json()
         if data["code"] != "0":
-            raise MTeamRequestError.from_req(data)
+            raise MTeamRequestError.from_req(data, op="getTorrentDetail")
 
         return parse_obj_as(TorrentDetail, data["data"])
 
