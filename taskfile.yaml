@@ -14,4 +14,13 @@ tasks:
       - .env
     cmd: watchexec -r -e py,sql --delay-run 1s --no-process-group --shell=none --verbose -- python ./main.py node
 
-  server: uvicorn pt_repost.server:app --port 8745 --host 0.0.0.0 --reload
+  node:
+    dotenv:
+      - .env
+    cmd: python ./main.py node
+
+
+  scrape:
+    dotenv:
+      - .env
+    cmd: python ./main.py scrape

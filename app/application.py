@@ -7,18 +7,26 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any, TypeVar
+from typing import TypeVar
 
-import annotated_types
 import packaging.version
 import qbittorrentapi
-from pydantic import Field
 from qbittorrentapi import TorrentState
 from rich.console import Console
+from sslog import logger
 
 from app.config import Config
+from app.const import (
+    ITEM_STATUS_DOWNLOADING,
+    ITEM_STATUS_FAILED,
+    ITEM_STATUS_PENDING,
+    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+)
 from app.db import Database
 from app.mt import MTeamAPI
+from app.utils import parse_obj_as
+
+QB_CATEGORY = "mt-mediainfo"
 
 
 def format_exc(e: Exception) -> str:
@@ -135,7 +143,8 @@ class Application:
                 print("failed to run", e)
 
     def __run_at_interval(self) -> None:
-        self.__fetch_new_torrents()
+        self.__process_downloading()
+        self.__pick_job()
 
     def __heart_beat(self) -> None:
         self.db.execute(
@@ -146,68 +155,139 @@ class Application:
             [self.config.node_id, datetime.now(tz=timezone.utc)],
         )
 
-    def __fetch_new_torrents(self):
-        torrents = self.db.fetch_all(
-            """
-            select * from torrent
-            where mediainfo = '' and
-                  pick_node is null
-            order by tid asc
-            """
+    def __process_downloading(self) -> None:
+        torrents = self.qb.torrents_info()
+        for t in torrents:
+            print(t)
+
+    def __pick_job(self) -> None:
+        logger.debug("__pick_job")
+
+        current_total_size = sum(
+            t.total_size for t in parse_obj_as(list[QbTorrent], self.qb.torrents_info())
         )
-        print(len(torrents))
+        left_size = self.config.total_process_size - current_total_size
+        if left_size < 0:
+            return
+
+        picked: list[tuple[int, str]] = []
+
+        # add distributed lock here when we have multiple nodes.
+        with self.db.connection() as conn:
+            with conn.transaction():
+                conn.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+
+                row: tuple[int, str] | None = conn.fetch_one(
+                    """
+                    select thread.tid, thread.info_hash from thread
+                    left join job on (job.tid = thread.tid and job.node_id = $1)
+                    where
+                        mediainfo = '' and
+                        size < $2 and
+                        thread.info_hash != ''
+                    order by size desc
+                    limit 1
+                    """,
+                    [self.config.node_id, left_size],
+                )
+                # all threads already have mediainfo
+                if not row:
+                    logger.info("no new job to pick")
+                    return
+
+                print(row)
+
+                tid, info_hash = row
+
+                conn.execute(
+                    """
+                insert into job (tid, node_id, info_hash, start_download_time)
+                VALUES ($1, $2, $3, current_timestamp)
+                """,
+                    [tid, self.config.node_id, info_hash],
+                )
+                picked.append(row)
+
+        print(picked)
+
+    def __process_local_downloading(self) -> None:
+        """
+        may move torrent from download status to uploading status
+        """
+        self.db.execute(
+            """
+            update thread
+             set status = $1
+             where status = $2 and info_hash = $3 and pick_node = $4
+            """,
+            [
+                ITEM_STATUS_PENDING,
+                ITEM_STATUS_DOWNLOADING,
+                "",
+                self.config.node_id,
+            ],
+        )
+        downloading = {
+            row[0]
+            for row in self.db.fetch_all(
+                """select info_hash from thread where status = $1""",
+                [ITEM_STATUS_DOWNLOADING],
+            )
+        }
+
+        local_torrents = parse_obj_as(list[QbTorrent], self.qb.torrents_info(category=QB_CATEGORY))
+        local_hashes = {t.hash for t in local_torrents}
+
+        missing_in_local_downloads = {h for h in downloading if h not in local_hashes}
+        if missing_in_local_downloads:
+            self.db.execute(
+                """
+                update thread
+                 set status = $1, updated_at = current_timestamp
+                where info_hash = any($2)
+                """,
+                [
+                    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+                    list(missing_in_local_downloads),
+                ],
+            )
+
+        for t in local_torrents:
+            if t.hash not in downloading:
+                continue
+            if not t.state.is_uploading:
+                try:
+                    self.db.execute(
+                        "update job set progress = $1 where info_hash = $2",
+                        [t.completed / t.total_size, t.hash],
+                    )
+                except Exception as e:
+                    logger.warning("failed to update torrent progress {}", e)
+                continue
+
+            try:
+                self.process_task(t=t)
+            except Exception as e:
+                logger.warning("failed to process task {!r} {}", e, e)
+                self.db.execute(
+                    """
+                    update thread set status = $1,
+                     failed_reason = $2,
+                     updated_at = current_timestamp
+                    where info_hash = $3
+                    """,
+                    [
+                        ITEM_STATUS_FAILED,  # 1
+                        format_exc(e),  # 2
+                        t.hash,
+                    ],
+                )
+
+    def process_task(self, t: QbTorrent) -> None:
+        pass
 
     def export_torrent(self, info_hash: str) -> bytes:
         return self.qb.torrents_export(info_hash)
-
-
-def _transform_info(obj: dict[bytes, Any]) -> dict[str, Any]:
-    d = {}
-    for key, value in obj.items():
-        if key == b"pieces":
-            d[key.decode()] = value
-        else:
-            d[key.decode()] = _transform_value(value)
-    return d
-
-
-def _transform_dict(obj: dict[bytes, Any]) -> dict[str, Any]:
-    return {key.decode(): _transform_value(value) for key, value in obj.items()}
-
-
-def _transform_value(v: Any) -> Any:
-    if isinstance(v, bytes):
-        try:
-            return v.decode()
-        except UnicodeDecodeError:
-            return v
-    if isinstance(v, dict):
-        return _transform_dict(v)
-    if isinstance(v, list):
-        return [_transform_value(o) for o in v]
-    return v
-
-
-@dataclasses.dataclass(kw_only=True, slots=True)
-class File:
-    length: int
-    path: Annotated[tuple[str, ...], annotated_types.MinLen(1)]
-
-    @property
-    def name(self) -> str:
-        return self.path[-1]
-
-
-@dataclasses.dataclass(kw_only=True, slots=False, frozen=True)
-class TorrentInfo:
-    name: Annotated[str, annotated_types.MinLen(1)]
-    pieces: bytes
-    length: int | None = None
-    private: bool = False
-    files: Annotated[tuple[File, ...], Field(default_factory=tuple)]
-    piece_length: Annotated[int, Field(alias="piece length")]
-    # common used field for private tracker
-    source: str | None = None
 
 
 @dataclasses.dataclass(kw_only=True, slots=True)

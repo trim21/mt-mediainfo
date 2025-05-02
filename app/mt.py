@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import dataclasses
 from contextvars import ContextVar
 from typing import Any, Final
@@ -5,6 +7,7 @@ from typing import Any, Final
 import httpcore
 import httpx
 from pydantic import TypeAdapter
+from typing_extensions import Self
 
 from app.config import Config
 from app.utils import parse_obj_as
@@ -34,7 +37,7 @@ class MTeamRequestError(Exception):
         self.message = message
 
     @classmethod
-    def from_req(cls, data):
+    def from_req(cls, data: dict[str, str]) -> Self:
         return cls(data["code"], data["message"])
 
 
@@ -70,11 +73,11 @@ class MTeamAPI:
             headers={"x-api-key": c.mt_token},
         )
 
-    def get_download_url(self, id: str) -> str:
+    def get_download_url(self, tid: str) -> str:
         try:
             r = self._httpx.post(
                 f"https://{MTeamApiDomain}/api/torrent/genDlToken",
-                data={"id": id},
+                data={"id": tid},
             ).raise_for_status()
         except httpx.HTTPStatusError:
             raise
@@ -85,8 +88,8 @@ class MTeamAPI:
 
         return data["data"]
 
-    def download_torrent(self, tid: str):
-        url = self.get_download_url(tid)
+    def download_torrent(self, tid: int) -> bytes:
+        url = self.get_download_url(str(tid))
 
         for _ in range(4):
             rr = self._httpx.get(url, follow_redirects=True).raise_for_status()
@@ -101,7 +104,7 @@ class MTeamAPI:
 
         raise Exception("too much retry")
 
-    def torrent_detail(self, tid: int):
+    def torrent_detail(self, tid: int) -> TorrentDetail:
         r = self._httpx.post(
             "https://api.m-team.cc/api/torrent/detail",
             data={"id": tid, "origin": f"https://kp.m-team.cc/detail/{tid}"},

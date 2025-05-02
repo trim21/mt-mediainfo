@@ -23,9 +23,14 @@ def parse_go_duration_str(s: Any) -> Any:
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
 class Config:
     debug: Annotated[bool, Field(os.getenv("DEBUG") or False, validate_default=False)]
-    node_id: Annotated[str, Field(alias="node-id", min_length=1)] = os.getenv(
-        "NODE_ID"
-    ) or uuid.UUID(int=uuid.getnode())
+    node_id: Annotated[
+        uuid.UUID,
+        Field(
+            alias="node-id",
+            min_length=1,
+            default_factory=lambda: os.getenv("NODE_ID") or uuid.UUID(int=uuid.getnode()),
+        ),
+    ]
 
     mt_token: Annotated[
         str, Field(min_length=1, default_factory=lambda: os.environ["MT_API_TOKEN"])
@@ -45,6 +50,11 @@ class Config:
 
     qb_url: Annotated[
         HttpUrl, Field(os.environ.get("QB_URL", "http://127.0.0.1:8084"), validate_default=True)
+    ]
+
+    total_process_size: Annotated[
+        int,
+        Field(os.environ.get("TOTAL_SIZE", str(1024 * 1024 * 10)), validate_default=True),
     ]
 
     def pg_dsn(self) -> str:

@@ -2,7 +2,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from loguru import logger
+from sslog import logger
 
 from app.utils import must_find_executable, must_run_command
 

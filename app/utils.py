@@ -10,14 +10,14 @@ from typing import Any, TypeVar
 
 import orjson
 from bencode2 import bdecode, bencode
-from loguru import logger
 from pydantic import TypeAdapter
+from sslog import logger
 
 
 def must_find_executable(e: str) -> str:
     tool = which(e)
     if tool is None:
-        raise Exception("can't find {e}")
+        raise RuntimeError("can't find {e}")
     return tool
 
 
