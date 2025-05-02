@@ -623,7 +623,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "asyncpg", specifier = "==0.30.0" },
     { name = "bencode2", specifier = "==0.3.26" },
     { name = "click", specifier = "==8.1.8" },
     { name = "durationpy", specifier = "==0.9" },
@@ -651,7 +651,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "asyncpg-stubs", specifier = ">=0.30.1" },
+    { name = "asyncpg-stubs", specifier = "==0.30.1" },
     { name = "mypy" },
     { name = "types-regex", specifier = "==2024.11.6.20250403" },
     { name = "types-six", specifier = "==1.17.0.20250403" },
