@@ -55,9 +55,8 @@ jobs:
           cache-to: type=gha,mode=max,scope=buildkit-${{ runner.arch }}
           github-token: ${{ github.token }}
 
-      - uses: minish144/delete-untagged-action@v2
+      - uses: actions/delete-package-versions@v5
         if: ${{ github.event_name == 'push' }}
         with:
-          package-name: 'trim21/mt-mediainfo'
-          personal-account: 'true'
-          github-token: ${{ github.token }}
+          ignore-versions: '^master$'
+          token: ${{ github.token }}
