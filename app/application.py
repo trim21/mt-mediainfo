@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import enum
 import io
@@ -10,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import qbittorrentapi
-from qbittorrentapi import TorrentState
+from qbittorrentapi import NotFound404Error, TorrentState
 from rich.console import Console
 from sslog import logger
 
@@ -285,11 +286,12 @@ class Application:
                 if file_ids:
                     # give qbittorrent some time to process the torrent
                     time.sleep(10)
-                    self.qb.torrents_file_priority(
-                        torrent_hash=info_hash,
-                        file_ids=list(file_ids),
-                        priority=0,
-                    )
+                    with contextlib.suppress(NotFound404Error):
+                        self.qb.torrents_file_priority(
+                            torrent_hash=info_hash,
+                            file_ids=list(file_ids),
+                            priority=0,
+                        )
 
     def __pick_job(self) -> list[tuple[int, str]]:
         logger.debug("__pick_job")
