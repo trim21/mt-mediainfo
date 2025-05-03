@@ -155,8 +155,8 @@ class Scrape:
         stop = threading.Event()
 
         ts = [
-            threading.Thread(target=lambda: self.__fetch_detail(stop)),
-            threading.Thread(target=lambda: self.__fetch_torrent(stop)),
+            threading.Thread(target=lambda: self.__fetch_detail(stop), daemon=True),
+            threading.Thread(target=lambda: self.__fetch_torrent(stop), daemon=True),
         ]
 
         for t in ts:
@@ -167,6 +167,3 @@ class Scrape:
                 time.sleep(60)
         except KeyboardInterrupt:
             stop.set()
-
-        for t in ts:
-            t.join()
