@@ -284,7 +284,7 @@ class Application:
 
                 if file_ids:
                     # give qbittorrent some time to process the torrent
-                    time.sleep(1)
+                    time.sleep(10)
                     self.qb.torrents_file_priority(
                         torrent_hash=info_hash,
                         file_ids=list(file_ids),
