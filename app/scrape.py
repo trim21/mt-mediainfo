@@ -98,6 +98,7 @@ class Scrape:
             return True
 
         for (tid,) in threads:
+            logger.info("fetch torrent of thread {}", tid)
             tc = self.mteam_client.download_torrent(tid=tid)
 
             t = parse_torrent(tc)
