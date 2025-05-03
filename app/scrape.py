@@ -87,12 +87,15 @@ class Scrape:
                     if c >= limit:
                         return
 
-    def fetch_torrent(self) -> None:
+    def fetch_torrent(self) -> bool:
         threads = self.__db.fetch_all(
             """
             select tid from thread where deleted = false and info_hash = '' and seeders != 0 limit 50
             """
         )
+
+        if not threads:
+            return True
 
         for (tid,) in threads:
             tc = self.mteam_client.download_torrent(tid=tid)
@@ -113,6 +116,7 @@ class Scrape:
                 """update thread set info_hash = $2, size = $3 where tid = $1""",
                 [tid, info_hash, t.total_length],
             )
+        return False
 
     def __fetch_detail(self, stop: threading.Event) -> None:
         limit = parse_obj_as(int, os.environ.get("SCRAPE_LIMIT", 100))
@@ -133,8 +137,10 @@ class Scrape:
     def __fetch_torrent(self, stop: threading.Event) -> None:
         while not stop.is_set():
             try:
-                self.fetch_torrent()
-                time.sleep(60)
+                if self.fetch_torrent():
+                    time.sleep(360)
+                else:
+                    time.sleep(10)
             except httpx_network_errors:
                 time.sleep(60)
                 continue
