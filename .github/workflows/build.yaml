@@ -60,3 +60,5 @@ jobs:
         with:
           ignore-versions: '^master$'
           token: ${{ github.token }}
+          package-name: 'trim21/mt-mediainfo'
+          package-type: 'container'
