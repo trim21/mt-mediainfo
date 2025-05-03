@@ -140,6 +140,7 @@ class Scrape:
                     time.sleep(360)
                     continue
                 logger.exception("failed to fetch threads")
+                time.sleep(60)
 
     def __fetch_torrent(self, stop: threading.Event) -> None:
         while not stop.is_set():
@@ -158,6 +159,7 @@ class Scrape:
                     time.sleep(360)
                     continue
                 logger.exception("failed to fetch threads")
+                time.sleep(60)
 
     def start(self) -> None:
         stop = threading.Event()
