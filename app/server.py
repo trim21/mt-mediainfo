@@ -82,6 +82,7 @@ def create_app() -> fastapi.FastAPI:
             where
               deleted = false and
               seeders != 0 and
+              mediainfo = '' and
               category = any($1)
             order by tid desc
             limit 50
