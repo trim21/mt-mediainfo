@@ -58,6 +58,7 @@ line-length = 100
 
 [tool.ruff]
 line-length = 100
+preview = true
 
 [tool.ruff.format]
 

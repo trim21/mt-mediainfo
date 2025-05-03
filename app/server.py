@@ -119,12 +119,10 @@ def create_app() -> fastapi.FastAPI:
             SELECTED_CATEGORY,
         )
 
-        return ORJSONResponse(
-            {
-                "pending_size": ByteSize(pending_size).human_readable(),
-                "pending_count": pending_count,
-            }
-        )
+        return ORJSONResponse({
+            "pending_size": ByteSize(pending_size).human_readable(),
+            "pending_count": pending_count,
+        })
 
     @app.get("/")
     async def index(render: Render) -> HTMLResponse:
