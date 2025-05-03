@@ -90,7 +90,13 @@ class Scrape:
     def fetch_torrent(self) -> bool:
         threads = self.__db.fetch_all(
             """
-            select tid from thread where deleted = false and info_hash = '' and seeders != 0 limit 50
+            select tid from thread
+            where
+              deleted = false and
+              info_hash = '' and
+              seeders != 0
+            order by seeders desc
+            limit 50
             """
         )
 
