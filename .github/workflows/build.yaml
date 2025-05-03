@@ -63,3 +63,4 @@ jobs:
           token: ${{ github.token }}
           package-name: 'mt-mediainfo'
           package-type: 'container'
+          min-versions-to-keep: 1
