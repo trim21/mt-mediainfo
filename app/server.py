@@ -8,6 +8,7 @@ import fastapi
 import orjson
 from fastapi import Depends, Request
 from fastapi.templating import Jinja2Templates
+from pydantic import ByteSize
 from starlette.responses import HTMLResponse, JSONResponse
 
 from app.config import load_config
@@ -91,6 +92,39 @@ def create_app() -> fastapi.FastAPI:
         )
 
         return ORJSONResponse([dict(x) for x in torrents])
+
+    @app.get("/overview")
+    async def overview() -> ORJSONResponse:
+        pending_size = await pool.fetchval(
+            """
+            select sum(size) from thread
+            where
+              deleted = false and
+              seeders != 0 and
+              mediainfo = '' and
+              category = any($1)
+            """,
+            SELECTED_CATEGORY,
+        )
+
+        pending_count = await pool.fetchval(
+            """
+            select count(1) from thread
+            where
+              deleted = false and
+              seeders != 0 and
+              mediainfo = '' and
+              category = any($1)
+            """,
+            SELECTED_CATEGORY,
+        )
+
+        return ORJSONResponse(
+            {
+                "pending_size": ByteSize(pending_size).human_readable(),
+                "pending_count": pending_count,
+            }
+        )
 
     @app.get("/")
     async def index(render: Render) -> HTMLResponse:
