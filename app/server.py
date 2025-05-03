@@ -139,7 +139,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/thread/{tid}")
-    async def rss_item(tid: int, render: Render) -> ORJSONResponse:
+    async def rss_item(tid: int) -> ORJSONResponse:
         rows = await pool.fetch(
             """select * from job where tid = $1""",
             tid,
