@@ -26,12 +26,30 @@ RSS_ITEM_STATUS_PROCESSING: Final = (
 
 SSD_REMOVED_MESSAGE: Final = "Torrent not registered with this tracker"
 
-DEFAULT_HEADERS: Final = {
-    "user-agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        + " AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
-    )
-}
 
-
-SELECTED_CATEGORY = [419, 407, 405, 402, 404, 410, 429, 424, 425]
+SELECTED_CATEGORY = [
+    401,
+    402,
+    403,
+    404,
+    405,
+    407,
+    410,
+    412,
+    419,
+    420,
+    421,
+    424,
+    425,
+    426,
+    429,
+    430,
+    431,
+    432,
+    435,
+    436,
+    437,
+    438,
+    439,
+    440,
+]

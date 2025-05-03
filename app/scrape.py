@@ -153,7 +153,7 @@ class Scrape:
                     continue
                 logger.exception("failed to fetch threads")
 
-    def start(self):
+    def start(self) -> None:
         stop = threading.Event()
 
         ts = [
