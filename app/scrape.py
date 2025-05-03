@@ -136,6 +136,7 @@ class Scrape:
 
     def __fetch_torrent(self, stop: threading.Event) -> None:
         while not stop.is_set():
+            logger.info("fetch torrents")
             try:
                 if self.fetch_torrent():
                     time.sleep(360)
