@@ -77,7 +77,15 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/threads")
     async def threads() -> ORJSONResponse:
         torrents = await pool.fetch(
-            """select * from thread where deleted = false and category = any($1) order by tid desc limit 50""",
+            """
+            select * from thread
+            where
+              deleted = false and
+              seeders != 0 and
+              category = any($1)
+            order by tid desc
+            limit 50
+            """,
             SELECTED_CATEGORY,
         )
 
