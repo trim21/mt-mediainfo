@@ -68,7 +68,7 @@ def generate_images(
 
     # long enough
     if duration > 20 * 60:
-        start = 10 * 60
+        start = 5 * 60
         step = (duration - start * 2) // count
     else:
         start = 30
