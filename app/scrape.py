@@ -1,3 +1,6 @@
+import os
+import threading
+import time
 from pathlib import Path
 
 from more_itertools import chunked
@@ -5,9 +8,9 @@ from sslog import logger
 
 from app.config import Config
 from app.db import Database
-from app.mt import MTeamAPI, MTeamRequestError
+from app.mt import MTeamAPI, MTeamRequestError, httpx_network_errors
 from app.torrent import parse_torrent
-from app.utils import get_info_hash_v1_from_content
+from app.utils import get_info_hash_v1_from_content, parse_obj_as
 
 known_max_id = 950595
 
@@ -58,24 +61,6 @@ class Scrape:
                         continue
                     raise
 
-                size = r.size
-                info_hash = ""
-                if r.status.seeders:
-                    tc = self.mteam_client.download_torrent(tid=i)
-
-                    t = parse_torrent(tc)
-                    info_hash = get_info_hash_v1_from_content(tc)
-
-                    size = t.total_length
-
-                    self.__db.execute(
-                        """
-                        insert into torrent (tid, info_hash, content)
-                        VALUES ($1, $2, $3)
-                    """,
-                        [i, info_hash, tc],
-                    )
-
                 self.__db.execute(
                     """
                     insert into thread (tid, size, mediainfo, info_hash, category, seeders, deleted)
@@ -89,9 +74,9 @@ class Scrape:
                     """,
                     [
                         i,
-                        size,
+                        r.size,
                         r.mediainfo or "",
-                        info_hash,
+                        "",
                         r.category,
                         r.status.seeders,
                     ],
@@ -101,3 +86,81 @@ class Scrape:
                 if limit:
                     if c >= limit:
                         return
+
+    def fetch_torrent(self) -> None:
+        threads = self.__db.fetch_all(
+            """
+            select tid from thread where deleted = false and info_hash = '' and seeders != 0 limit 50
+            """
+        )
+
+        for (tid,) in threads:
+            tc = self.mteam_client.download_torrent(tid=tid)
+
+            t = parse_torrent(tc)
+            info_hash = get_info_hash_v1_from_content(tc)
+
+            self.__db.execute(
+                """
+                    insert into torrent (tid, info_hash, content)
+                    VALUES ($1, $2, $3)
+                    on conflict (tid) do nothing
+                    """,
+                [tid, info_hash, tc],
+            )
+
+            self.__db.execute(
+                """update thread set info_hash = $2, size = $3 where tid = $1""",
+                [tid, info_hash, t.total_length],
+            )
+
+    def __fetch_detail(self, stop: threading.Event) -> None:
+        limit = parse_obj_as(int, os.environ.get("SCRAPE_LIMIT", 100))
+        while not stop.is_set():
+            try:
+                self.scrape(limit=limit)
+                time.sleep(60)
+            except httpx_network_errors:
+                time.sleep(60)
+                continue
+            except MTeamRequestError as e:
+                if e.message == "請求過於頻繁":
+                    logger.info("operator {!r} get rate limited, sleep for 10m", e.op)
+                    time.sleep(360)
+                    continue
+                logger.exception("failed to fetch threads")
+
+    def __fetch_torrent(self, stop: threading.Event) -> None:
+        while not stop.is_set():
+            try:
+                self.fetch_torrent()
+                time.sleep(60)
+            except httpx_network_errors:
+                time.sleep(60)
+                continue
+            except MTeamRequestError as e:
+                if e.message == "請求過於頻繁":
+                    logger.info("operator {!r} get rate limited, sleep for 10m", e.op)
+                    time.sleep(360)
+                    continue
+                logger.exception("failed to fetch threads")
+
+    def start(self):
+        stop = threading.Event()
+
+        ts = [
+            threading.Thread(target=lambda: self.__fetch_detail(stop)),
+            threading.Thread(target=lambda: self.__fetch_torrent(stop)),
+        ]
+
+        for t in ts:
+            t.start()
+
+        try:
+            while True:
+                time.sleep(60)
+        except KeyboardInterrupt:
+            stop.set()
+
+        for t in ts:
+            t.join()
