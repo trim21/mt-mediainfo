@@ -20,6 +20,7 @@ from app.const import (
     ITEM_STATUS_DOWNLOADING,
     ITEM_STATUS_FAILED,
     ITEM_STATUS_SKIPPED,
+    SELECTED_CATEGORY,
 )
 from app.db import Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
@@ -319,7 +320,7 @@ class Application:
                     """,
                     [
                         min(int(self.config.single_torrent_size_limit), left_size),
-                        [419, 407, 405, 402, 404, 410, 429, 424, 425],
+                        SELECTED_CATEGORY,
                     ],
                 )
                 # all threads already have mediainfo

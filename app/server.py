@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, JSONResponse
 
 from app.config import load_config
-from app.const import ITEM_STATUS_DONE, ITEM_STATUS_SKIPPED
+from app.const import ITEM_STATUS_DONE, ITEM_STATUS_SKIPPED, SELECTED_CATEGORY
 
 
 class ORJSONResponse(JSONResponse):
@@ -77,7 +77,8 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/threads")
     async def threads() -> ORJSONResponse:
         torrents = await pool.fetch(
-            """select * from thread where deleted = false order by tid desc limit 50"""
+            """select * from thread where deleted = false and category = any($1) order by tid desc limit 50""",
+            SELECTED_CATEGORY,
         )
 
         return ORJSONResponse([dict(x) for x in torrents])

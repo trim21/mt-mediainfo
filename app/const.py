@@ -34,4 +34,4 @@ DEFAULT_HEADERS: Final = {
 }
 
 
-QB_CATEGORY: Final = "pt-repost"
+SELECTED_CATEGORY = [419, 407, 405, 402, 404, 410, 429, 424, 425]
