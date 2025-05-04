@@ -59,8 +59,8 @@ def parse_obj_as(typ: type[_K], value: Any, *, strict: bool | None = None) -> _K
     return t.validate_python(value, strict=strict)
 
 
-def parse_json_as(typ: type[_K], value: str | bytes, *, strict: bool | None = None) -> _K:
-    t: TypeAdapter[_K] = get_type_adapter(typ)  # type: ignore[arg-type]
+def parse_json_as(typ: type[_T], value: str | bytes, *, strict: bool | None = None) -> _T:
+    t: TypeAdapter[_T] = get_type_adapter(typ)  # type: ignore[arg-type]
     return t.validate_python(orjson.loads(value), strict=strict)
 
 

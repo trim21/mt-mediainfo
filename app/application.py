@@ -15,13 +15,14 @@ from qbittorrentapi import NotFound404Error, TorrentState
 from rich.console import Console
 from sslog import logger
 
-from app.config import Config, video_ext
+from app.config import Config
 from app.const import (
     ITEM_STATUS_DONE,
     ITEM_STATUS_DOWNLOADING,
     ITEM_STATUS_FAILED,
     ITEM_STATUS_SKIPPED,
     SELECTED_CATEGORY,
+    VIDEO_FILE_EXT,
 )
 from app.db import Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
@@ -198,7 +199,7 @@ class Application:
             if file.priority == 0:
                 continue
 
-            if file.name.lower().endswith(video_ext):
+            if file.name.lower().endswith(VIDEO_FILE_EXT):
                 video_files.append(file)
 
         if not video_files:
@@ -232,7 +233,7 @@ class Application:
             )
             t = parse_torrent(tc)
 
-            video_files = [tf for tf in t.as_files() if tf.name.lower().endswith(video_ext)]
+            video_files = [tf for tf in t.as_files() if tf.name.lower().endswith(VIDEO_FILE_EXT)]
             if not video_files:
                 self.db.execute(
                     """
@@ -277,7 +278,7 @@ class Application:
                     key=lambda y: y[1].length,
                     reverse=True,
                 ):
-                    if file.name.lower().endswith(video_ext):
+                    if file.name.lower().endswith(VIDEO_FILE_EXT):
                         if not find_video_file:
                             find_video_file = True
                             continue

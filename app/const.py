@@ -26,6 +26,7 @@ RSS_ITEM_STATUS_PROCESSING: Final = (
 
 SSD_REMOVED_MESSAGE: Final = "Torrent not registered with this tracker"
 
+VIDEO_FILE_EXT = (".mkv", ".mp4", ".avi", ".wmv")
 
 SELECTED_CATEGORY = [
     401,

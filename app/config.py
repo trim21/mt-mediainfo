@@ -84,6 +84,3 @@ class Config:
 
 def load_config() -> Config:
     return parse_obj_as(Config, {})
-
-
-video_ext = (".mkv", ".mp4")
