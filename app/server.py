@@ -86,7 +86,6 @@ def create_app() -> fastapi.FastAPI:
               mediainfo = '' and
               category = any($1)
             order by tid desc
-            limit 50
             """,
             SELECTED_CATEGORY,
         )
