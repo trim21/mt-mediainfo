@@ -95,6 +95,7 @@ class Scrape:
             where
               deleted = false and
               info_hash = '' and
+              mediainfo = '' and
               seeders != 0 and
               category = any($1)
             order by seeders desc
