@@ -325,10 +325,11 @@ class Application:
                         SELECTED_CATEGORY,
                     ],
                 )
-                logger.info("pick {} new jobs", len(rows))
 
                 if not rows:
                     return []
+
+                logger.info("pick {} new jobs", len(rows))
 
                 for tid, info_hash, size in rows:
                     if left_size - size <= 0:
