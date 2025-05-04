@@ -320,6 +320,7 @@ class Application:
                         job.tid is null and
                         seeders != 0
                     order by size desc
+                    limit 20
                     """,
                     [
                         min(int(self.config.single_torrent_size_limit), left_size),
