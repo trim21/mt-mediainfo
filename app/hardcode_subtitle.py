@@ -78,7 +78,7 @@ def generate_images(
         seek = start + step * i - 5
         seek = seek + 5
         logger.info("screenshot from {} at {}", video_file.name, timedelta(seconds=seek))
-        raw_image_file = temp.joinpath(f"{i}.raw.{image_format}")
+        image_file = temp.joinpath(f"{i}.{image_format}")
         must_run_command(
             ffmpeg,
             [
@@ -95,14 +95,15 @@ def generate_images(
                 "1",
                 # "-compression_level",
                 # "50",
-                str(raw_image_file),
+                str(image_file),
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=True,
         )
 
-        results.append(raw_image_file)
+        if image_file.exists():
+            results.append(image_file)
 
     return results
 
