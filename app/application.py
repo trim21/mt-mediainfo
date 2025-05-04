@@ -318,7 +318,7 @@ class Application:
                         category = any ($2) and
                         job.tid is null and
                         seeders != 0
-                    order by size asc
+                    order by size desc
                     """,
                     [
                         min(int(self.config.single_torrent_size_limit), left_size),
