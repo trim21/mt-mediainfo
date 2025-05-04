@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import qbittorrentapi
+from pydantic import ByteSize
 from qbittorrentapi import NotFound404Error, TorrentState
 from rich.console import Console
 from sslog import logger
@@ -300,8 +301,10 @@ class Application:
             t.size for t in parse_obj_as(list[QbTorrent], self.qb.torrents_info())
         )
         left_size = int(self.config.total_process_size) - current_total_size
-        if left_size < 0:
+        if left_size <= 0:
             return []
+
+        logger.info("left {} size", ByteSize(left_size).human_readable())
 
         picked: list[tuple[int, str]] = []
 
