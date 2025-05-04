@@ -325,10 +325,11 @@ class Application:
                         SELECTED_CATEGORY,
                     ],
                 )
-                # all threads already have mediainfo
                 if not rows:
                     logger.debug("no new job to pick")
                     return []
+
+                logger.info("pick {} new jobs", len(rows))
 
                 for tid, info_hash, size in rows:
                     if left_size - size <= 0:
