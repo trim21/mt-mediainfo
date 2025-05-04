@@ -7,6 +7,7 @@ from more_itertools import chunked
 from sslog import logger
 
 from app.config import Config
+from app.const import SELECTED_CATEGORY
 from app.db import Database
 from app.mt import MTeamAPI, MTeamRequestError, httpx_network_errors
 from app.torrent import parse_torrent
@@ -94,10 +95,12 @@ class Scrape:
             where
               deleted = false and
               info_hash = '' and
-              seeders != 0
+              seeders != 0 and
+              category = any($1)
             order by seeders desc
             limit 50
-            """
+            """,
+            SELECTED_CATEGORY,
         )
 
         if not threads:
