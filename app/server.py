@@ -80,12 +80,14 @@ def create_app() -> fastapi.FastAPI:
         torrents = await pool.fetch(
             """
             select * from thread
+            left join job on (job.tid = thread.tid)
             where
               deleted = false and
               seeders != 0 and
               mediainfo = '' and
-              category = any($1)
-            order by tid desc
+              category = any($1) and
+              job.tid is null
+            order by thread.tid desc
             """,
             SELECTED_CATEGORY,
         )
