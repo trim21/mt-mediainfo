@@ -90,7 +90,9 @@ def create_app() -> fastapi.FastAPI:
             SELECTED_CATEGORY,
         )
 
-        return ORJSONResponse([dict(x) for x in torrents])
+        return ORJSONResponse([
+            dict(x) | {"size": ByteSize(x["size"]).human_readable()} for x in torrents
+        ])
 
     @app.get("/overview")
     async def overview() -> ORJSONResponse:
