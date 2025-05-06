@@ -21,6 +21,7 @@ from app.const import (
     ITEM_STATUS_DOWNLOADING,
     ITEM_STATUS_FAILED,
     ITEM_STATUS_SKIPPED,
+    LOCK_KEY_PICK_RSS_JOB,
     SELECTED_CATEGORY,
     VIDEO_FILE_EXT,
 )
@@ -306,7 +307,7 @@ class Application:
 
         picked: list[tuple[int, str]] = []
 
-        with self.db.lock("pick-job"), self.db.connection() as conn:
+        with self.db.lock(LOCK_KEY_PICK_RSS_JOB), self.db.connection() as conn:
             with conn.transaction():
                 rows: list[tuple[int, str, int]] = conn.fetch_all(
                     """

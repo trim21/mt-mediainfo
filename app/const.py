@@ -1,7 +1,7 @@
 from typing import Final
 
 LOCK_KEY_SCHEDULE_RSS: Final = "schedule"
-LOCK_KEY_PICK_RSS_JOB: Final = "pick-rss-job"
+LOCK_KEY_PICK_RSS_JOB: Final = "pick-job"
 
 # status of rss_run
 TASK_STATUS_PENDING: Final = "pending"
