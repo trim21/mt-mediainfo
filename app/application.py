@@ -40,14 +40,6 @@ def format_exc(e: Exception) -> str:
         return f.getvalue()
 
 
-class Skip(Exception):
-    def __init__(self, guid: str, website: str, reason: str = ""):
-        super().__init__()
-        self.guid: str = guid
-        self.website: str = website
-        self.reason: str = reason
-
-
 class Status(enum.IntEnum):
     unknown = 0
     downloading = 1
