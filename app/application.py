@@ -74,9 +74,6 @@ class QbTorrent:
     progress: float
 
 
-console = Console(emoji=False, force_terminal=True, no_color=False, legacy_windows=True)
-
-
 @dataclasses.dataclass(kw_only=True, frozen=True)
 class Application:
     db: Database
@@ -121,8 +118,7 @@ class Application:
             try:
                 self.__run_at_interval()
             except Exception as e:
-                console.print_exception()
-                print("failed to run", e)
+                print("failed to run", format_exc(e))
 
     def __run_at_interval(self) -> None:
         self.__process_local_torrents()
