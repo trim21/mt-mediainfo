@@ -134,7 +134,6 @@ class TorrentDetail:
     status: TorrentStatus
     name: str
     category: str
-    source: str
     standard: str
     videoCodec: str
     audioCodec: Any
