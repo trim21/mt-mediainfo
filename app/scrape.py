@@ -68,7 +68,6 @@ class Scrape:
                     values ($1, $2, $3, $4, $5, false)
                     on conflict (tid) do update set
                     size = excluded.size,
-                    mediainfo = excluded.category,
                     category = excluded.category,
                     deleted = false
                     """,
