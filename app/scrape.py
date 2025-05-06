@@ -64,20 +64,18 @@ class Scrape:
 
                 self.__db.execute(
                     """
-                    insert into thread (tid, size, mediainfo, info_hash, category, seeders, deleted)
-                    values ($1, $2, $3, $4, $5, $6, false)
+                    insert into thread (tid, size, mediainfo, category, seeders, deleted)
+                    values ($1, $2, $3, $4, $5, false)
                     on conflict (tid) do update set
                     size = excluded.size,
                     mediainfo = excluded.category,
                     category = excluded.category,
-                    info_hash = excluded.info_hash,
                     deleted = false
                     """,
                     [
                         i,
                         r.size,
                         r.mediainfo or "",
-                        "",
                         r.category,
                         r.status.seeders,
                     ],
