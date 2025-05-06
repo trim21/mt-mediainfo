@@ -79,7 +79,7 @@ def create_app() -> fastapi.FastAPI:
     async def threads() -> ORJSONResponse:
         torrents = await pool.fetch(
             """
-            select * from thread
+            select thread.* from thread
             left join job on (job.tid = thread.tid)
             where
               deleted = false and
