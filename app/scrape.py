@@ -69,6 +69,7 @@ class Scrape:
                     on conflict (tid) do update set
                     size = excluded.size,
                     category = excluded.category,
+                    seeders = excluded.seeders,
                     deleted = false
                     """,
                     [
