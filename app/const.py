@@ -19,15 +19,12 @@ ITEM_STATUS_REMOVED_FROM_SITE: Final = "removed-by-site"  # 被站点删除
 ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT: Final = "removed-by-client"  # 被从客户端删除
 ITEM_STATUS_FAILED: Final = "failed"
 
-RSS_ITEM_STATUS_PROCESSING: Final = (
+ITEM_STATUS_PROCESSING: Final = (
     ITEM_STATUS_DOWNLOADING,
     ITEM_STATUS_UPLOADING,
 )
 
-SSD_REMOVED_MESSAGE: Final = "Torrent not registered with this tracker"
-
 VIDEO_FILE_EXT = (".mkv", ".mp4", ".avi", ".wmv")
-
 
 MOVIE_CATEGORY = {401, 419, 420, 421, 439}
 
