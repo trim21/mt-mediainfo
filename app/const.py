@@ -28,29 +28,34 @@ SSD_REMOVED_MESSAGE: Final = "Torrent not registered with this tracker"
 
 VIDEO_FILE_EXT = (".mkv", ".mp4", ".avi", ".wmv")
 
-SELECTED_CATEGORY = [
-    401,
-    402,
-    403,
-    404,
-    405,
-    407,
-    410,
-    412,
-    419,
-    420,
-    421,
-    424,
-    425,
-    426,
-    429,
-    430,
-    431,
-    432,
-    435,
-    436,
-    437,
-    438,
-    439,
-    440,
-]
+
+MOVIE_CATEGORY = {401, 419, 420, 421, 439}
+
+SELECTED_CATEGORY = list(MOVIE_CATEGORY)
+
+# SELECTED_CATEGORY = {
+#     401,
+#     402,
+#     403,
+#     404,
+#     405,
+#     407,
+#     410,
+#     412,
+#     419,
+#     420,
+#     421,
+#     424,
+#     425,
+#     426,
+#     429,
+#     430,
+#     431,
+#     432,
+#     435,
+#     436,
+#     437,
+#     438,
+#     439,
+#     440,
+# }
