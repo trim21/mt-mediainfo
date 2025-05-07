@@ -5,6 +5,7 @@ from pathlib import Path
 
 from more_itertools import chunked
 from sslog import logger
+import pydantic
 
 from app.config import Config
 from app.const import SELECTED_CATEGORY
@@ -109,7 +110,15 @@ class Scrape:
             logger.info("fetch torrent of thread {}", tid)
             tc = self.mteam_client.download_torrent(tid=tid)
 
-            t = parse_torrent(tc)
+            try:
+                t = parse_torrent(tc)
+            except pydantic.ValidationError:
+                self.__db.execute(
+                    """update thread set mediainfo = $2 where tid = $1""",
+                    [tid, "invalid torrent"],
+                )
+                continue
+
             info_hash = get_info_hash_v1_from_content(tc)
 
             self.__db.execute(
