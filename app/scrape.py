@@ -3,9 +3,9 @@ import threading
 import time
 from pathlib import Path
 
+import pydantic
 from more_itertools import chunked
 from sslog import logger
-import pydantic
 
 from app.config import Config
 from app.const import SELECTED_CATEGORY
