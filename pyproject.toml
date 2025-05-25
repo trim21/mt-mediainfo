@@ -35,7 +35,7 @@ dev = [
     "asyncpg-stubs==0.30.1",
     'mypy',
     "types-regex==2024.11.6.20250403",
-    "types-six==1.17.0.20250403",
+    "types-six==1.17.0.20250515",
 ]
 
 [tool.uv]
