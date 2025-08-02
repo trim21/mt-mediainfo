@@ -9,7 +9,7 @@ dependencies = [
     'rich==14.0.0',
     'xxhash==3.5.0',
     'qbittorrent-api==2025.5.0',
-    'click==8.2.1',
+    'click==8.2.2',
     'pydantic==2.11.7',
     'httpx==0.28.1',
     'bencode2==0.3.26',
