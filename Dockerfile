@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:python3.10-bookworm@sha256:da31df5ec7fba41b53ac7e72307f465b0cfddb76c16212366ef3d0df5328944e AS uv
+FROM ghcr.io/astral-sh/uv:python3.10-bookworm@sha256:9ce802d2517f23e0bd76e5edd2c2fa0b1e8f370541a672ccb6a1836c7af3b788 AS uv
 
 WORKDIR /app
 
