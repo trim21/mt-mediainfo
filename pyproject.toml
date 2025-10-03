@@ -17,7 +17,7 @@ dependencies = [
     'yarl==1.20.1',
     'psycopg[binary,pool]==3.2.10',
     'durationpy==0.10',
-    'fastapi==0.116.1',
+    'fastapi==0.118.0',
     'uvicorn==0.35.0',
     'rapidocr-onnxruntime==1.4.4',
     'jinja2==3.1.6',
