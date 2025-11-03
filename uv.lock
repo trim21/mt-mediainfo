@@ -69,18 +69,18 @@ wheels = [
 
 [[package]]
 name = "bencode2"
-version = "0.3.26"
+version = "0.3.27"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0f/29/255da1011dd0b311be2a9ccafdc06b6156d3dbba26747c83198ce151504e/bencode2-0.3.26-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:a57b5031224ea6c377919467b8466619f77f6995a21cf26ac6f4588fab73b5de", size = 122237, upload-time = "2025-04-08T13:13:42.723Z" },
-    { url = "https://files.pythonhosted.org/packages/d1/65/bd032a30ec94456c5317b65cf46a43da5460ef961dc9d66e181e9fd4a499/bencode2-0.3.26-cp310-cp310-macosx_11_0_x86_64.whl", hash = "sha256:d6cdce0aa8dc616464085adfd58cbdd8db6fc45e27ff703bf368759d73dff94c", size = 137295, upload-time = "2025-04-08T13:13:46.129Z" },
-    { url = "https://files.pythonhosted.org/packages/c8/2c/d624ae449bea5d5acfa788e987222f15ca7f8b1ea4c1cac9e672c22d7f0c/bencode2-0.3.26-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:479d9631482dc8b427e51d6e27d1b7e01789ee9aa9550e2cca4338181ef09d72", size = 163118, upload-time = "2025-04-08T13:13:47.331Z" },
-    { url = "https://files.pythonhosted.org/packages/3a/39/c8858094bce766a33ed89964c79e3a53a89c1f210069832be0ed9c9a9cff/bencode2-0.3.26-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:81b93f35c20a5095a16156705d67595bbfc7007c2781b003f9e0bc0b65bfbe7b", size = 171075, upload-time = "2025-04-08T13:13:48.778Z" },
-    { url = "https://files.pythonhosted.org/packages/3d/a9/2988bfe79836bbbc2c2f2a8354d2d591f1b14d6944503b0a828925d8145f/bencode2-0.3.26-cp310-cp310-win_amd64.whl", hash = "sha256:066ef82ffa4a861f8f1c8f9e2badbbe951b276a0810b670bc88dd1e21c58b8e0", size = 92390, upload-time = "2025-04-08T13:13:49.949Z" },
-    { url = "https://files.pythonhosted.org/packages/cf/f0/adf3ffbf276fed6b4295784ce25dbf8be8d239cf90e66495164baf22da86/bencode2-0.3.26-py3-none-any.whl", hash = "sha256:c00600ff6f903209ba8462476a8a9a803e9f8af2a90c4a0ca34276709a20bc56", size = 14568, upload-time = "2025-04-08T13:14:18.068Z" },
+    { url = "https://files.pythonhosted.org/packages/82/17/3a8d4e6c3c49b2bbd77e8eeccb907446d4cb04ef8965c1f926d83a706cf5/bencode2-0.3.27-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:f62674e83255f065e344dcb9d14dff649a805d74561309629350879fd204222f", size = 93474, upload-time = "2025-10-08T05:20:02.507Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/be/fd02d63d2e73405c6105e9e9ff2fac753bd132eb8e79a751fb12234a3b33/bencode2-0.3.27-cp310-cp310-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5e42119ca51e8110f4b4d76ab53b934aef06b6962fb9195e55974d25d37453ea", size = 111863, upload-time = "2025-10-08T05:20:04.863Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/37/17edbe2e8a2abb2fb26b060e9676425e9fbba76953fbfb1aedc55bd4c781/bencode2-0.3.27-cp310-cp310-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:65bee5140826a0e95359d37769e9c48fe2156e16aac50b233ad5745197a846b5", size = 120019, upload-time = "2025-10-08T05:20:06.249Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/f4/3ab47c6560717e2819c66e9d15deaf7fff3d8b8f16f39b8d14bbe70b5e35/bencode2-0.3.27-cp310-cp310-win_amd64.whl", hash = "sha256:6562ecfa3999068e026cb109e9f365edbf00c1bbd63de7cbd98edd6a765beb88", size = 94284, upload-time = "2025-10-08T05:20:07.661Z" },
+    { url = "https://files.pythonhosted.org/packages/22/1c/fa472977195b4a7bb416e70c0666af432777c3b6a1596af05fbc7ae1ea59/bencode2-0.3.27-cp310-cp310-win_arm64.whl", hash = "sha256:c249391d5cdf0a5617f6c29df00ed036c60b1fae0b5a08040b25abc0b5318c9a", size = 90149, upload-time = "2025-10-08T05:20:09.023Z" },
+    { url = "https://files.pythonhosted.org/packages/50/58/3bca74753cc7695d7a58e8e2384b97516b36d02bc87a46308bc8bd435d1a/bencode2-0.3.27-py3-none-any.whl", hash = "sha256:78c464ed162e278c0ba6bacf642e7002051e4c4dea57ab036238d59985200ab3", size = 14813, upload-time = "2025-10-08T05:20:37.595Z" },
 ]
 
 [[package]]
@@ -629,7 +629,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = "==0.30.0" },
-    { name = "bencode2", specifier = "==0.3.26" },
+    { name = "bencode2", specifier = "==0.3.27" },
     { name = "click", specifier = "==8.3.0" },
     { name = "durationpy", specifier = "==0.10" },
     { name = "fastapi", specifier = "==0.118.0" },
