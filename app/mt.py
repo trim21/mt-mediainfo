@@ -135,8 +135,6 @@ class TorrentDetail:
     name: str
     category: str
     standard: str
-    videoCodec: str
-    audioCodec: Any
     size: int
     labels: str
     msUp: int
