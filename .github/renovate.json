@@ -15,7 +15,7 @@
         "python"
       ],
       "matchUpdateTypes": [
-        "major"
+        "minor"
       ],
       "enabled": false
     }
