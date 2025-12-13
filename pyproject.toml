@@ -15,7 +15,7 @@ dependencies = [
     'bencode2==0.3.27',
     'tomli==2.3.0',
     'yarl==1.22.0',
-    'psycopg[binary,pool]==3.2.12',
+    'psycopg[binary,pool]==3.3.2',
     'durationpy==0.10',
     'fastapi==0.123.5',
     'uvicorn==0.38.0',
