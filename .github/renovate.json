@@ -8,5 +8,16 @@
   ],
   "pip_requirements": {
     "enabled": false
-  }
+  },
+  "packageRules": [
+    {
+      "matchPackageNames": [
+        "python"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    }
+  ]
 }

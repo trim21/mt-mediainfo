@@ -14,8 +14,8 @@ from pydantic import TypeAdapter
 from sslog import logger
 
 
-def must_find_executable(e: str) -> str:
-    tool = which(e)
+def must_find_executable(executable: str) -> str:
+    tool = which(executable)
     if tool is None:
         raise RuntimeError("can't find {e}")
     return tool
