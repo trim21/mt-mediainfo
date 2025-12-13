@@ -4,7 +4,7 @@ version = '0'
 requires-python = '==3.12.12'
 description = ''
 dependencies = [
-    'orjson==3.11.4',
+    'orjson==3.11.5',
     "uuid-utils==0.12.0",
     'rich==14.2.0',
     'xxhash==3.6.0',
