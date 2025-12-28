@@ -69,18 +69,19 @@ wheels = [
 
 [[package]]
 name = "bencode2"
-version = "0.3.27"
+version = "0.3.28"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/36/cb/0a6329d20c92eae12205322e2297973957adfd4bef2055a3ceb3de058dc5/bencode2-0.3.27-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:6bd20146a7ce3bb0d9dfcc3810dd57ea59885fb9f6cfb6e89be6bddda4a729d6", size = 93045, upload-time = "2025-10-08T05:20:16.44Z" },
-    { url = "https://files.pythonhosted.org/packages/7d/21/cfd849e0c752cd599a2f77cc22baa9bcd7f8704d40fddefdd4b91e4b29f8/bencode2-0.3.27-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e091d8f4c2b2f1d80c9df8c6044c2168ade492b04bf5ba216ac54aa09f06203d", size = 111283, upload-time = "2025-10-08T05:20:17.514Z" },
-    { url = "https://files.pythonhosted.org/packages/e2/30/a23394d2c57c2eb3dc205f075096f2c2c27941ee806de615e5e8e3f854f8/bencode2-0.3.27-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:48735815c87185d6f99f238dac37b4bb68ccabb31a74ed4f48698a08fde67d04", size = 119558, upload-time = "2025-10-08T05:20:18.752Z" },
-    { url = "https://files.pythonhosted.org/packages/57/e8/05a58599b41ccecca0cae498aedcabeb684a03f59de2ecfcfae3e22325e7/bencode2-0.3.27-cp312-cp312-win_amd64.whl", hash = "sha256:a8ca6131097407956bc500289739c37ea8c132ae4224688506032c7a392e1dcb", size = 93697, upload-time = "2025-10-08T05:20:20.203Z" },
-    { url = "https://files.pythonhosted.org/packages/84/e0/0bafe5c516930a2b4f0ab44e29459643daa4e837fed3eee78fc0be398228/bencode2-0.3.27-cp312-cp312-win_arm64.whl", hash = "sha256:fcc2e23afbf8df94ee7581293ad188fbd6aacd30f8c16761c17a29a835706504", size = 89888, upload-time = "2025-10-08T05:20:21.615Z" },
-    { url = "https://files.pythonhosted.org/packages/50/58/3bca74753cc7695d7a58e8e2384b97516b36d02bc87a46308bc8bd435d1a/bencode2-0.3.27-py3-none-any.whl", hash = "sha256:78c464ed162e278c0ba6bacf642e7002051e4c4dea57ab036238d59985200ab3", size = 14813, upload-time = "2025-10-08T05:20:37.595Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/40/c28fd7d999b8e6c6b2b13da930c056d91ff578229cf10acab55a0d3e9abe/bencode2-0.3.28-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:069be9f20af61f59a899c2afe7947c5267847988971371193d55c26db3a79627", size = 93475, upload-time = "2025-12-13T15:25:41.443Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/74/3ad99f1e4d0b2672fc1936d5ccde0626323dcee67bf6fd4a070b470e0dbf/bencode2-0.3.28-cp312-cp312-macosx_11_0_x86_64.whl", hash = "sha256:ae30d85f41092047d90183be37fd56b588bf4a47588f581ba24eda65853fec78", size = 105817, upload-time = "2025-12-13T15:25:43.064Z" },
+    { url = "https://files.pythonhosted.org/packages/48/de/ad1514970b22379e06809e2ef7556bbf8aacafd9e89f67042d1565c6fa8c/bencode2-0.3.28-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:d852c638b53a9a8775b82eba0f6f657108f32bd6967b0b070405c84522195bcb", size = 111438, upload-time = "2025-12-13T15:25:44.403Z" },
+    { url = "https://files.pythonhosted.org/packages/06/57/3ad62ab42f2bf734f09ea68dc5d8e87bb66b97ed6f86e6a7567fd3b22746/bencode2-0.3.28-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f5e1bfa0746d4d408022bca89a461ff0f2ab6191b0218edcf58aa58eb8c6ffab", size = 119557, upload-time = "2025-12-13T15:25:45.663Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/8f/e35b843a341de7c0b7dcc71bb24b1ba1e9781c268004e54d17a4815088c4/bencode2-0.3.28-cp312-cp312-win_amd64.whl", hash = "sha256:9160a903c2c5b3b71e0a3ae37bf7109130bbbcf1b83d30d9fb20aebc6fe6953e", size = 93963, upload-time = "2025-12-13T15:25:47.032Z" },
+    { url = "https://files.pythonhosted.org/packages/18/d1/f10177cc9a0b524980f2f408d14cb86bbfc51958085d43f780e43f11be67/bencode2-0.3.28-cp312-cp312-win_arm64.whl", hash = "sha256:a95f27394c540828ed617b3375694d77807cd7992933c83323a0c901e65ab4ea", size = 90284, upload-time = "2025-12-13T15:25:48.553Z" },
+    { url = "https://files.pythonhosted.org/packages/51/49/4f36d2489dfd22d5feb28153a4cee0efd46cee3c511faa0fccb6c2b81f8b/bencode2-0.3.28-py3-none-any.whl", hash = "sha256:510cec5ed7c7c1c6ed982017bcf26c8796348492ecd7a996bdf73d178a6d7168", size = 14814, upload-time = "2025-12-13T15:26:09.703Z" },
 ]
 
 [[package]]
@@ -635,7 +636,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = "==0.31.0" },
-    { name = "bencode2", specifier = "==0.3.27" },
+    { name = "bencode2", specifier = "==0.3.28" },
     { name = "click", specifier = "==8.3.1" },
     { name = "durationpy", specifier = "==0.10" },
     { name = "fastapi", specifier = "==0.123.5" },
