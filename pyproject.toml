@@ -6,7 +6,7 @@ description = ''
 dependencies = [
     'orjson==3.11.7',
     "uuid-utils==0.14.0",
-    'rich==14.2.0',
+    'rich==14.3.2',
     'xxhash==3.6.0',
     'qbittorrent-api==2025.11.1',
     'click==8.3.1',
