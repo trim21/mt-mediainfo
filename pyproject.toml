@@ -5,7 +5,7 @@ requires-python = '==3.12.12'
 description = ''
 dependencies = [
     'orjson==3.11.7',
-    "uuid-utils==0.14.0",
+    "uuid-utils==0.14.1",
     'rich==14.3.2',
     'xxhash==3.6.0',
     'qbittorrent-api==2025.11.1',
