@@ -32,7 +32,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "asyncpg-stubs==0.31.1",
+    "asyncpg-stubs==0.31.2",
     'mypy',
     "types-regex==2026.2.19.20260221",
     "types-six==1.17.0.20251009",
