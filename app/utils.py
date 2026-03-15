@@ -2,7 +2,6 @@ import functools
 import hashlib
 import shlex
 import subprocess
-import sys
 from collections.abc import Hashable
 from pathlib import Path
 from shutil import which
@@ -27,12 +26,8 @@ def must_run_command(
     cwd: str | Path | None = None,
     **kwargs: Any,
 ) -> subprocess.CompletedProcess[str]:
-    cmd = which(executable)
-    if cmd is None:
-        logger.error("can't find {!r}", executable)
-        sys.exit(1)
-    logger.trace("executing command {!r}", shlex.join([cmd, *command]))
-    return subprocess.run([cmd, *command], **kwargs, cwd=cwd)
+    logger.trace("executing command {!r}", shlex.join([executable, *command]))
+    return subprocess.run([executable, *command], **kwargs, cwd=cwd)
 
 
 def human_readable_size(size: float, decimal_places: int = 2) -> str:

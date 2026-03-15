@@ -47,7 +47,7 @@ cache_dir = '.venv/.cache/pytest'
 [tool.mypy]
 exclude = 'build,data'
 mypy_path = '$MYPY_CONFIG_FILE_DIR'
-python_version = '3.10'
+python_version = '3.12'
 disable_error_code = ["no-any-return"]
 strict = true
 ignore_missing_imports = true
