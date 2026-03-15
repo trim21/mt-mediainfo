@@ -125,6 +125,8 @@ def check_hardcode_chinese_subtitle(video_file: Path) -> bool:
                 points = [Point(x, y) for x, y in points]
                 if points[0].y <= size.y / 2:
                     continue
+
+                # more than 50% chars are chinese
                 if len(pattern_chinese.sub("", s)) / len(s) < 0.5:
                     return True
 
