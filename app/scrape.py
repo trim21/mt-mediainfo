@@ -14,7 +14,7 @@ from app.mt import MTeamAPI, MTeamRequestError, httpx_network_errors
 from app.torrent import parse_torrent
 from app.utils import get_info_hash_v1_from_content, parse_obj_as
 
-known_max_id = 950595
+known_max_id = 1150590
 
 
 class Scrape:
