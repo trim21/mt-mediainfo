@@ -32,7 +32,7 @@ def must_run_command(
         logger.error("can't find {!r}", executable)
         sys.exit(1)
     logger.trace("executing command {!r}", shlex.join([cmd, *command]))
-    return subprocess.run([cmd, *command], **kwargs, cwd=cwd, check=True)
+    return subprocess.run([cmd, *command], **kwargs, cwd=cwd)
 
 
 def human_readable_size(size: float, decimal_places: int = 2) -> str:
