@@ -8,11 +8,11 @@ import fastapi
 import orjson
 from fastapi import Depends, Request
 from fastapi.templating import Jinja2Templates
-from pydantic import ByteSize
 from starlette.responses import HTMLResponse, JSONResponse
 
 from app.config import load_config
 from app.const import ITEM_STATUS_DONE, ITEM_STATUS_SKIPPED, SELECTED_CATEGORY
+from app.utils import human_readable_size
 
 
 class ORJSONResponse(JSONResponse):
@@ -93,7 +93,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
         return ORJSONResponse([
-            dict(x) | {"size": ByteSize(x["size"]).human_readable()} for x in torrents
+            dict(x) | {"size": human_readable_size(x["size"])} for x in torrents
         ])
 
     @app.get("/overview")
@@ -125,7 +125,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
         return ORJSONResponse({
-            "pending_size": ByteSize(pending_size).human_readable(),
+            "pending_size": human_readable_size(pending_size),
             "pending_count": pending_count,
         })
 
