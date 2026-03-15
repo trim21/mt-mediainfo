@@ -7,7 +7,7 @@ import io
 import os.path
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import qbittorrentapi
@@ -131,7 +131,7 @@ class Application:
             insert into node (id, last_seen) values ($1, $2)
             on conflict (id) do update set last_seen = excluded.last_seen
             """,
-            [self.config.node_id, datetime.now(tz=timezone.utc)],
+            [self.config.node_id, datetime.now(tz=UTC)],
         )
 
     def __process_local_torrents(self) -> None:

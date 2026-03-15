@@ -26,7 +26,7 @@ class Scrape:
         self.mteam_client = MTeamAPI(c)
 
         for sql_file in Path(__file__, "../sql/").resolve().iterdir():
-            print("executing {}".format(sql_file.name))
+            print(f"executing {sql_file.name}")
             self.__db.execute(sql_file.read_text(encoding="utf-8"))
 
     def scrape(self, limit: int = 0) -> None:

@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import dataclasses
 from contextvars import ContextVar
-from typing import Any, Final
+from typing import Any, Final, Self
 
 import httpcore
 import httpx
 from pydantic import TypeAdapter
-from typing_extensions import Self
 
 from app.config import Config
 from app.utils import parse_obj_as
@@ -134,7 +133,6 @@ class TorrentDetail:
     status: TorrentStatus
     name: str
     category: str
-    standard: str
     size: int
     labels: str
     msUp: int

@@ -1,7 +1,7 @@
-from collections.abc import Mapping
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Any, AsyncGenerator, Protocol
+from typing import Annotated, Any, Protocol
 
 import asyncpg
 import fastapi

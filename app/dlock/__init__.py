@@ -1,12 +1,11 @@
 import threading
 from types import TracebackType
-from typing import Literal
+from typing import Literal, LiteralString
 
 import psycopg
 import six
 import xxhash
 from psycopg.errors import QueryCanceled
-from typing_extensions import LiteralString
 
 
 class AcquireError(Exception):

@@ -1,11 +1,10 @@
 import contextlib
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, LiteralString
 
 import psycopg.connection
 from psycopg import RawCursor
 from psycopg_pool import ConnectionPool
-from typing_extensions import LiteralString
 
 from app import dlock
 from app.config import Config
