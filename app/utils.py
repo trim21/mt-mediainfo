@@ -6,7 +6,7 @@ import sys
 from collections.abc import Hashable
 from pathlib import Path
 from shutil import which
-from typing import Any, TypeVar
+from typing import Any
 
 import orjson
 from bencode2 import bdecode, bencode
@@ -32,7 +32,7 @@ def must_run_command(
         logger.error("can't find {!r}", executable)
         sys.exit(1)
     logger.trace("executing command {!r}", shlex.join([cmd, *command]))
-    return subprocess.run([cmd, *command], **kwargs, cwd=cwd)
+    return subprocess.run([cmd, *command], **kwargs, cwd=cwd, check=True)
 
 
 def human_readable_size(size: float, decimal_places: int = 2) -> str:
@@ -43,24 +43,18 @@ def human_readable_size(size: float, decimal_places: int = 2) -> str:
     return f"{size:.{decimal_places}f} {unit}"
 
 
-_T = TypeVar("_T")
-
-
 @functools.cache
-def get_type_adapter(t: type[_T]) -> TypeAdapter[_T]:
+def get_type_adapter[T](t: type[T]) -> TypeAdapter[T]:
     return TypeAdapter(t)
 
 
-_K = TypeVar("_K")
-
-
-def parse_obj_as(typ: type[_K], value: Any, *, strict: bool | None = None) -> _K:
-    t: TypeAdapter[_K] = get_type_adapter(typ)  # type: ignore[arg-type]
+def parse_obj_as[K](typ: type[K], value: Any, *, strict: bool | None = None) -> K:
+    t: TypeAdapter[K] = get_type_adapter(typ)  # type: ignore[arg-type]
     return t.validate_python(value, strict=strict)
 
 
-def parse_json_as(typ: type[_T], value: str | bytes, *, strict: bool | None = None) -> _T:
-    t: TypeAdapter[_T] = get_type_adapter(typ)  # type: ignore[arg-type]
+def parse_json_as[T](typ: type[T], value: str | bytes, *, strict: bool | None = None) -> T:
+    t: TypeAdapter[T] = get_type_adapter(typ)  # type: ignore[arg-type]
     return t.validate_python(orjson.loads(value), strict=strict)
 
 
@@ -70,10 +64,7 @@ def get_info_hash_v1_from_content(content: bytes) -> str:
     return hashlib.sha1(enc).hexdigest()
 
 
-_J = TypeVar("_J", bound=Hashable)
-
-
-def dedupe(seq: list[_J]) -> list[_J]:
-    seen: set[_J] = set()
+def dedupe[J: Hashable](seq: list[J]) -> list[J]:
+    seen: set[J] = set()
     seen_add = seen.add
     return [x for x in seq if not (x in seen or seen_add(x))]

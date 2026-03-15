@@ -83,9 +83,8 @@ class Scrape:
                 )
 
                 c += 1
-                if limit:
-                    if c >= limit:
-                        return
+                if limit and c >= limit:
+                    return
 
     def fetch_torrent(self) -> bool:
         threads = self.__db.fetch_all(
@@ -137,7 +136,7 @@ class Scrape:
         return False
 
     def __fetch_detail(self, stop: threading.Event) -> None:
-        limit = parse_obj_as(int, os.environ.get("SCRAPE_LIMIT", 100))
+        limit = parse_obj_as(int, os.environ.get("SCRAPE_LIMIT", "100"))
         while not stop.is_set():
             try:
                 self.scrape(limit=limit)

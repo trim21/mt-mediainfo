@@ -267,10 +267,9 @@ class Application:
                     key=lambda y: y[1].length,
                     reverse=True,
                 ):
-                    if file.name.lower().endswith(VIDEO_FILE_EXT):
-                        if not find_video_file:
-                            find_video_file = True
-                            continue
+                    if file.name.lower().endswith(VIDEO_FILE_EXT) and not find_video_file:
+                        find_video_file = True
+                        continue
                     file_ids.add(index)
 
                 if file_ids:
@@ -295,46 +294,49 @@ class Application:
 
         picked: list[tuple[int, str]] = []
 
-        with self.db.lock(LOCK_KEY_PICK_RSS_JOB), self.db.connection() as conn:
-            with conn.transaction():
-                rows: list[tuple[int, str, int]] = conn.fetch_all(
+        with (
+            self.db.lock(LOCK_KEY_PICK_RSS_JOB),
+            self.db.connection() as conn,
+            conn.transaction() as _,
+        ):
+            rows: list[tuple[int, str, int]] = conn.fetch_all(
+                """
+                select thread.tid, thread.info_hash, thread.size from thread
+                left join job on (job.tid = thread.tid)
+                where
+                    mediainfo = '' and
+                    size < $1 and
+                    thread.info_hash != '' and
+                    category = any ($2) and
+                    job.tid is null and
+                    seeders != 0
+                order by size desc
+                limit 6
+                """,
+                [
+                    min(int(self.config.single_torrent_size_limit), left_size),
+                    SELECTED_CATEGORY,
+                ],
+            )
+
+            if not rows:
+                return []
+
+            logger.info("pick {} new jobs", len(rows))
+
+            for tid, info_hash, size in rows:
+                if left_size - size <= 0:
+                    continue
+                left_size = left_size - size
+
+                conn.execute(
                     """
-                    select thread.tid, thread.info_hash, thread.size from thread
-                    left join job on (job.tid = thread.tid)
-                    where
-                        mediainfo = '' and
-                        size < $1 and
-                        thread.info_hash != '' and
-                        category = any ($2) and
-                        job.tid is null and
-                        seeders != 0
-                    order by size desc
-                    limit 6
-                    """,
-                    [
-                        min(int(self.config.single_torrent_size_limit), left_size),
-                        SELECTED_CATEGORY,
-                    ],
-                )
-
-                if not rows:
-                    return []
-
-                logger.info("pick {} new jobs", len(rows))
-
-                for tid, info_hash, size in rows:
-                    if left_size - size <= 0:
-                        continue
-                    left_size = left_size - size
-
-                    conn.execute(
-                        """
                 insert into job (tid, node_id, info_hash, start_download_time, updated_at, status)
                 VALUES ($1, $2, $3, current_timestamp, current_timestamp, $4)
                     """,
-                        [tid, self.config.node_id, info_hash, ITEM_STATUS_DOWNLOADING],
-                    )
-                    picked.append((tid, info_hash))
+                    [tid, self.config.node_id, info_hash, ITEM_STATUS_DOWNLOADING],
+                )
+                picked.append((tid, info_hash))
 
         return picked
 

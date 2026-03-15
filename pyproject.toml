@@ -65,4 +65,5 @@ preview = true
 [tool.ruff.lint]
 preview = true
 extend-select = ['I', 'PLW1514']
+ignore = ['BLE001', 'TRY002']
 unfixable = ['F401']

@@ -74,13 +74,10 @@ class MTeamAPI:
         )
 
     def get_download_url(self, tid: str) -> str:
-        try:
-            r = self._httpx.post(
-                f"https://{MTeamApiDomain}/api/torrent/genDlToken",
-                data={"id": tid},
-            ).raise_for_status()
-        except httpx.HTTPStatusError:
-            raise
+        r = self._httpx.post(
+            f"https://{MTeamApiDomain}/api/torrent/genDlToken",
+            data={"id": tid},
+        ).raise_for_status()
 
         data = r.json()
         if data["code"] != "0":
