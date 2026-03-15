@@ -9,8 +9,10 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Annotated
 
 import qbittorrentapi
+from pydantic import BeforeValidator
 from qbittorrentapi import NotFound404Error, TorrentState
 from rich.console import Console
 from sslog import logger
@@ -22,6 +24,7 @@ from app.const import (
     ITEM_STATUS_FAILED,
     ITEM_STATUS_SKIPPED,
     LOCK_KEY_PICK_RSS_JOB,
+    QB_TAG_PROCESS_ERROR,
     SELECTED_CATEGORY,
     VIDEO_FILE_EXT,
 )
@@ -55,6 +58,12 @@ class QbFile:
     progress: float
 
 
+def _parse_str_tags(v: str) -> frozenset[str]:
+    if not v:
+        return frozenset()
+    return frozenset({x.strip() for x in v.split(",")})
+
+
 @dataclasses.dataclass(kw_only=True, frozen=True)
 class QbTorrent:
     name: str
@@ -72,6 +81,7 @@ class QbTorrent:
 
     num_seeds: int
     progress: float
+    tags: Annotated[frozenset[str], BeforeValidator(_parse_str_tags)]
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
@@ -165,6 +175,9 @@ class Application:
                 )
                 continue
 
+            if QB_TAG_PROCESS_ERROR in t.tags:
+                continue
+
             try:
                 self.__process_local_torrent(t)
             except Exception as e:
@@ -178,6 +191,7 @@ class Application:
                     """,
                     [ITEM_STATUS_FAILED, format_exc(e), t.hash, self.config.node_id],
                 )
+                self.qb.torrents_add_tags(tags=QB_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
                 logger.error("failed to process local torrent {}", e)
 
     def __process_local_torrent(self, t: QbTorrent) -> None:
