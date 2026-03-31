@@ -18,6 +18,7 @@ from app.const import (
     ITEM_STATUS_SKIPPED,
     SELECTED_CATEGORY,
 )
+from app.scrape import known_max_id
 from app.utils import human_readable_size
 
 
@@ -72,8 +73,6 @@ def create_app() -> fastapi.FastAPI:
             )
 
         return render
-
-    Render = Annotated[_Render, Depends(__render)]
 
     @app.get("/nodes")
     async def nodes() -> ORJSONResponse:
@@ -136,7 +135,7 @@ def create_app() -> fastapi.FastAPI:
         })
 
     @app.get("/")
-    async def index(render: Render) -> HTMLResponse:
+    async def index(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
         torrents = await pool.fetch(
             """select * from job where (not status = any($1)) order by updated_at desc""",
             [ITEM_STATUS_SKIPPED, ITEM_STATUS_DONE],
@@ -162,7 +161,11 @@ def create_app() -> fastapi.FastAPI:
         # )
 
     @app.get("/progress")
-    async def progress(render: Render) -> HTMLResponse:
+    async def progress(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
+        # Scraping progress: how far along we are in scraping thread details
+        scraped_total = await pool.fetchval("select count(1) from thread") or 0
+        scraped_max_tid = await pool.fetchval("select max(tid) from thread") or 0
+
         total = (
             await pool.fetchval(
                 "select count(1) from thread where category = any($1)",
@@ -299,9 +302,15 @@ def create_app() -> fastapi.FastAPI:
                 return f"{m}m {s}s"
             return f"{s}s"
 
+        scrape_pct = f"{scraped_max_tid / known_max_id * 100:.1f}" if known_max_id else "0.0"
+
         return render(
             "progress.html.j2",
             ctx={
+                "scraped_total": scraped_total,
+                "scraped_max_tid": scraped_max_tid,
+                "known_max_id": known_max_id,
+                "scrape_pct": scrape_pct,
                 "total": total,
                 "done": done,
                 "done_size": human_readable_size(done_size),

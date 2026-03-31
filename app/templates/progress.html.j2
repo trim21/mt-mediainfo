@@ -14,7 +14,37 @@
 <body>
 
 <div class="container mt-4">
-  <h2>Overall Progress</h2>
+  <h2>Scraping Progress</h2>
+
+  <div class="progress mb-3" style="height: 30px;">
+    <div class="progress-bar bg-primary" role="progressbar"
+         style="width: {{ scrape_pct }}%"
+         title="Scraped">{{ scrape_pct }}%
+    </div>
+  </div>
+
+  <table class="table table-bordered mb-4">
+    <tbody>
+    <tr>
+      <th>Known max thread ID</th>
+      <td>{{ known_max_id }}</td>
+    </tr>
+    <tr>
+      <th>Max scraped thread ID</th>
+      <td>{{ scraped_max_tid }}</td>
+    </tr>
+    <tr>
+      <th>Threads scraped (all categories)</th>
+      <td>{{ scraped_total }}</td>
+    </tr>
+    <tr>
+      <th>Threads in selected categories</th>
+      <td>{{ total }}</td>
+    </tr>
+    </tbody>
+  </table>
+
+  <h2>Mediainfo Progress</h2>
 
   <div class="progress mb-3" style="height: 30px;">
     <div class="progress-bar bg-success" role="progressbar"
@@ -34,7 +64,7 @@
   <table class="table table-bordered">
     <tbody>
     <tr>
-      <th>Total threads</th>
+      <th>Total (selected categories)</th>
       <td>{{ total }}</td>
     </tr>
     <tr class="table-success">
