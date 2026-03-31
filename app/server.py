@@ -11,7 +11,13 @@ from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, JSONResponse
 
 from app.config import load_config
-from app.const import ITEM_STATUS_DONE, ITEM_STATUS_SKIPPED, SELECTED_CATEGORY
+from app.const import (
+    ITEM_STATUS_DONE,
+    ITEM_STATUS_DOWNLOADING,
+    ITEM_STATUS_FAILED,
+    ITEM_STATUS_SKIPPED,
+    SELECTED_CATEGORY,
+)
 from app.utils import human_readable_size
 
 
@@ -154,5 +160,107 @@ def create_app() -> fastapi.FastAPI:
         #     "rss-item.html.j2",
         #     ctx={"torrent": torrent},
         # )
+
+    @app.get("/progress")
+    async def progress(render: Render) -> HTMLResponse:
+        total = (
+            await pool.fetchval(
+                "select count(1) from thread where category = any($1)",
+                SELECTED_CATEGORY,
+            )
+            or 0
+        )
+
+        done = (
+            await pool.fetchval(
+                "select count(1) from thread where mediainfo != '' and category = any($1)",
+                SELECTED_CATEGORY,
+            )
+            or 0
+        )
+
+        done_size = (
+            await pool.fetchval(
+                "select coalesce(sum(size), 0) from thread where mediainfo != '' and category = any($1)",
+                SELECTED_CATEGORY,
+            )
+            or 0
+        )
+
+        in_progress = (
+            await pool.fetchval(
+                """select count(1) from job where status = $1""",
+                ITEM_STATUS_DOWNLOADING,
+            )
+            or 0
+        )
+
+        failed = (
+            await pool.fetchval(
+                """select count(1) from job where status = $1""",
+                ITEM_STATUS_FAILED,
+            )
+            or 0
+        )
+
+        pending = (
+            await pool.fetchval(
+                """
+            select count(1) from thread
+            left join job on (job.tid = thread.tid)
+            where
+              deleted = false and
+              seeders != 0 and
+              info_hash != '' and
+              mediainfo = '' and
+              category = any($1) and
+              job.tid is null
+            """,
+                SELECTED_CATEGORY,
+            )
+            or 0
+        )
+
+        pending_size = (
+            await pool.fetchval(
+                """
+            select coalesce(sum(size), 0) from thread
+            left join job on (job.tid = thread.tid)
+            where
+              deleted = false and
+              seeders != 0 and
+              info_hash != '' and
+              mediainfo = '' and
+              category = any($1) and
+              job.tid is null
+            """,
+                SELECTED_CATEGORY,
+            )
+            or 0
+        )
+
+        skipped = total - done - in_progress - failed - pending
+
+        def pct(n: int) -> str:
+            if total == 0:
+                return "0.0"
+            return f"{n / total * 100:.1f}"
+
+        return render(
+            "progress.html.j2",
+            ctx={
+                "total": total,
+                "done": done,
+                "done_size": human_readable_size(done_size),
+                "done_pct": pct(done),
+                "in_progress": in_progress,
+                "in_progress_pct": pct(in_progress),
+                "failed": failed,
+                "failed_pct": pct(failed),
+                "pending": pending,
+                "pending_size": human_readable_size(pending_size),
+                "skipped": skipped,
+            },
+        )
 
     return app
