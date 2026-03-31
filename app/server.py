@@ -239,12 +239,65 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
+        # API bottleneck: threads scraped but torrent not yet fetched
+        missing_torrent = (
+            await pool.fetchval(
+                """
+            select count(1) from thread
+            where
+              deleted = false and
+              seeders != 0 and
+              info_hash = '' and
+              mediainfo = '' and
+              category = any($1)
+            """,
+                SELECTED_CATEGORY,
+            )
+            or 0
+        )
+
+        # Download bottleneck: avg progress & avg duration of active downloads
+        dl_stats = await pool.fetchrow(
+            """
+            select
+              coalesce(avg(progress), 0) as avg_progress,
+              coalesce(avg(extract(epoch from (current_timestamp - start_download_time))), 0) as avg_duration_sec
+            from job where status = $1
+            """,
+            ITEM_STATUS_DOWNLOADING,
+        )
+        avg_dl_progress = float(dl_stats["avg_progress"]) * 100 if dl_stats else 0
+        avg_dl_duration_sec = float(dl_stats["avg_duration_sec"]) if dl_stats else 0
+
+        # Completed job stats: avg time from start to finish
+        avg_completed_sec = float(
+            await pool.fetchval(
+                """
+            select coalesce(avg(extract(epoch from (updated_at - start_download_time))), 0)
+            from job where status = $1
+            """,
+                ITEM_STATUS_DONE,
+            )
+            or 0
+        )
+
         skipped = total - done - in_progress - failed - pending
 
         def pct(n: int) -> str:
             if total == 0:
                 return "0.0"
             return f"{n / total * 100:.1f}"
+
+        def fmt_duration(seconds: float) -> str:
+            if seconds <= 0:
+                return "-"
+            m, s = divmod(int(seconds), 60)
+            h, m = divmod(m, 60)
+            if h > 0:
+                return f"{h}h {m}m {s}s"
+            if m > 0:
+                return f"{m}m {s}s"
+            return f"{s}s"
 
         return render(
             "progress.html.j2",
@@ -260,6 +313,10 @@ def create_app() -> fastapi.FastAPI:
                 "pending": pending,
                 "pending_size": human_readable_size(pending_size),
                 "skipped": skipped,
+                "missing_torrent": missing_torrent,
+                "avg_dl_progress": f"{avg_dl_progress:.1f}",
+                "avg_dl_duration": fmt_duration(avg_dl_duration_sec),
+                "avg_completed_duration": fmt_duration(avg_completed_sec),
             },
         )
 
