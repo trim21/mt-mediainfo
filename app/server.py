@@ -211,7 +211,7 @@ def create_app() -> fastapi.FastAPI:
             where
               deleted = false and
               seeders != 0 and
-              info_hash != '' and
+              thread.info_hash != '' and
               mediainfo = '' and
               category = any($1) and
               job.tid is null
@@ -229,7 +229,7 @@ def create_app() -> fastapi.FastAPI:
             where
               deleted = false and
               seeders != 0 and
-              info_hash != '' and
+              thread.info_hash != '' and
               mediainfo = '' and
               category = any($1) and
               job.tid is null
