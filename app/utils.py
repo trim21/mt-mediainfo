@@ -59,6 +59,12 @@ def get_info_hash_v1_from_content(content: bytes) -> str:
     return hashlib.sha1(enc).hexdigest()
 
 
+def set_torrent_comment(content: bytes, comment: str) -> bytes:
+    data = bdecode(content)
+    data[b"comment"] = comment.encode()
+    return bencode(data)
+
+
 def dedupe[J: Hashable](seq: list[J]) -> list[J]:
     seen: set[J] = set()
     seen_add = seen.add

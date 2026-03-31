@@ -31,8 +31,9 @@ from app.const import (
 from app.db import Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
+from app.mt import MTeamDomain
 from app.torrent import parse_torrent
-from app.utils import parse_obj_as
+from app.utils import parse_obj_as, set_torrent_comment
 
 
 def format_exc(e: Exception) -> str:
@@ -266,6 +267,8 @@ class Application:
                     [ITEM_STATUS_SKIPPED, tid, self.config.node_id],
                 )
                 continue
+
+            tc = set_torrent_comment(tc, f"https://{MTeamDomain}/detail/{tid}")
 
             r = self.qb.torrents_add(
                 torrent_files=[tc],
