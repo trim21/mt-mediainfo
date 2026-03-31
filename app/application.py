@@ -82,6 +82,7 @@ class QbTorrent:
     num_seeds: int
     progress: float
     tags: Annotated[frozenset[str], BeforeValidator(_parse_str_tags)]
+    seen_complete: int = 0
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
@@ -131,6 +132,7 @@ class Application:
                 print("failed to run", format_exc(e))
 
     def __run_at_interval(self) -> None:
+        self.__cleanup_old_torrents()
         self.__process_local_torrents()
         picked = self.__pick_job()
         self.__add_picked_to_qb(picked)
@@ -143,6 +145,21 @@ class Application:
             """,
             [self.config.node_id, datetime.now(tz=UTC)],
         )
+
+    def __cleanup_old_torrents(self) -> None:
+        """Delete torrents where Last Seen Complete is before 10 days ago."""
+        torrents = parse_obj_as(list[QbTorrent], self.qb.torrents_info())
+        cutoff = time.time() - 10 * 86400
+        for t in torrents:
+            if t.seen_complete > 0 and t.seen_complete < cutoff:
+                logger.info(
+                    "cleanup old torrent {} (last seen complete: {})", t.name, t.seen_complete
+                )
+                self.db.execute(
+                    "update job set status = $1, failed_reason = $2, updated_at = current_timestamp where info_hash = $3 and node_id = $4",
+                    [ITEM_STATUS_FAILED, "no seeders", t.hash, self.config.node_id],
+                )
+                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
     def __process_local_torrents(self) -> None:
         torrents = parse_obj_as(list[QbTorrent], self.qb.torrents_info())
