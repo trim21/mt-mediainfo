@@ -19,7 +19,7 @@ from app.const import (
     SELECTED_CATEGORY,
 )
 from app.scrape import known_max_id
-from app.utils import human_readable_size
+from app.utils import human_readable_byte_rate, human_readable_size
 
 
 class ORJSONResponse(JSONResponse):
@@ -254,6 +254,37 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
+        # Download byte rate statistics
+        rate_stats = await pool.fetchrow(
+            """
+            select
+                coalesce(sum(thread.size) filter (
+                    where job.updated_at >= current_timestamp - interval '30 days'
+                ), 0) as size_1m,
+                coalesce(sum(thread.size) filter (
+                    where job.updated_at >= current_timestamp - interval '90 days'
+                ), 0) as size_3m,
+                coalesce(sum(thread.size) filter (
+                    where job.updated_at >= current_timestamp - interval '180 days'
+                ), 0) as size_6m,
+                coalesce(sum(thread.size) filter (
+                    where job.updated_at >= current_timestamp - interval '365 days'
+                ), 0) as size_1y
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1
+            """,
+            ITEM_STATUS_DONE,
+        )
+        size_1m = int(rate_stats["size_1m"])
+        size_3m = int(rate_stats["size_3m"])
+        size_6m = int(rate_stats["size_6m"])
+        size_1y = int(rate_stats["size_1y"])
+        byte_rate_1m = human_readable_byte_rate(size_1m / (30 * 86400))
+        byte_rate_3m = human_readable_byte_rate(size_3m / (90 * 86400))
+        byte_rate_6m = human_readable_byte_rate(size_6m / (180 * 86400))
+        byte_rate_1y = human_readable_byte_rate(size_1y / (365 * 86400))
+
         # API bottleneck: threads scraped but torrent not yet fetched
         missing_torrent = (
             await pool.fetchval(
@@ -302,6 +333,10 @@ def create_app() -> fastapi.FastAPI:
                 "downloading_size": human_readable_size(downloading_size),
                 "total_process_size": human_readable_size(cfg.total_process_size),
                 "single_torrent_size_limit": human_readable_size(cfg.single_torrent_size_limit),
+                "byte_rate_1m": byte_rate_1m,
+                "byte_rate_3m": byte_rate_3m,
+                "byte_rate_6m": byte_rate_6m,
+                "byte_rate_1y": byte_rate_1y,
             },
         )
 

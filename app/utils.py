@@ -39,6 +39,10 @@ def human_readable_size(size: float, decimal_places: int = 2) -> str:
     return f"{size:.{decimal_places}f} {unit}"
 
 
+def human_readable_byte_rate(bytes_per_second: float, decimal_places: int = 2) -> str:
+    return human_readable_size(bytes_per_second, decimal_places) + "/s"
+
+
 @functools.cache
 def get_type_adapter[T](t: type[T]) -> TypeAdapter[T]:
     return TypeAdapter(t)
