@@ -98,7 +98,7 @@ class Scrape:
             order by seeders desc
             limit 50
             """,
-            [SELECTED_CATEGORY],
+            [list(SELECTED_CATEGORY)],
         )
 
         if not threads:
