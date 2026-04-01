@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 
 import pydantic
+from bencode2 import BencodeDecodeError
 from more_itertools import chunked
 from sslog import logger
 
@@ -110,7 +111,7 @@ class Scrape:
 
             try:
                 t = parse_torrent(tc)
-            except pydantic.ValidationError:
+            except (pydantic.ValidationError, BencodeDecodeError):
                 logger.exception("failed to parse torrent of {}", tid)
                 self.__db.execute(
                     """update thread set mediainfo = $2 where tid = $1""",
