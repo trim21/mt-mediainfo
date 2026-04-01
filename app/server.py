@@ -259,6 +259,18 @@ def create_app() -> fastapi.FastAPI:
             """
             select
                 coalesce(sum(thread.size) filter (
+                    where job.updated_at >= current_timestamp - interval '1 day'
+                ), 0) as size_1d,
+                coalesce(sum(thread.size) filter (
+                    where job.updated_at >= current_timestamp - interval '3 days'
+                ), 0) as size_3d,
+                coalesce(sum(thread.size) filter (
+                    where job.updated_at >= current_timestamp - interval '7 days'
+                ), 0) as size_1w,
+                coalesce(sum(thread.size) filter (
+                    where job.updated_at >= current_timestamp - interval '14 days'
+                ), 0) as size_2w,
+                coalesce(sum(thread.size) filter (
                     where job.updated_at >= current_timestamp - interval '30 days'
                 ), 0) as size_1m,
                 coalesce(sum(thread.size) filter (
@@ -276,10 +288,18 @@ def create_app() -> fastapi.FastAPI:
             """,
             ITEM_STATUS_DONE,
         )
+        size_1d = int(rate_stats["size_1d"])
+        size_3d = int(rate_stats["size_3d"])
+        size_1w = int(rate_stats["size_1w"])
+        size_2w = int(rate_stats["size_2w"])
         size_1m = int(rate_stats["size_1m"])
         size_3m = int(rate_stats["size_3m"])
         size_6m = int(rate_stats["size_6m"])
         size_1y = int(rate_stats["size_1y"])
+        byte_rate_1d = human_readable_byte_rate(size_1d / 86400)
+        byte_rate_3d = human_readable_byte_rate(size_3d / (3 * 86400))
+        byte_rate_1w = human_readable_byte_rate(size_1w / (7 * 86400))
+        byte_rate_2w = human_readable_byte_rate(size_2w / (14 * 86400))
         byte_rate_1m = human_readable_byte_rate(size_1m / (30 * 86400))
         byte_rate_3m = human_readable_byte_rate(size_3m / (90 * 86400))
         byte_rate_6m = human_readable_byte_rate(size_6m / (180 * 86400))
@@ -333,6 +353,10 @@ def create_app() -> fastapi.FastAPI:
                 "downloading_size": human_readable_size(downloading_size),
                 "total_process_size": human_readable_size(cfg.total_process_size),
                 "single_torrent_size_limit": human_readable_size(cfg.single_torrent_size_limit),
+                "byte_rate_1d": byte_rate_1d,
+                "byte_rate_3d": byte_rate_3d,
+                "byte_rate_1w": byte_rate_1w,
+                "byte_rate_2w": byte_rate_2w,
                 "byte_rate_1m": byte_rate_1m,
                 "byte_rate_3m": byte_rate_3m,
                 "byte_rate_6m": byte_rate_6m,
