@@ -10,7 +10,7 @@ from fastapi import Depends, Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, JSONResponse
 
-from app.config import load_config
+from app.config import Config, load_config
 from app.const import (
     ITEM_STATUS_DONE,
     ITEM_STATUS_DOWNLOADING,
@@ -39,7 +39,7 @@ class _Render(Protocol):
 
 
 def create_app() -> fastapi.FastAPI:
-    cfg = load_config()
+    cfg: Config = load_config()
 
     pool = asyncpg.create_pool(cfg.pg_dsn())
 
@@ -242,6 +242,19 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
+        # Downloading size statistics
+        downloading_size = (
+            await pool.fetchval(
+                """
+            select coalesce(sum(thread.size), 0) from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1
+            """,
+                ITEM_STATUS_DOWNLOADING,
+            )
+            or 0
+        )
+
         # API bottleneck: threads scraped but torrent not yet fetched
         missing_torrent = (
             await pool.fetchval(
@@ -287,6 +300,11 @@ def create_app() -> fastapi.FastAPI:
                 "pending_size": human_readable_size(pending_size),
                 "skipped": skipped,
                 "missing_torrent": missing_torrent,
+                "downloading_size": human_readable_size(downloading_size),
+                "total_process_size": human_readable_size(int(cfg.total_process_size)),
+                "single_torrent_size_limit": human_readable_size(
+                    int(cfg.single_torrent_size_limit)
+                ),
             },
         )
 

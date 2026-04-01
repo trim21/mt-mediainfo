@@ -90,6 +90,24 @@
     </tbody>
   </table>
 
+  <h3 class="mt-4">Downloading Statistics</h3>
+  <table class="table table-bordered">
+    <tbody>
+    <tr>
+      <th>Current downloading size</th>
+      <td>{{ downloading_size }}</td>
+    </tr>
+    <tr>
+      <th>Total size limit</th>
+      <td>{{ total_process_size }}</td>
+    </tr>
+    <tr>
+      <th>Single torrent size limit</th>
+      <td>{{ single_torrent_size_limit }}</td>
+    </tr>
+    </tbody>
+  </table>
+
   <h3 class="mt-4">Bottleneck Analysis</h3>
   <table class="table table-bordered">
     <tbody>
@@ -98,7 +116,7 @@
     </tr>
     <tr>
       <th>Missing torrent data (info_hash not fetched)</th>
-      <td>{{ missing_torrent }}</td>
+      <td>{{ missing_torrent }} / {{ total }}</td>
     </tr>
     </tbody>
   </table>

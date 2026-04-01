@@ -111,6 +111,7 @@ class Scrape:
             try:
                 t = parse_torrent(tc)
             except pydantic.ValidationError:
+                logger.exception("failed to parse torrent of {}", tid)
                 self.__db.execute(
                     """update thread set mediainfo = $2 where tid = $1""",
                     [tid, "invalid torrent"],
@@ -156,7 +157,7 @@ class Scrape:
                 time.sleep(10)
                 continue
 
-            # no pending torrents to download, scrape new threads
+            # zero pending torrents to download, scrape new threads
             try:
                 self.scrape(limit=limit)
             except httpx_network_errors:
