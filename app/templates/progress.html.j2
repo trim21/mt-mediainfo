@@ -44,120 +44,132 @@
     </tbody>
   </table>
 
-  <h2>Mediainfo Progress</h2>
+  <div class="row">
+    <div class="col-md-6">
+      <h2>Mediainfo Progress</h2>
 
-  <div class="progress mb-3" style="height: 30px;">
-    <div class="progress-bar bg-success" role="progressbar"
-         style="width: {{ done_pct }}%"
-         title="Done">{{ done_pct }}%
+      <div class="progress mb-3" style="height: 30px;">
+        <div class="progress-bar bg-success" role="progressbar"
+             style="width: {{ done_pct }}%"
+             title="Done">{{ done_pct }}%
+        </div>
+        <div class="progress-bar bg-info" role="progressbar"
+             style="width: {{ in_progress_pct }}%"
+             title="In Progress">{{ in_progress_pct }}%
+        </div>
+        <div class="progress-bar bg-danger" role="progressbar"
+             style="width: {{ failed_pct }}%"
+             title="Failed">{{ failed_pct }}%
+        </div>
+      </div>
+
+      <table class="table table-bordered">
+        <tbody>
+        <tr>
+          <th>Total (selected categories)</th>
+          <td>{{ total }}</td>
+        </tr>
+        <tr class="table-success">
+          <th>Done (has mediainfo)</th>
+          <td>{{ done }} ({{ done_size }})</td>
+        </tr>
+        <tr class="table-info">
+          <th>In progress (downloading)</th>
+          <td>{{ in_progress }}</td>
+        </tr>
+        <tr class="table-danger">
+          <th>Failed</th>
+          <td>{{ failed }}</td>
+        </tr>
+        <tr class="table-warning">
+          <th>Pending (waiting)</th>
+          <td>{{ pending }} ({{ pending_size }})</td>
+        </tr>
+        <tr>
+          <th>Skipped / No seeders</th>
+          <td>{{ skipped }}</td>
+        </tr>
+        </tbody>
+      </table>
     </div>
-    <div class="progress-bar bg-info" role="progressbar"
-         style="width: {{ in_progress_pct }}%"
-         title="In Progress">{{ in_progress_pct }}%
-    </div>
-    <div class="progress-bar bg-danger" role="progressbar"
-         style="width: {{ failed_pct }}%"
-         title="Failed">{{ failed_pct }}%
+
+    <div class="col-md-6">
+      <h3>Average Byte Rate</h3>
+      <table class="table table-bordered">
+        <tbody>
+        <tr>
+          <th>Last 1 day</th>
+          <td>{{ byte_rate_1d }}</td>
+        </tr>
+        <tr>
+          <th>Last 3 days</th>
+          <td>{{ byte_rate_3d }}</td>
+        </tr>
+        <tr>
+          <th>Last 1 week</th>
+          <td>{{ byte_rate_1w }}</td>
+        </tr>
+        <tr>
+          <th>Last 2 weeks</th>
+          <td>{{ byte_rate_2w }}</td>
+        </tr>
+        <tr>
+          <th>Last 1 month</th>
+          <td>{{ byte_rate_1m }}</td>
+        </tr>
+        <tr>
+          <th>Last 3 months</th>
+          <td>{{ byte_rate_3m }}</td>
+        </tr>
+        <tr>
+          <th>Last 6 months</th>
+          <td>{{ byte_rate_6m }}</td>
+        </tr>
+        <tr>
+          <th>Last 1 year</th>
+          <td>{{ byte_rate_1y }}</td>
+        </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
-  <table class="table table-bordered">
-    <tbody>
-    <tr>
-      <th>Total (selected categories)</th>
-      <td>{{ total }}</td>
-    </tr>
-    <tr class="table-success">
-      <th>Done (has mediainfo)</th>
-      <td>{{ done }} ({{ done_size }})</td>
-    </tr>
-    <tr class="table-info">
-      <th>In progress (downloading)</th>
-      <td>{{ in_progress }}</td>
-    </tr>
-    <tr class="table-danger">
-      <th>Failed</th>
-      <td>{{ failed }}</td>
-    </tr>
-    <tr class="table-warning">
-      <th>Pending (waiting)</th>
-      <td>{{ pending }} ({{ pending_size }})</td>
-    </tr>
-    <tr>
-      <th>Skipped / No seeders</th>
-      <td>{{ skipped }}</td>
-    </tr>
-    </tbody>
-  </table>
+  <div class="row mt-4">
+    <div class="col-md-6">
+      <h3>Download Statistics</h3>
+      <table class="table table-bordered">
+        <tbody>
+        <tr>
+          <th>Current downloading size</th>
+          <td>{{ downloading_size }} / {{ total_process_size }}</td>
+        </tr>
+        <tr>
+          <th>Pending (waiting to download)</th>
+          <td>{{ pending }} ({{ pending_size }})</td>
+        </tr>
+        <tr>
+          <th>Single torrent size limit</th>
+          <td>{{ single_torrent_size_limit }}</td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
 
-  <h3 class="mt-4">Download Statistics</h3>
-  <table class="table table-bordered">
-    <tbody>
-    <tr>
-      <th>Current downloading size</th>
-      <td>{{ downloading_size }} / {{ total_process_size }}</td>
-    </tr>
-    <tr>
-      <th>Pending (waiting to download)</th>
-      <td>{{ pending }} ({{ pending_size }})</td>
-    </tr>
-    <tr>
-      <th>Single torrent size limit</th>
-      <td>{{ single_torrent_size_limit }}</td>
-    </tr>
-    </tbody>
-  </table>
-
-  <h3 class="mt-4">Average Byte Rate</h3>
-  <table class="table table-bordered">
-    <tbody>
-    <tr>
-      <th>Last 1 day</th>
-      <td>{{ byte_rate_1d }}</td>
-    </tr>
-    <tr>
-      <th>Last 3 days</th>
-      <td>{{ byte_rate_3d }}</td>
-    </tr>
-    <tr>
-      <th>Last 1 week</th>
-      <td>{{ byte_rate_1w }}</td>
-    </tr>
-    <tr>
-      <th>Last 2 weeks</th>
-      <td>{{ byte_rate_2w }}</td>
-    </tr>
-    <tr>
-      <th>Last 1 month</th>
-      <td>{{ byte_rate_1m }}</td>
-    </tr>
-    <tr>
-      <th>Last 3 months</th>
-      <td>{{ byte_rate_3m }}</td>
-    </tr>
-    <tr>
-      <th>Last 6 months</th>
-      <td>{{ byte_rate_6m }}</td>
-    </tr>
-    <tr>
-      <th>Last 1 year</th>
-      <td>{{ byte_rate_1y }}</td>
-    </tr>
-    </tbody>
-  </table>
-
-  <h3 class="mt-4">Bottleneck Analysis</h3>
-  <table class="table table-bordered">
-    <tbody>
-    <tr>
-      <th colspan="2" class="table-secondary">API / Scraping</th>
-    </tr>
-    <tr>
-      <th>Missing torrent data (info_hash not fetched)</th>
-      <td>{{ missing_torrent }} / {{ total }}</td>
-    </tr>
-    </tbody>
-  </table>
+    <div class="col-md-6">
+      <h3>Bottleneck Analysis</h3>
+      <table class="table table-bordered">
+        <tbody>
+        <tr>
+          <th colspan="2" class="table-secondary">API / Scraping</th>
+        </tr>
+        <tr>
+          <th>Missing torrent data (info_hash not fetched)</th>
+          <td>{{ missing_torrent }} / {{ total }}</td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 </body>
 </html>
