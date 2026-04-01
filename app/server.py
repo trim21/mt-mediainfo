@@ -242,7 +242,6 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
-        # Downloading size statistics
         downloading_size = (
             await pool.fetchval(
                 """
@@ -301,10 +300,8 @@ def create_app() -> fastapi.FastAPI:
                 "skipped": skipped,
                 "missing_torrent": missing_torrent,
                 "downloading_size": human_readable_size(downloading_size),
-                "total_process_size": human_readable_size(int(cfg.total_process_size)),
-                "single_torrent_size_limit": human_readable_size(
-                    int(cfg.single_torrent_size_limit)
-                ),
+                "total_process_size": human_readable_size(cfg.total_process_size),
+                "single_torrent_size_limit": human_readable_size(cfg.single_torrent_size_limit),
             },
         )
 
