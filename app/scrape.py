@@ -137,6 +137,26 @@ class Scrape:
     def __run(self) -> None:
         limit = parse_obj_as(int, os.environ.get("SCRAPE_LIMIT", "100"))
         while True:
+            logger.info("fetch torrents")
+            try:
+                no_pending = self.fetch_torrent()
+            except httpx_network_errors:
+                time.sleep(60)
+                continue
+            except MTeamRequestError as e:
+                if e.message == "請求過於頻繁":
+                    logger.info("operator {!r} get rate limited, sleep for 10m", e.op)
+                    time.sleep(360)
+                else:
+                    logger.exception("failed to fetch torrents")
+                    time.sleep(60)
+                continue
+
+            if not no_pending:
+                time.sleep(10)
+                continue
+
+            # no pending torrents to download, scrape new threads
             try:
                 self.scrape(limit=limit)
             except httpx_network_errors:
@@ -151,23 +171,7 @@ class Scrape:
                     time.sleep(60)
                 continue
 
-            logger.info("fetch torrents")
-            try:
-                if self.fetch_torrent():
-                    time.sleep(360)
-                else:
-                    time.sleep(10)
-            except httpx_network_errors:
-                time.sleep(60)
-                continue
-            except MTeamRequestError as e:
-                if e.message == "請求過於頻繁":
-                    logger.info("operator {!r} get rate limited, sleep for 10m", e.op)
-                    time.sleep(360)
-                else:
-                    logger.exception("failed to fetch threads")
-                    time.sleep(60)
-                continue
+            time.sleep(60)
 
     def start(self) -> None:
         self.__run()
