@@ -1,5 +1,4 @@
 import os
-import threading
 import time
 from pathlib import Path
 
@@ -135,12 +134,11 @@ class Scrape:
             )
         return False
 
-    def __fetch_detail(self, stop: threading.Event) -> None:
+    def __run(self) -> None:
         limit = parse_obj_as(int, os.environ.get("SCRAPE_LIMIT", "100"))
-        while not stop.is_set():
+        while True:
             try:
                 self.scrape(limit=limit)
-                time.sleep(60)
             except httpx_network_errors:
                 time.sleep(60)
                 continue
@@ -148,12 +146,11 @@ class Scrape:
                 if e.message == "請求過於頻繁":
                     logger.info("operator {!r} get rate limited, sleep for 10m", e.op)
                     time.sleep(360)
-                    continue
-                logger.exception("failed to fetch threads")
-                time.sleep(60)
+                else:
+                    logger.exception("failed to fetch threads")
+                    time.sleep(60)
+                continue
 
-    def __fetch_torrent(self, stop: threading.Event) -> None:
-        while not stop.is_set():
             logger.info("fetch torrents")
             try:
                 if self.fetch_torrent():
@@ -167,23 +164,10 @@ class Scrape:
                 if e.message == "請求過於頻繁":
                     logger.info("operator {!r} get rate limited, sleep for 10m", e.op)
                     time.sleep(360)
-                    continue
-                logger.exception("failed to fetch threads")
-                time.sleep(60)
+                else:
+                    logger.exception("failed to fetch threads")
+                    time.sleep(60)
+                continue
 
     def start(self) -> None:
-        stop = threading.Event()
-
-        ts = [
-            threading.Thread(target=lambda: self.__fetch_detail(stop), daemon=True),
-            threading.Thread(target=lambda: self.__fetch_torrent(stop), daemon=True),
-        ]
-
-        for t in ts:
-            t.start()
-
-        try:
-            while True:
-                time.sleep(60)
-        except KeyboardInterrupt:
-            stop.set()
+        self.__run()
