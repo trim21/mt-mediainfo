@@ -294,11 +294,11 @@ wheels = [
 
 [[package]]
 name = "more-itertools"
-version = "10.8.0"
+version = "11.0.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ea/5d/38b681d3fce7a266dd9ab73c66959406d565b3e85f21d5e66e1181d93721/more_itertools-10.8.0.tar.gz", hash = "sha256:f638ddf8a1a0d134181275fb5d58b086ead7c6a72429ad725c67503f13ba30bd", size = 137431, upload-time = "2025-09-02T15:23:11.018Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/41/181494479e399292ac5b4c6ee9e4688642d4591a50a317e8180c2335ad2a/more_itertools-11.0.0.tar.gz", hash = "sha256:1fca6853f57fbfabc36ad31b3c3d72490340a414f1cc0eec78436fb847837304", size = 144524, upload-time = "2026-04-02T15:06:59.29Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/8e/469e5a4a2f5855992e425f3cb33804cc07bf18d48f2db061aec61ce50270/more_itertools-10.8.0-py3-none-any.whl", hash = "sha256:52d4362373dcf7c52546bc4af9a86ee7c4579df9a8dc268be0a2f949d376cc9b", size = 69667, upload-time = "2025-09-02T15:23:09.635Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/70/e2bf8abdcb3f352befbaf74313590c25d69936f8dbb6d6ad1d279988ca1b/more_itertools-11.0.0-py3-none-any.whl", hash = "sha256:88d9f11b0231f65df574a2e626dc37ec60814a9609296aa102755041cca0d00b", size = 72067, upload-time = "2026-04-02T15:06:57.882Z" },
 ]
 
 [[package]]
@@ -651,7 +651,7 @@ requires-dist = [
     { name = "fastapi", specifier = "==0.135.3" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "jinja2", specifier = "==3.1.6" },
-    { name = "more-itertools", specifier = "==10.8.0" },
+    { name = "more-itertools", specifier = "==11.0.0" },
     { name = "orjson", specifier = "==3.11.8" },
     { name = "polars", specifier = "==1.39.3" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.3" },
