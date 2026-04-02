@@ -189,7 +189,10 @@ def create_app() -> fastapi.FastAPI:
             "download_size": [row["download_size"] for row in rows],
         })
         df = df.with_columns(
-            ((pl.col("ts").cast(pl.Datetime("us")) - year_start).dt.total_seconds() // (7 * 86400))
+            (
+                (pl.col("ts").cast(pl.Datetime("us", "UTC")) - year_start).dt.total_seconds()
+                // (7 * 86400)
+            )
             .cast(pl.Int64)
             .alias("week_num")
         )
@@ -230,7 +233,10 @@ def create_app() -> fastapi.FastAPI:
         year_start = _week_start_of_year()
         df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
         df = df.with_columns(
-            ((pl.col("ts").cast(pl.Datetime("us")) - year_start).dt.total_seconds() // (7 * 86400))
+            (
+                (pl.col("ts").cast(pl.Datetime("us", "UTC")) - year_start).dt.total_seconds()
+                // (7 * 86400)
+            )
             .cast(pl.Int64)
             .alias("week_num")
         )
@@ -258,7 +264,10 @@ def create_app() -> fastapi.FastAPI:
         year_start = _week_start_of_year()
         df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
         df = df.with_columns(
-            ((pl.col("ts").cast(pl.Datetime("us")) - year_start).dt.total_seconds() // (7 * 86400))
+            (
+                (pl.col("ts").cast(pl.Datetime("us", "UTC")) - year_start).dt.total_seconds()
+                // (7 * 86400)
+            )
             .cast(pl.Int64)
             .alias("week_num")
         )
@@ -289,7 +298,10 @@ def create_app() -> fastapi.FastAPI:
         year_start = _week_start_of_year()
         df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
         df = df.with_columns(
-            ((pl.col("ts").cast(pl.Datetime("us")) - year_start).dt.total_seconds() // (7 * 86400))
+            (
+                (pl.col("ts").cast(pl.Datetime("us", "UTC")) - year_start).dt.total_seconds()
+                // (7 * 86400)
+            )
             .cast(pl.Int64)
             .alias("week_num")
         )
