@@ -331,9 +331,9 @@ def create_app() -> fastapi.FastAPI:
     def _day_label(today: datetime, day_num: int) -> str:
         return (today + timedelta(days=int(day_num))).strftime("%Y-%m-%d")
 
-    def _fill_day_gaps_count(df: pl.DataFrame) -> pl.DataFrame:
+    def _fill_day_gaps_count(df: pl.DataFrame, days_back: int = 364) -> pl.DataFrame:
         grouped = df.group_by("day_num").len(name="count")
-        all_days = pl.DataFrame({"day_num": list(range(-364, 1))})
+        all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
         return (
             all_days
             .join(grouped, on="day_num", how="left")
@@ -342,28 +342,33 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/stats/daily-byte-rate")
-    async def daily_byte_rate() -> ORJSONResponse:
+    async def daily_byte_rate(start: datetime | None = None) -> ORJSONResponse:
+        today = _today_start()
+        if start is None:
+            start = today - timedelta(days=364)
+        start = start.replace(tzinfo=UTC) if start.tzinfo is None else start
+        days_back = (today - start).days
         rows = await pool.fetch(
             """
             select coalesce(completed_at, updated_at) as ts, download_size
             from job
             where
                 status = $1 and download_size > 0
-                and coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'
+                and coalesce(completed_at, updated_at) >= $2
             """,
             ITEM_STATUS_DONE,
+            start,
         )
         if not rows:
             return ORJSONResponse([])
 
-        today = _today_start()
         df = pl.DataFrame({
             "ts": [row["ts"] for row in rows],
             "download_size": [row["download_size"] for row in rows],
         })
         df = df.with_columns(_compute_day_num_col(today))
         grouped = df.group_by("day_num").agg(pl.col("download_size").sum().alias("total_size"))
-        all_days = pl.DataFrame({"day_num": list(range(-364, 1))})
+        all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
         result = (
             all_days
             .join(grouped, on="day_num", how="left")
@@ -383,21 +388,26 @@ def create_app() -> fastapi.FastAPI:
         ])
 
     @app.get("/stats/daily-thread-count")
-    async def daily_thread_count() -> ORJSONResponse:
+    async def daily_thread_count(start: datetime | None = None) -> ORJSONResponse:
+        today = _today_start()
+        if start is None:
+            start = today - timedelta(days=364)
+        start = start.replace(tzinfo=UTC) if start.tzinfo is None else start
+        days_back = (today - start).days
         rows = await pool.fetch(
             """
             select created_at as ts
             from thread
-            where created_at >= current_timestamp - interval '1 year'
-            """
+            where created_at >= $1
+            """,
+            start,
         )
         if not rows:
             return ORJSONResponse([])
 
-        today = _today_start()
         df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
         df = df.with_columns(_compute_day_num_col(today))
-        result = _fill_day_gaps_count(df)
+        result = _fill_day_gaps_count(df, days_back)
         return ORJSONResponse([
             {
                 "day": _day_label(today, r["day_num"]),
@@ -407,21 +417,26 @@ def create_app() -> fastapi.FastAPI:
         ])
 
     @app.get("/stats/daily-torrent-count")
-    async def daily_torrent_count() -> ORJSONResponse:
+    async def daily_torrent_count(start: datetime | None = None) -> ORJSONResponse:
+        today = _today_start()
+        if start is None:
+            start = today - timedelta(days=364)
+        start = start.replace(tzinfo=UTC) if start.tzinfo is None else start
+        days_back = (today - start).days
         rows = await pool.fetch(
             """
             select created_at as ts
             from torrent
-            where created_at >= current_timestamp - interval '1 year'
-            """
+            where created_at >= $1
+            """,
+            start,
         )
         if not rows:
             return ORJSONResponse([])
 
-        today = _today_start()
         df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
         df = df.with_columns(_compute_day_num_col(today))
-        result = _fill_day_gaps_count(df)
+        result = _fill_day_gaps_count(df, days_back)
         return ORJSONResponse([
             {
                 "day": _day_label(today, r["day_num"]),
@@ -431,24 +446,29 @@ def create_app() -> fastapi.FastAPI:
         ])
 
     @app.get("/stats/daily-done-count")
-    async def daily_done_count() -> ORJSONResponse:
+    async def daily_done_count(start: datetime | None = None) -> ORJSONResponse:
+        today = _today_start()
+        if start is None:
+            start = today - timedelta(days=364)
+        start = start.replace(tzinfo=UTC) if start.tzinfo is None else start
+        days_back = (today - start).days
         rows = await pool.fetch(
             """
             select coalesce(completed_at, updated_at) as ts
             from job
             where
                 status = $1 and
-                coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'
+                coalesce(completed_at, updated_at) >= $2
             """,
             ITEM_STATUS_DONE,
+            start,
         )
         if not rows:
             return ORJSONResponse([])
 
-        today = _today_start()
         df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
         df = df.with_columns(_compute_day_num_col(today))
-        result = _fill_day_gaps_count(df)
+        result = _fill_day_gaps_count(df, days_back)
         return ORJSONResponse([
             {
                 "day": _day_label(today, r["day_num"]),
@@ -717,7 +737,13 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/detail")
-    async def detail(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
-        return render("detail.html.j2", ctx={})
+    async def detail(
+        render: Annotated[_Render, Depends(__render)],
+        start: str | None = None,
+    ) -> HTMLResponse:
+        today = _today_start()
+        default_start = (today - timedelta(days=364)).strftime("%Y-%m-%d")
+        start_value = start if start is not None else default_start
+        return render("detail.html.j2", ctx={"start": start_value})
 
     return app

@@ -18,18 +18,30 @@
 <div class="container mt-4">
   <p><a href="/progress">&larr; Back to Progress</a></p>
 
-  <h3>Average Byte Rate per Day (last 365 days)</h3>
+  <form class="row g-2 align-items-end mb-3" method="get" action="/detail">
+    <div class="col-auto">
+      <label for="startInput" class="form-label mb-0">Start date</label>
+      <input type="date" id="startInput" name="start" class="form-control" value="{{ start }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Apply</button>
+    </div>
+  </form>
+
+  <h3>Average Byte Rate per Day</h3>
   <canvas id="dailyByteRateChart" style="max-height: 350px;"></canvas>
 </div>
 
 <div class="container mt-4">
-  <h3>Threads & Torrents Fetched per Day (last 365 days)</h3>
+  <h3>Threads & Torrents Fetched per Day</h3>
   <canvas id="dailyFetchChart" style="max-height: 350px;"></canvas>
 </div>
 
 <script>
   (async () => {
-    const resp = await fetch('/stats/daily-byte-rate');
+    const start = {{ start | tojson }};
+    const qs = start ? '?start=' + encodeURIComponent(start) : '';
+    const resp = await fetch('/stats/daily-byte-rate' + qs);
     const data = await resp.json();
     const labels = data.map(d => d.day);
     const byteRates = data.map(d => d.byte_rate);
@@ -71,9 +83,9 @@
     });
 
     const [threadResp, torrentResp, doneResp] = await Promise.all([
-      fetch('/stats/daily-thread-count'),
-      fetch('/stats/daily-torrent-count'),
-      fetch('/stats/daily-done-count'),
+      fetch('/stats/daily-thread-count' + qs),
+      fetch('/stats/daily-torrent-count' + qs),
+      fetch('/stats/daily-done-count' + qs),
     ]);
     const threadData = await threadResp.json();
     const torrentData = await torrentResp.json();
