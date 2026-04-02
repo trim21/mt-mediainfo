@@ -653,7 +653,7 @@ requires-dist = [
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "more-itertools", specifier = "==10.8.0" },
     { name = "orjson", specifier = "==3.11.8" },
-    { name = "polars", specifier = ">=1.39.3" },
+    { name = "polars", specifier = "==1.39.3" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.3" },
     { name = "pydantic", specifier = "==2.12.5" },
     { name = "qbittorrent-api", specifier = "==2025.11.1" },
