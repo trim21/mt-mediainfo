@@ -166,6 +166,7 @@ def create_app() -> fastapi.FastAPI:
             """
             select
                 date_trunc('week', updated_at) as week_start,
+                sum(download_size) as total_size,
                 (sum(download_size) / (7.0 * 86400))::float8 as avg_byte_rate
             from job
             where
@@ -177,7 +178,11 @@ def create_app() -> fastapi.FastAPI:
             ITEM_STATUS_DONE,
         )
         return ORJSONResponse([
-            {"week": row["week_start"].isoformat(), "byte_rate": row["avg_byte_rate"]}
+            {
+                "week": row["week_start"].isoformat(),
+                "byte_rate": row["avg_byte_rate"],
+                "total_size": int(row["total_size"]),
+            }
             for row in rows
         ])
 

@@ -185,12 +185,20 @@
     const data = await resp.json();
     const labels = data.map(d => d.week.slice(0, 10));
     const values = data.map(d => d.byte_rate);
+    const sizes = data.map(d => d.total_size);
 
-    function fmtBytes(bps) {
+    function fmtByteRate(bps) {
       const units = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s'];
       let i = 0;
       while (bps >= 1024 && i < units.length - 1) { bps /= 1024; i++; }
       return bps.toFixed(2) + ' ' + units[i];
+    }
+
+    function fmtSize(bytes) {
+      const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+      let i = 0;
+      while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+      return bytes.toFixed(2) + ' ' + units[i];
     }
 
     new Chart(document.getElementById('weeklyByteRateChart'), {
@@ -211,14 +219,17 @@
           y: {
             beginAtZero: true,
             ticks: {
-              callback: v => fmtBytes(v)
+              callback: v => fmtByteRate(v)
             }
           }
         },
         plugins: {
           tooltip: {
             callbacks: {
-              label: ctx => fmtBytes(ctx.parsed.y)
+              label: ctx => [
+                'Avg rate: ' + fmtByteRate(ctx.parsed.y),
+                'Total size: ' + fmtSize(sizes[ctx.dataIndex]),
+              ]
             }
           },
           legend: { display: false }
