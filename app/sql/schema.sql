@@ -43,14 +43,4 @@ create table if not exists torrent (
 
 alter table torrent add column if not exists created_at timestamptz not null default current_timestamp;
 
--- backfill torrent.created_at: spread existing rows evenly across the last year by tid order
-update torrent set created_at = sub.new_created_at
-from (
-    select tid,
-           current_timestamp - interval '1 year' * (1.0 - (row_number() over (order by tid))::float / (count(1) over ())) as new_created_at
-    from torrent
-    where created_at >= current_date and created_at < current_date + interval '1 day'
-) sub
-where torrent.tid = sub.tid;
-
 create index if not exists torrent_info_hash on torrent (info_hash);
