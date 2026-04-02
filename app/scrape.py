@@ -147,8 +147,8 @@ class Scrape:
                 continue
             except MTeamRequestError as e:
                 if e.message == "請求過於頻繁":
-                    logger.info("operator {!r} get rate limited, sleep for 10m", e.op)
-                    time.sleep(360)
+                    logger.info("operator {!r} get rate limited, sleep for 1h", e.op)
+                    time.sleep(3600)
                 else:
                     logger.exception("failed to fetch torrents")
                     time.sleep(60)
@@ -166,8 +166,8 @@ class Scrape:
                 continue
             except MTeamRequestError as e:
                 if e.message == "請求過於頻繁":
-                    logger.info("operator {!r} get rate limited, sleep for 10m", e.op)
-                    time.sleep(360)
+                    logger.info("operator {!r} get rate limited, sleep for 1h", e.op)
+                    time.sleep(3600)
                 else:
                     logger.exception("failed to fetch threads")
                     time.sleep(60)
