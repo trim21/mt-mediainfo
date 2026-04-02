@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Daily Detail</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+        crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+          crossorigin="anonymous"></script>
+</head>
+<body>
+
+<div class="container mt-4">
+  <p><a href="/progress">&larr; Back to Progress</a></p>
+
+  <h3>Average Byte Rate per Day (last 365 days)</h3>
+  <canvas id="dailyByteRateChart" style="max-height: 350px;"></canvas>
+</div>
+
+<div class="container mt-4">
+  <h3>Threads & Torrents Fetched per Day (last 365 days)</h3>
+  <canvas id="dailyFetchChart" style="max-height: 350px;"></canvas>
+</div>
+
+<script>
+  (async () => {
+    const resp = await fetch('/stats/daily-byte-rate');
+    const data = await resp.json();
+    const labels = data.map(d => d.day);
+    const byteRates = data.map(d => d.byte_rate);
+
+    new Chart(document.getElementById('dailyByteRateChart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Avg Byte Rate',
+          data: byteRates,
+          backgroundColor: 'rgba(13, 110, 253, 0.5)',
+          borderColor: 'rgba(13, 110, 253, 1)',
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (_, i) => data[i]?.byte_rate_fmt ?? ''
+            }
+          }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: ctx => [
+                'Avg rate: ' + data[ctx.dataIndex].byte_rate_fmt,
+                'Total size: ' + data[ctx.dataIndex].total_size_fmt,
+              ]
+            }
+          },
+          legend: { display: false }
+        }
+      }
+    });
+
+    const [threadResp, torrentResp, doneResp] = await Promise.all([
+      fetch('/stats/daily-thread-count'),
+      fetch('/stats/daily-torrent-count'),
+      fetch('/stats/daily-done-count'),
+    ]);
+    const threadData = await threadResp.json();
+    const torrentData = await torrentResp.json();
+    const doneData = await doneResp.json();
+
+    const threadMap = Object.fromEntries(threadData.map(d => [d.day, d.count]));
+    const torrentMap = Object.fromEntries(torrentData.map(d => [d.day, d.count]));
+    const doneMap = Object.fromEntries(doneData.map(d => [d.day, d.count]));
+    const allDays = [...new Set([
+      ...threadData.map(d => d.day),
+      ...torrentData.map(d => d.day),
+      ...doneData.map(d => d.day),
+    ])].sort();
+
+    new Chart(document.getElementById('dailyFetchChart'), {
+      type: 'line',
+      data: {
+        labels: allDays,
+        datasets: [
+          {
+            label: 'Threads Fetched',
+            data: allDays.map(d => threadMap[d] ?? 0),
+            backgroundColor: 'rgba(25, 135, 84, 0.5)',
+            borderColor: 'rgba(25, 135, 84, 1)',
+            borderWidth: 1,
+          },
+          {
+            label: 'Torrents Fetched',
+            data: allDays.map(d => torrentMap[d] ?? 0),
+            backgroundColor: 'rgba(255, 193, 7, 0.5)',
+            borderColor: 'rgba(255, 193, 7, 1)',
+            borderWidth: 1,
+          },
+          {
+            label: 'Downloads Done',
+            data: allDays.map(d => doneMap[d] ?? 0),
+            backgroundColor: 'rgba(13, 110, 253, 0.5)',
+            borderColor: 'rgba(13, 110, 253, 1)',
+            borderWidth: 1,
+          },
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: { y: { beginAtZero: true } },
+      }
+    });
+  })();
+</script>
+</body>
+</html>
