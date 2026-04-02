@@ -167,10 +167,10 @@ def create_app() -> fastapi.FastAPI:
         return datetime(now.year, 1, 1, tzinfo=UTC)
 
     def _week_range_2y(year_start: datetime) -> tuple[int, int]:
-        """Return (min_week_num, max_week_num) covering last ~2 years up to current week."""
+        """Return (min_week_num, max_week_num) covering last ~1 year up to current week."""
         now = datetime.now(UTC)
         max_week = int((now - year_start).total_seconds() // (7 * 86400))
-        min_week = max_week - 104  # 104 weeks = 2 years
+        min_week = max_week - 52  # 52 weeks = 1 year
         return min_week, max_week
 
     def _fill_week_gaps_count(df: pl.DataFrame, year_start: datetime) -> pl.DataFrame:
@@ -194,7 +194,7 @@ def create_app() -> fastapi.FastAPI:
             from job
             where
                 status = $1 and
-                coalesce(completed_at, updated_at) >= current_timestamp - interval '2 years'
+                coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'
             """,
             ITEM_STATUS_DONE,
         )
@@ -241,7 +241,7 @@ def create_app() -> fastapi.FastAPI:
             """
             select created_at as ts
             from thread
-            where created_at >= current_timestamp - interval '2 years'
+            where created_at >= current_timestamp - interval '1 year'
             """
         )
         if not rows:
@@ -272,7 +272,7 @@ def create_app() -> fastapi.FastAPI:
             """
             select created_at as ts
             from torrent
-            where created_at >= current_timestamp - interval '2 years'
+            where created_at >= current_timestamp - interval '1 year'
             """
         )
         if not rows:
@@ -305,7 +305,7 @@ def create_app() -> fastapi.FastAPI:
             from job
             where
                 status = $1 and
-                coalesce(completed_at, updated_at) >= current_timestamp - interval '2 years'
+                coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'
             """,
             ITEM_STATUS_DONE,
         )
