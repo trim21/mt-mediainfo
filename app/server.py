@@ -162,20 +162,21 @@ def create_app() -> fastapi.FastAPI:
         #     ctx={"torrent": torrent},
         # )
 
-    def _week_start_of_year() -> datetime:
+    def _today_start() -> datetime:
         now = datetime.now(UTC)
-        return datetime(now.year, 1, 1, tzinfo=UTC)
+        return datetime(now.year, now.month, now.day, tzinfo=UTC)
 
-    def _week_range_2y(year_start: datetime) -> tuple[int, int]:
-        """Return (min_week_num, max_week_num) covering last ~1 year up to current week."""
-        now = datetime.now(UTC)
-        max_week = int((now - year_start).total_seconds() // (7 * 86400))
-        min_week = max_week - 52  # 52 weeks = 1 year
-        return min_week, max_week
+    def _week_num(ts: datetime, today: datetime) -> int:
+        """Week number relative to today. 0 = current week (last 7 days), -1 = 7-14 days ago, etc."""
+        return int((ts - today).total_seconds() // (7 * 86400))
 
-    def _fill_week_gaps_count(df: pl.DataFrame, year_start: datetime) -> pl.DataFrame:
+    def _week_range() -> tuple[int, int]:
+        """Return (min_week_num, max_week_num) for last 52 weeks."""
+        return -51, 0
+
+    def _fill_week_gaps_count(df: pl.DataFrame) -> pl.DataFrame:
         grouped = df.group_by("week_num").len(name="count")
-        min_week, max_week = _week_range_2y(year_start)
+        min_week, max_week = _week_range()
         all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
         return (
             all_weeks
@@ -183,6 +184,20 @@ def create_app() -> fastapi.FastAPI:
             .with_columns(pl.col("count").fill_null(0))
             .sort("week_num")
         )
+
+    def _compute_week_num_col(today: datetime) -> pl.Expr:
+        return (
+            (
+                (pl.col("ts").cast(pl.Datetime("us", "UTC")) - today).dt.total_seconds()
+                // (7 * 86400)
+            )
+            .cast(pl.Int64)
+            .alias("week_num")
+        )
+
+    def _week_label(today: datetime, week_num: int) -> str:
+        start = today + timedelta(weeks=int(week_num))
+        return start.strftime("%Y-%m-%d")
 
     @app.get("/stats/weekly-byte-rate")
     async def weekly_byte_rate() -> ORJSONResponse:
@@ -201,21 +216,14 @@ def create_app() -> fastapi.FastAPI:
         if not rows:
             return ORJSONResponse([])
 
-        year_start = _week_start_of_year()
+        today = _today_start()
         df = pl.DataFrame({
             "ts": [row["ts"] for row in rows],
             "download_size": [row["download_size"] for row in rows],
         })
-        df = df.with_columns(
-            (
-                (pl.col("ts").cast(pl.Datetime("us", "UTC")) - year_start).dt.total_seconds()
-                // (7 * 86400)
-            )
-            .cast(pl.Int64)
-            .alias("week_num")
-        )
+        df = df.with_columns(_compute_week_num_col(today))
         grouped = df.group_by("week_num").agg(pl.col("download_size").sum().alias("total_size"))
-        min_week, max_week = _week_range_2y(year_start)
+        min_week, max_week = _week_range()
         all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
         result = (
             all_weeks
@@ -226,7 +234,7 @@ def create_app() -> fastapi.FastAPI:
         )
         return ORJSONResponse([
             {
-                "week": (year_start + timedelta(weeks=int(r["week_num"]))).isoformat(),
+                "week": _week_label(today, r["week_num"]),
                 "byte_rate": r["byte_rate"],
                 "byte_rate_fmt": human_readable_byte_rate(r["byte_rate"]),
                 "total_size": int(r["total_size"]),
@@ -247,20 +255,13 @@ def create_app() -> fastapi.FastAPI:
         if not rows:
             return ORJSONResponse([])
 
-        year_start = _week_start_of_year()
+        today = _today_start()
         df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
-        df = df.with_columns(
-            (
-                (pl.col("ts").cast(pl.Datetime("us", "UTC")) - year_start).dt.total_seconds()
-                // (7 * 86400)
-            )
-            .cast(pl.Int64)
-            .alias("week_num")
-        )
-        result = _fill_week_gaps_count(df, year_start)
+        df = df.with_columns(_compute_week_num_col(today))
+        result = _fill_week_gaps_count(df)
         return ORJSONResponse([
             {
-                "week": (year_start + timedelta(weeks=int(r["week_num"]))).isoformat(),
+                "week": _week_label(today, r["week_num"]),
                 "count": int(r["count"]),
             }
             for r in result.iter_rows(named=True)
@@ -278,20 +279,13 @@ def create_app() -> fastapi.FastAPI:
         if not rows:
             return ORJSONResponse([])
 
-        year_start = _week_start_of_year()
+        today = _today_start()
         df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
-        df = df.with_columns(
-            (
-                (pl.col("ts").cast(pl.Datetime("us", "UTC")) - year_start).dt.total_seconds()
-                // (7 * 86400)
-            )
-            .cast(pl.Int64)
-            .alias("week_num")
-        )
-        result = _fill_week_gaps_count(df, year_start)
+        df = df.with_columns(_compute_week_num_col(today))
+        result = _fill_week_gaps_count(df)
         return ORJSONResponse([
             {
-                "week": (year_start + timedelta(weeks=int(r["week_num"]))).isoformat(),
+                "week": _week_label(today, r["week_num"]),
                 "count": int(r["count"]),
             }
             for r in result.iter_rows(named=True)
@@ -312,20 +306,152 @@ def create_app() -> fastapi.FastAPI:
         if not rows:
             return ORJSONResponse([])
 
-        year_start = _week_start_of_year()
+        today = _today_start()
         df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
-        df = df.with_columns(
-            (
-                (pl.col("ts").cast(pl.Datetime("us", "UTC")) - year_start).dt.total_seconds()
-                // (7 * 86400)
-            )
-            .cast(pl.Int64)
-            .alias("week_num")
-        )
-        result = _fill_week_gaps_count(df, year_start)
+        df = df.with_columns(_compute_week_num_col(today))
+        result = _fill_week_gaps_count(df)
         return ORJSONResponse([
             {
-                "week": (year_start + timedelta(weeks=int(r["week_num"]))).isoformat(),
+                "week": _week_label(today, r["week_num"]),
+                "count": int(r["count"]),
+            }
+            for r in result.iter_rows(named=True)
+        ])
+
+    def _day_num(ts: datetime, today: datetime) -> int:
+        return int((ts - today).total_seconds() // 86400)
+
+    def _compute_day_num_col(today: datetime) -> pl.Expr:
+        return (
+            ((pl.col("ts").cast(pl.Datetime("us", "UTC")) - today).dt.total_seconds() // 86400)
+            .cast(pl.Int64)
+            .alias("day_num")
+        )
+
+    def _day_label(today: datetime, day_num: int) -> str:
+        return (today + timedelta(days=int(day_num))).strftime("%Y-%m-%d")
+
+    def _fill_day_gaps_count(df: pl.DataFrame) -> pl.DataFrame:
+        grouped = df.group_by("day_num").len(name="count")
+        all_days = pl.DataFrame({"day_num": list(range(-364, 1))})
+        return (
+            all_days
+            .join(grouped, on="day_num", how="left")
+            .with_columns(pl.col("count").fill_null(0))
+            .sort("day_num")
+        )
+
+    @app.get("/stats/daily-byte-rate")
+    async def daily_byte_rate() -> ORJSONResponse:
+        rows = await pool.fetch(
+            """
+            select coalesce(completed_at, updated_at) as ts, download_size
+            from job
+            where
+                status = $1 and download_size > 0
+                and coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'
+            """,
+            ITEM_STATUS_DONE,
+        )
+        if not rows:
+            return ORJSONResponse([])
+
+        today = _today_start()
+        df = pl.DataFrame({
+            "ts": [row["ts"] for row in rows],
+            "download_size": [row["download_size"] for row in rows],
+        })
+        df = df.with_columns(_compute_day_num_col(today))
+        grouped = df.group_by("day_num").agg(pl.col("download_size").sum().alias("total_size"))
+        all_days = pl.DataFrame({"day_num": list(range(-364, 1))})
+        result = (
+            all_days
+            .join(grouped, on="day_num", how="left")
+            .with_columns(pl.col("total_size").fill_null(0))
+            .with_columns((pl.col("total_size") / 86400.0).alias("byte_rate"))
+            .sort("day_num")
+        )
+        return ORJSONResponse([
+            {
+                "day": _day_label(today, r["day_num"]),
+                "byte_rate": r["byte_rate"],
+                "byte_rate_fmt": human_readable_byte_rate(r["byte_rate"]),
+                "total_size": int(r["total_size"]),
+                "total_size_fmt": human_readable_size(r["total_size"]),
+            }
+            for r in result.iter_rows(named=True)
+        ])
+
+    @app.get("/stats/daily-thread-count")
+    async def daily_thread_count() -> ORJSONResponse:
+        rows = await pool.fetch(
+            """
+            select created_at as ts
+            from thread
+            where created_at >= current_timestamp - interval '1 year'
+            """
+        )
+        if not rows:
+            return ORJSONResponse([])
+
+        today = _today_start()
+        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
+        df = df.with_columns(_compute_day_num_col(today))
+        result = _fill_day_gaps_count(df)
+        return ORJSONResponse([
+            {
+                "day": _day_label(today, r["day_num"]),
+                "count": int(r["count"]),
+            }
+            for r in result.iter_rows(named=True)
+        ])
+
+    @app.get("/stats/daily-torrent-count")
+    async def daily_torrent_count() -> ORJSONResponse:
+        rows = await pool.fetch(
+            """
+            select created_at as ts
+            from torrent
+            where created_at >= current_timestamp - interval '1 year'
+            """
+        )
+        if not rows:
+            return ORJSONResponse([])
+
+        today = _today_start()
+        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
+        df = df.with_columns(_compute_day_num_col(today))
+        result = _fill_day_gaps_count(df)
+        return ORJSONResponse([
+            {
+                "day": _day_label(today, r["day_num"]),
+                "count": int(r["count"]),
+            }
+            for r in result.iter_rows(named=True)
+        ])
+
+    @app.get("/stats/daily-done-count")
+    async def daily_done_count() -> ORJSONResponse:
+        rows = await pool.fetch(
+            """
+            select coalesce(completed_at, updated_at) as ts
+            from job
+            where
+                status = $1 and
+                coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'
+            """,
+            ITEM_STATUS_DONE,
+        )
+        if not rows:
+            return ORJSONResponse([])
+
+        today = _today_start()
+        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
+        df = df.with_columns(_compute_day_num_col(today))
+        result = _fill_day_gaps_count(df)
+        return ORJSONResponse([
+            {
+                "day": _day_label(today, r["day_num"]),
                 "count": int(r["count"]),
             }
             for r in result.iter_rows(named=True)
@@ -589,5 +715,9 @@ def create_app() -> fastapi.FastAPI:
                 "torrent_rate_3m": torrent_rate_3m,
             },
         )
+
+    @app.get("/detail")
+    async def detail(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
+        return render("detail.html.j2", ctx={})
 
     return app

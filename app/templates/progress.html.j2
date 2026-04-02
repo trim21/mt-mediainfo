@@ -234,11 +234,15 @@
   <canvas id="weeklyFetchChart" style="max-height: 350px;"></canvas>
 </div>
 
+<div class="container mt-4 mb-4">
+  <a href="/detail">View daily detail (last 365 days) &rarr;</a>
+</div>
+
 <script>
   (async () => {
     const resp = await fetch('/stats/weekly-byte-rate');
     const data = await resp.json();
-    const labels = data.map(d => d.week.slice(0, 10));
+    const labels = data.map(d => d.week);
     const byteRates = data.map(d => d.byte_rate);
     const sizes = data.map(d => d.total_size);
 
@@ -288,13 +292,13 @@
     const torrentData = await torrentResp.json();
     const doneData = await doneResp.json();
 
-    const threadMap = Object.fromEntries(threadData.map(d => [d.week.slice(0, 10), d.count]));
-    const torrentMap = Object.fromEntries(torrentData.map(d => [d.week.slice(0, 10), d.count]));
-    const doneMap = Object.fromEntries(doneData.map(d => [d.week.slice(0, 10), d.count]));
+    const threadMap = Object.fromEntries(threadData.map(d => [d.week, d.count]));
+    const torrentMap = Object.fromEntries(torrentData.map(d => [d.week, d.count]));
+    const doneMap = Object.fromEntries(doneData.map(d => [d.week, d.count]));
     const allWeeks = [...new Set([
-      ...threadData.map(d => d.week.slice(0, 10)),
-      ...torrentData.map(d => d.week.slice(0, 10)),
-      ...doneData.map(d => d.week.slice(0, 10)),
+      ...threadData.map(d => d.week),
+      ...torrentData.map(d => d.week),
+      ...doneData.map(d => d.week),
     ])].sort();
 
     new Chart(document.getElementById('weeklyFetchChart'), {
