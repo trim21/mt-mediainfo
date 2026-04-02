@@ -1,11 +1,13 @@
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Protocol
 
 import asyncpg
 import fastapi
 import orjson
+import polars as pl
 from fastapi import Depends, Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, JSONResponse
@@ -160,86 +162,144 @@ def create_app() -> fastapi.FastAPI:
         #     ctx={"torrent": torrent},
         # )
 
+    def _week_start_of_year() -> datetime:
+        now = datetime.now(UTC)
+        return datetime(now.year, 1, 1, tzinfo=UTC)
+
     @app.get("/stats/weekly-byte-rate")
     async def weekly_byte_rate() -> ORJSONResponse:
         rows = await pool.fetch(
             """
             select
-                date_trunc('day', coalesce(completed_at, updated_at)) as week_start,
-                sum(download_size) as total_size,
-                (sum(download_size) / 86400.0)::float8 as avg_byte_rate
+                coalesce(completed_at, updated_at) as ts,
+                download_size
             from job
             where
                 status = $1 and
                 coalesce(completed_at, updated_at) >= current_timestamp - interval '2 years'
-            group by week_start
-            order by week_start
             """,
             ITEM_STATUS_DONE,
+        )
+        if not rows:
+            return ORJSONResponse([])
+
+        year_start = _week_start_of_year()
+        df = pl.DataFrame({
+            "ts": [row["ts"] for row in rows],
+            "download_size": [row["download_size"] for row in rows],
+        })
+        df = df.with_columns(
+            ((pl.col("ts").cast(pl.Datetime("us")) - year_start).dt.total_seconds() // (7 * 86400))
+            .cast(pl.Int64)
+            .alias("week_num")
+        )
+        result = (
+            df
+            .group_by("week_num")
+            .agg(
+                pl.col("download_size").sum().alias("total_size"),
+            )
+            .with_columns(
+                (pl.col("total_size") / (7.0 * 86400)).alias("byte_rate"),
+            )
+            .sort("week_num")
         )
         return ORJSONResponse([
             {
-                "week": row["week_start"].isoformat(),
-                "byte_rate": row["avg_byte_rate"],
-                "byte_rate_fmt": human_readable_byte_rate(row["avg_byte_rate"]),
-                "total_size": int(row["total_size"]),
-                "total_size_fmt": human_readable_size(row["total_size"]),
+                "week": (year_start + timedelta(weeks=int(r["week_num"]))).isoformat(),
+                "byte_rate": r["byte_rate"],
+                "byte_rate_fmt": human_readable_byte_rate(r["byte_rate"]),
+                "total_size": int(r["total_size"]),
+                "total_size_fmt": human_readable_size(r["total_size"]),
             }
-            for row in rows
+            for r in result.iter_rows(named=True)
         ])
 
-    @app.get("/stats/daily-thread-count")
-    async def daily_thread_count() -> ORJSONResponse:
+    @app.get("/stats/weekly-thread-count")
+    async def weekly_thread_count() -> ORJSONResponse:
         rows = await pool.fetch(
             """
-            select
-                date_trunc('day', created_at) as day,
-                count(1) as count
+            select created_at as ts
             from thread
             where created_at >= current_timestamp - interval '2 years'
-            group by day
-            order by day
             """
         )
+        if not rows:
+            return ORJSONResponse([])
+
+        year_start = _week_start_of_year()
+        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
+        df = df.with_columns(
+            ((pl.col("ts").cast(pl.Datetime("us")) - year_start).dt.total_seconds() // (7 * 86400))
+            .cast(pl.Int64)
+            .alias("week_num")
+        )
+        result = df.group_by("week_num").len(name="count").sort("week_num")
         return ORJSONResponse([
-            {"day": row["day"].isoformat(), "count": int(row["count"])} for row in rows
+            {
+                "week": (year_start + timedelta(weeks=int(r["week_num"]))).isoformat(),
+                "count": int(r["count"]),
+            }
+            for r in result.iter_rows(named=True)
         ])
 
-    @app.get("/stats/daily-torrent-count")
-    async def daily_torrent_count() -> ORJSONResponse:
+    @app.get("/stats/weekly-torrent-count")
+    async def weekly_torrent_count() -> ORJSONResponse:
         rows = await pool.fetch(
             """
-            select
-                date_trunc('day', created_at) as day,
-                count(1) as count
+            select created_at as ts
             from torrent
             where created_at >= current_timestamp - interval '2 years'
-            group by day
-            order by day
             """
         )
+        if not rows:
+            return ORJSONResponse([])
+
+        year_start = _week_start_of_year()
+        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
+        df = df.with_columns(
+            ((pl.col("ts").cast(pl.Datetime("us")) - year_start).dt.total_seconds() // (7 * 86400))
+            .cast(pl.Int64)
+            .alias("week_num")
+        )
+        result = df.group_by("week_num").len(name="count").sort("week_num")
         return ORJSONResponse([
-            {"day": row["day"].isoformat(), "count": int(row["count"])} for row in rows
+            {
+                "week": (year_start + timedelta(weeks=int(r["week_num"]))).isoformat(),
+                "count": int(r["count"]),
+            }
+            for r in result.iter_rows(named=True)
         ])
 
-    @app.get("/stats/daily-done-count")
-    async def daily_done_count() -> ORJSONResponse:
+    @app.get("/stats/weekly-done-count")
+    async def weekly_done_count() -> ORJSONResponse:
         rows = await pool.fetch(
             """
-            select
-                date_trunc('day', coalesce(completed_at, updated_at)) as day,
-                count(1) as count
+            select coalesce(completed_at, updated_at) as ts
             from job
             where
                 status = $1 and
                 coalesce(completed_at, updated_at) >= current_timestamp - interval '2 years'
-            group by day
-            order by day
             """,
             ITEM_STATUS_DONE,
         )
+        if not rows:
+            return ORJSONResponse([])
+
+        year_start = _week_start_of_year()
+        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
+        df = df.with_columns(
+            ((pl.col("ts").cast(pl.Datetime("us")) - year_start).dt.total_seconds() // (7 * 86400))
+            .cast(pl.Int64)
+            .alias("week_num")
+        )
+        result = df.group_by("week_num").len(name="count").sort("week_num")
         return ORJSONResponse([
-            {"day": row["day"].isoformat(), "count": int(row["count"])} for row in rows
+            {
+                "week": (year_start + timedelta(weeks=int(r["week_num"]))).isoformat(),
+                "count": int(r["count"]),
+            }
+            for r in result.iter_rows(named=True)
         ])
 
     @app.get("/progress")

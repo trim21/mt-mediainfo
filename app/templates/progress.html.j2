@@ -225,13 +225,13 @@
 </div>
 
 <div class="container mt-4">
-  <h3>Average Byte Rate per Day (last 2 years)</h3>
+  <h3>Average Byte Rate per Week (last 2 years)</h3>
   <canvas id="weeklyByteRateChart" style="max-height: 350px;"></canvas>
 </div>
 
 <div class="container mt-4">
-  <h3>Threads & Torrents Fetched per Day (last 2 years)</h3>
-  <canvas id="dailyFetchChart" style="max-height: 350px;"></canvas>
+  <h3>Threads & Torrents Fetched per Week (last 2 years)</h3>
+  <canvas id="weeklyFetchChart" style="max-height: 350px;"></canvas>
 </div>
 
 <script>
@@ -278,47 +278,47 @@
       }
     });
 
-    // Thread & torrent fetches per day chart
+    // Thread & torrent fetches per week chart
     const [threadResp, torrentResp, doneResp] = await Promise.all([
-      fetch('/stats/daily-thread-count'),
-      fetch('/stats/daily-torrent-count'),
-      fetch('/stats/daily-done-count'),
+      fetch('/stats/weekly-thread-count'),
+      fetch('/stats/weekly-torrent-count'),
+      fetch('/stats/weekly-done-count'),
     ]);
     const threadData = await threadResp.json();
     const torrentData = await torrentResp.json();
     const doneData = await doneResp.json();
 
-    const threadMap = Object.fromEntries(threadData.map(d => [d.day.slice(0, 10), d.count]));
-    const torrentMap = Object.fromEntries(torrentData.map(d => [d.day.slice(0, 10), d.count]));
-    const doneMap = Object.fromEntries(doneData.map(d => [d.day.slice(0, 10), d.count]));
-    const allDays = [...new Set([
-      ...threadData.map(d => d.day.slice(0, 10)),
-      ...torrentData.map(d => d.day.slice(0, 10)),
-      ...doneData.map(d => d.day.slice(0, 10)),
+    const threadMap = Object.fromEntries(threadData.map(d => [d.week.slice(0, 10), d.count]));
+    const torrentMap = Object.fromEntries(torrentData.map(d => [d.week.slice(0, 10), d.count]));
+    const doneMap = Object.fromEntries(doneData.map(d => [d.week.slice(0, 10), d.count]));
+    const allWeeks = [...new Set([
+      ...threadData.map(d => d.week.slice(0, 10)),
+      ...torrentData.map(d => d.week.slice(0, 10)),
+      ...doneData.map(d => d.week.slice(0, 10)),
     ])].sort();
 
-    new Chart(document.getElementById('dailyFetchChart'), {
+    new Chart(document.getElementById('weeklyFetchChart'), {
       type: 'line',
       data: {
-        labels: allDays,
+        labels: allWeeks,
         datasets: [
           {
             label: 'Threads Fetched',
-            data: allDays.map(d => threadMap[d] ?? 0),
+            data: allWeeks.map(d => threadMap[d] ?? 0),
             backgroundColor: 'rgba(25, 135, 84, 0.5)',
             borderColor: 'rgba(25, 135, 84, 1)',
             borderWidth: 1,
           },
           {
             label: 'Torrents Fetched',
-            data: allDays.map(d => torrentMap[d] ?? 0),
+            data: allWeeks.map(d => torrentMap[d] ?? 0),
             backgroundColor: 'rgba(255, 193, 7, 0.5)',
             borderColor: 'rgba(255, 193, 7, 1)',
             borderWidth: 1,
           },
           {
             label: 'Downloads Done',
-            data: allDays.map(d => doneMap[d] ?? 0),
+            data: allWeeks.map(d => doneMap[d] ?? 0),
             backgroundColor: 'rgba(13, 110, 253, 0.5)',
             borderColor: 'rgba(13, 110, 253, 1)',
             borderWidth: 1,
