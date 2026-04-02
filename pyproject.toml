@@ -24,7 +24,6 @@ dependencies = [
     'tzdata',
     "six==1.17.0",
     "tenacity==9.1.4",
-    "more-itertools==10.8.0",
     "sslog==0.0.0a52",
     "regex==2026.3.32",
     "asyncpg==0.31.0",

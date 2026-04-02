@@ -1,10 +1,10 @@
+import itertools
 import os
 import time
 from pathlib import Path
 
 import pydantic
 from bencode2 import BencodeDecodeError
-from more_itertools import chunked
 from sslog import logger
 
 from app.config import Config
@@ -36,7 +36,7 @@ class Scrape:
 
         c = 0
 
-        for ids in chunked(range(fetched_max_id, known_max_id), 100):
+        for ids in itertools.batched(range(fetched_max_id, known_max_id), 100):
             current_ids = {
                 x[0]
                 for x in self.__db.fetch_all(
