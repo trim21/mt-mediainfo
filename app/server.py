@@ -165,13 +165,13 @@ def create_app() -> fastapi.FastAPI:
         rows = await pool.fetch(
             """
             select
-                date_trunc('day', updated_at) as week_start,
+                date_trunc('day', coalesce(completed_at, updated_at)) as week_start,
                 sum(download_size) as total_size,
                 (sum(download_size) / 86400.0)::float8 as avg_byte_rate
             from job
             where
                 status = $1 and
-                updated_at >= current_timestamp - interval '2 years'
+                coalesce(completed_at, updated_at) >= current_timestamp - interval '2 years'
             group by week_start
             order by week_start
             """,
@@ -341,28 +341,28 @@ def create_app() -> fastapi.FastAPI:
             """
             select
                 coalesce(sum(job.download_size) filter (
-                    where job.updated_at >= current_timestamp - interval '1 day'
+                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '1 day'
                 ), 0) as size_1d,
                 coalesce(sum(job.download_size) filter (
-                    where job.updated_at >= current_timestamp - interval '3 days'
+                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '3 days'
                 ), 0) as size_3d,
                 coalesce(sum(job.download_size) filter (
-                    where job.updated_at >= current_timestamp - interval '7 days'
+                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '7 days'
                 ), 0) as size_1w,
                 coalesce(sum(job.download_size) filter (
-                    where job.updated_at >= current_timestamp - interval '14 days'
+                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '14 days'
                 ), 0) as size_2w,
                 coalesce(sum(job.download_size) filter (
-                    where job.updated_at >= current_timestamp - interval '30 days'
+                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '30 days'
                 ), 0) as size_1m,
                 coalesce(sum(job.download_size) filter (
-                    where job.updated_at >= current_timestamp - interval '90 days'
+                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '90 days'
                 ), 0) as size_3m,
                 coalesce(sum(job.download_size) filter (
-                    where job.updated_at >= current_timestamp - interval '180 days'
+                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '180 days'
                 ), 0) as size_6m,
                 coalesce(sum(job.download_size) filter (
-                    where job.updated_at >= current_timestamp - interval '365 days'
+                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '365 days'
                 ), 0) as size_1y
             from job
             where job.status = $1
