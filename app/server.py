@@ -166,6 +166,24 @@ def create_app() -> fastapi.FastAPI:
         now = datetime.now(UTC)
         return datetime(now.year, 1, 1, tzinfo=UTC)
 
+    def _week_range_2y(year_start: datetime) -> tuple[int, int]:
+        """Return (min_week_num, max_week_num) covering last ~2 years up to current week."""
+        now = datetime.now(UTC)
+        max_week = int((now - year_start).total_seconds() // (7 * 86400))
+        min_week = max_week - 104  # 104 weeks = 2 years
+        return min_week, max_week
+
+    def _fill_week_gaps_count(df: pl.DataFrame, year_start: datetime) -> pl.DataFrame:
+        grouped = df.group_by("week_num").len(name="count")
+        min_week, max_week = _week_range_2y(year_start)
+        all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
+        return (
+            all_weeks
+            .join(grouped, on="week_num", how="left")
+            .with_columns(pl.col("count").fill_null(0))
+            .sort("week_num")
+        )
+
     @app.get("/stats/weekly-byte-rate")
     async def weekly_byte_rate() -> ORJSONResponse:
         rows = await pool.fetch(
@@ -196,15 +214,14 @@ def create_app() -> fastapi.FastAPI:
             .cast(pl.Int64)
             .alias("week_num")
         )
+        grouped = df.group_by("week_num").agg(pl.col("download_size").sum().alias("total_size"))
+        min_week, max_week = _week_range_2y(year_start)
+        all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
         result = (
-            df
-            .group_by("week_num")
-            .agg(
-                pl.col("download_size").sum().alias("total_size"),
-            )
-            .with_columns(
-                (pl.col("total_size") / (7.0 * 86400)).alias("byte_rate"),
-            )
+            all_weeks
+            .join(grouped, on="week_num", how="left")
+            .with_columns(pl.col("total_size").fill_null(0))
+            .with_columns((pl.col("total_size") / (7.0 * 86400)).alias("byte_rate"))
             .sort("week_num")
         )
         return ORJSONResponse([
@@ -240,7 +257,7 @@ def create_app() -> fastapi.FastAPI:
             .cast(pl.Int64)
             .alias("week_num")
         )
-        result = df.group_by("week_num").len(name="count").sort("week_num")
+        result = _fill_week_gaps_count(df, year_start)
         return ORJSONResponse([
             {
                 "week": (year_start + timedelta(weeks=int(r["week_num"]))).isoformat(),
@@ -271,7 +288,7 @@ def create_app() -> fastapi.FastAPI:
             .cast(pl.Int64)
             .alias("week_num")
         )
-        result = df.group_by("week_num").len(name="count").sort("week_num")
+        result = _fill_week_gaps_count(df, year_start)
         return ORJSONResponse([
             {
                 "week": (year_start + timedelta(weeks=int(r["week_num"]))).isoformat(),
@@ -305,7 +322,7 @@ def create_app() -> fastapi.FastAPI:
             .cast(pl.Int64)
             .alias("week_num")
         )
-        result = df.group_by("week_num").len(name="count").sort("week_num")
+        result = _fill_week_gaps_count(df, year_start)
         return ORJSONResponse([
             {
                 "week": (year_start + timedelta(weeks=int(r["week_num"]))).isoformat(),
