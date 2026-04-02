@@ -26,6 +26,7 @@ create table if not exists job(
 );
 
 alter table job add column if not exists download_size int8 not null default 0;
+alter table job add column if not exists completed_at timestamptz default null;
 
 create table if not exists node (
   id uuid primary key,
