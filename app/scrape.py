@@ -10,7 +10,7 @@ from sslog import logger
 from app.config import Config
 from app.const import SELECTED_CATEGORY
 from app.db import Database
-from app.mt import MTeamAPI, MTeamRequestError, httpx_network_errors
+from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
 from app.torrent import parse_torrent
 from app.utils import get_info_hash_v1_from_content, parse_obj_as
 
@@ -107,7 +107,15 @@ class Scrape:
 
         for (tid,) in threads:
             logger.info("fetch torrent of thread {}", tid)
-            tc = self.mteam_client.download_torrent(tid=tid)
+            try:
+                tc = self.mteam_client.download_torrent(tid=tid)
+            except TorrentFileError:
+                logger.warning("torrent file error for thread {}", tid)
+                self.__db.execute(
+                    """update thread set mediainfo = $2 where tid = $1""",
+                    [tid, "invalid torrent"],
+                )
+                continue
 
             try:
                 t = parse_torrent(tc)
