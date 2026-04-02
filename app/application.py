@@ -385,3 +385,45 @@ class Pick:
     size: int
     imdb_id: str = ""
     douban_id: str = ""
+
+
+def backfill_download_size(cfg: Config) -> None:
+    """Backfill download_size for old done jobs using torrent file content."""
+    db = Database(cfg)
+
+    rows: list[tuple[int, ...]] = db.fetch_all(
+        """
+        select job.tid, job.node_id from job
+        where job.status = $1 and job.download_size = 0
+        """,
+        [ITEM_STATUS_DONE],
+    )
+
+    logger.info("found {} jobs to backfill", len(rows))
+
+    for tid, node_id in rows:
+        tc = db.fetch_val("select content from torrent where tid = $1 limit 1", [tid])
+        if tc is None:
+            logger.warning("no torrent content for tid={}", tid)
+            continue
+
+        t = parse_torrent(tc)
+
+        # same logic as __add_picked_to_qb: keep only the largest video file
+        if t.info.files:
+            video_files = [f for f in t.info.files if f.name.lower().endswith(VIDEO_FILE_EXT)]
+            if video_files:
+                video_files.sort(key=lambda x: x.length, reverse=True)
+                download_size = video_files[0].length
+            else:
+                download_size = t.total_length
+        else:
+            download_size = t.total_length
+
+        db.execute(
+            "update job set download_size = $1 where tid = $2 and node_id = $3",
+            [download_size, tid, node_id],
+        )
+        logger.info("backfilled tid={} download_size={}", tid, download_size)
+
+    logger.info("backfill complete")

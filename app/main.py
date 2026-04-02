@@ -1,6 +1,6 @@
 import click
 
-from app.application import Application
+from app.application import Application, backfill_download_size
 from app.config import load_config
 from app.scrape import Scrape
 
@@ -22,6 +22,8 @@ def node() -> None:
 @cli.command()
 def scrape() -> None:
     cfg = load_config()
+
+    backfill_download_size(cfg)
 
     s = Scrape(cfg)
     s.start()
