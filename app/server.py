@@ -1,8 +1,9 @@
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Protocol
+from zoneinfo import ZoneInfo
 
 import asyncpg
 import fastapi
@@ -162,9 +163,11 @@ def create_app() -> fastapi.FastAPI:
         #     ctx={"torrent": torrent},
         # )
 
+    _tz_shanghai = ZoneInfo("Asia/Shanghai")
+
     def _today_start() -> datetime:
-        now = datetime.now(UTC)
-        return datetime(now.year, now.month, now.day, tzinfo=UTC)
+        now = datetime.now(_tz_shanghai)
+        return datetime(now.year, now.month, now.day, tzinfo=_tz_shanghai)
 
     def _week_num(ts: datetime, today: datetime) -> int:
         """Week number relative to today. 0 = current week (last 7 days), -1 = 7-14 days ago, etc."""
@@ -188,7 +191,7 @@ def create_app() -> fastapi.FastAPI:
     def _compute_week_num_col(today: datetime) -> pl.Expr:
         return (
             (
-                (pl.col("ts").cast(pl.Datetime("us", "UTC")) - today).dt.total_seconds()
+                (pl.col("ts").cast(pl.Datetime("us", "Asia/Shanghai")) - today).dt.total_seconds()
                 // (7 * 86400)
             )
             .cast(pl.Int64)
@@ -323,7 +326,10 @@ def create_app() -> fastapi.FastAPI:
 
     def _compute_day_num_col(today: datetime) -> pl.Expr:
         return (
-            ((pl.col("ts").cast(pl.Datetime("us", "UTC")) - today).dt.total_seconds() // 86400)
+            (
+                (pl.col("ts").cast(pl.Datetime("us", "Asia/Shanghai")) - today).dt.total_seconds()
+                // 86400
+            )
             .cast(pl.Int64)
             .alias("day_num")
         )
@@ -346,7 +352,7 @@ def create_app() -> fastapi.FastAPI:
         today = _today_start()
         if start is None:
             start = today - timedelta(days=364)
-        start = start.replace(tzinfo=UTC) if start.tzinfo is None else start
+        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
         days_back = (today - start).days
         rows = await pool.fetch(
             """
@@ -392,7 +398,7 @@ def create_app() -> fastapi.FastAPI:
         today = _today_start()
         if start is None:
             start = today - timedelta(days=364)
-        start = start.replace(tzinfo=UTC) if start.tzinfo is None else start
+        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
         days_back = (today - start).days
         rows = await pool.fetch(
             """
@@ -421,7 +427,7 @@ def create_app() -> fastapi.FastAPI:
         today = _today_start()
         if start is None:
             start = today - timedelta(days=364)
-        start = start.replace(tzinfo=UTC) if start.tzinfo is None else start
+        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
         days_back = (today - start).days
         rows = await pool.fetch(
             """
@@ -450,7 +456,7 @@ def create_app() -> fastapi.FastAPI:
         today = _today_start()
         if start is None:
             start = today - timedelta(days=364)
-        start = start.replace(tzinfo=UTC) if start.tzinfo is None else start
+        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
         days_back = (today - start).days
         rows = await pool.fetch(
             """
