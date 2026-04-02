@@ -165,9 +165,9 @@ def create_app() -> fastapi.FastAPI:
         rows = await pool.fetch(
             """
             select
-                date_trunc('week', updated_at) as week_start,
+                date_trunc('day', updated_at) as week_start,
                 sum(download_size) as total_size,
-                (sum(download_size) / (7.0 * 86400))::float8 as avg_byte_rate
+                (sum(download_size) / 86400.0)::float8 as avg_byte_rate
             from job
             where
                 status = $1 and
