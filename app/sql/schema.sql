@@ -17,9 +17,12 @@ create table if not exists job(
     failed_reason text not null default '',
     status text not null default '',
     start_download_time timestamptz default null,
+    download_size int8 not null default 0,
     updated_at timestamptz default current_timestamp,
     primary key (tid, node_id)
 );
+
+alter table job add column if not exists download_size int8 not null default 0;
 
 create table if not exists node (
   id uuid primary key,

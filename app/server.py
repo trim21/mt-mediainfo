@@ -258,32 +258,31 @@ def create_app() -> fastapi.FastAPI:
         rate_stats = await pool.fetchrow(
             """
             select
-                coalesce(sum(thread.size) filter (
+                coalesce(sum(job.download_size) filter (
                     where job.updated_at >= current_timestamp - interval '1 day'
                 ), 0) as size_1d,
-                coalesce(sum(thread.size) filter (
+                coalesce(sum(job.download_size) filter (
                     where job.updated_at >= current_timestamp - interval '3 days'
                 ), 0) as size_3d,
-                coalesce(sum(thread.size) filter (
+                coalesce(sum(job.download_size) filter (
                     where job.updated_at >= current_timestamp - interval '7 days'
                 ), 0) as size_1w,
-                coalesce(sum(thread.size) filter (
+                coalesce(sum(job.download_size) filter (
                     where job.updated_at >= current_timestamp - interval '14 days'
                 ), 0) as size_2w,
-                coalesce(sum(thread.size) filter (
+                coalesce(sum(job.download_size) filter (
                     where job.updated_at >= current_timestamp - interval '30 days'
                 ), 0) as size_1m,
-                coalesce(sum(thread.size) filter (
+                coalesce(sum(job.download_size) filter (
                     where job.updated_at >= current_timestamp - interval '90 days'
                 ), 0) as size_3m,
-                coalesce(sum(thread.size) filter (
+                coalesce(sum(job.download_size) filter (
                     where job.updated_at >= current_timestamp - interval '180 days'
                 ), 0) as size_6m,
-                coalesce(sum(thread.size) filter (
+                coalesce(sum(job.download_size) filter (
                     where job.updated_at >= current_timestamp - interval '365 days'
                 ), 0) as size_1y
             from job
-            join thread on (thread.tid = job.tid)
             where job.status = $1
             """,
             ITEM_STATUS_DONE,
