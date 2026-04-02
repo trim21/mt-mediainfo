@@ -201,12 +201,20 @@
       },
       options: {
         responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (_, i) => data[i]?.byte_rate_fmt ?? ''
+            }
+          }
+        },
         plugins: {
           tooltip: {
             callbacks: {
               label: ctx => [
-                'Avg rate: ' + byteRates[ctx.dataIndex],
-                'Total size: ' + sizes[ctx.dataIndex],
+                'Avg rate: ' + data[ctx.dataIndex].byte_rate_fmt,
+                'Total size: ' + data[ctx.dataIndex].total_size_fmt,
               ]
             }
           },
