@@ -38,6 +38,14 @@
 </div>
 
 <script>
+  function formatByteRate(bps) {
+    if (bps === 0) return '0 B/s';
+    const units = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s'];
+    let i = 0;
+    while (bps >= 1024 && i < units.length - 1) { bps /= 1024; i++; }
+    return bps.toFixed(2) + ' ' + units[i];
+  }
+
   (async () => {
     const start = {{ start | tojson }};
     const qs = start ? '?start=' + encodeURIComponent(start) : '';
@@ -64,7 +72,7 @@
           y: {
             beginAtZero: true,
             ticks: {
-              callback: (_, i) => data[i]?.byte_rate_fmt ?? ''
+              callback: value => formatByteRate(value)
             }
           }
         },
