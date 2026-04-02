@@ -180,8 +180,8 @@ def create_app() -> fastapi.FastAPI:
         return ORJSONResponse([
             {
                 "week": row["week_start"].isoformat(),
-                "byte_rate": row["avg_byte_rate"],
-                "total_size": int(row["total_size"]),
+                "byte_rate": human_readable_byte_rate(row["avg_byte_rate"]),
+                "total_size": human_readable_size(row["total_size"]),
             }
             for row in rows
         ])

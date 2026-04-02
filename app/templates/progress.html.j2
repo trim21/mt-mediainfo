@@ -184,22 +184,8 @@
     const resp = await fetch('/stats/weekly-byte-rate');
     const data = await resp.json();
     const labels = data.map(d => d.week.slice(0, 10));
-    const values = data.map(d => d.byte_rate);
+    const byteRates = data.map(d => d.byte_rate);
     const sizes = data.map(d => d.total_size);
-
-    function fmtByteRate(bps) {
-      const units = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s'];
-      let i = 0;
-      while (bps >= 1024 && i < units.length - 1) { bps /= 1024; i++; }
-      return bps.toFixed(2) + ' ' + units[i];
-    }
-
-    function fmtSize(bytes) {
-      const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
-      let i = 0;
-      while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
-      return bytes.toFixed(2) + ' ' + units[i];
-    }
 
     new Chart(document.getElementById('weeklyByteRateChart'), {
       type: 'bar',
@@ -207,7 +193,7 @@
         labels,
         datasets: [{
           label: 'Avg Byte Rate',
-          data: values,
+          data: byteRates,
           backgroundColor: 'rgba(13, 110, 253, 0.5)',
           borderColor: 'rgba(13, 110, 253, 1)',
           borderWidth: 1,
@@ -215,20 +201,12 @@
       },
       options: {
         responsive: true,
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: {
-              callback: v => fmtByteRate(v)
-            }
-          }
-        },
         plugins: {
           tooltip: {
             callbacks: {
               label: ctx => [
-                'Avg rate: ' + fmtByteRate(ctx.parsed.y),
-                'Total size: ' + fmtSize(sizes[ctx.dataIndex]),
+                'Avg rate: ' + byteRates[ctx.dataIndex],
+                'Total size: ' + sizes[ctx.dataIndex],
               ]
             }
           },
