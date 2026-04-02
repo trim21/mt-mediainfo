@@ -188,6 +188,40 @@ def create_app() -> fastapi.FastAPI:
             for row in rows
         ])
 
+    @app.get("/stats/daily-thread-count")
+    async def daily_thread_count() -> ORJSONResponse:
+        rows = await pool.fetch(
+            """
+            select
+                date_trunc('day', created_at) as day,
+                count(1) as count
+            from thread
+            where created_at >= current_timestamp - interval '2 years'
+            group by day
+            order by day
+            """
+        )
+        return ORJSONResponse([
+            {"day": row["day"].isoformat(), "count": int(row["count"])} for row in rows
+        ])
+
+    @app.get("/stats/daily-torrent-count")
+    async def daily_torrent_count() -> ORJSONResponse:
+        rows = await pool.fetch(
+            """
+            select
+                date_trunc('day', created_at) as day,
+                count(1) as count
+            from torrent
+            where created_at >= current_timestamp - interval '2 years'
+            group by day
+            order by day
+            """
+        )
+        return ORJSONResponse([
+            {"day": row["day"].isoformat(), "count": int(row["count"])} for row in rows
+        ])
+
     @app.get("/progress")
     async def progress(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
         # Scraping progress: how far along we are in scraping thread details

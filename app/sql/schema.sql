@@ -6,8 +6,11 @@ create table if not exists thread (
     info_hash text not null default '',
     seeders int8 not null default 0,
     category int4 not null default 0,
-    deleted bool default false
+    deleted bool default false,
+    created_at timestamptz not null default current_timestamp
 );
+
+alter table thread add column if not exists created_at timestamptz not null default current_timestamp;
 
 create table if not exists job(
     tid int,
@@ -33,7 +36,10 @@ create table if not exists torrent (
     -- hex info hash
     tid int8 primary key,
     info_hash text not null,
-    content bytea not null
+    content bytea not null,
+    created_at timestamptz not null default current_timestamp
 );
+
+alter table torrent add column if not exists created_at timestamptz not null default current_timestamp;
 
 create index if not exists torrent_info_hash on torrent (info_hash);
