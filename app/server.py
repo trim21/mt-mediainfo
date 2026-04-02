@@ -403,6 +403,54 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
+        # Thread scrape rate (threads per day)
+        scrape_rate_stats = await pool.fetchrow(
+            """
+            select
+                coalesce(count(1) filter (
+                    where created_at >= current_timestamp - interval '1 day'
+                ), 0) as cnt_1d,
+                coalesce(count(1) filter (
+                    where created_at >= current_timestamp - interval '7 days'
+                ), 0) as cnt_1w,
+                coalesce(count(1) filter (
+                    where created_at >= current_timestamp - interval '30 days'
+                ), 0) as cnt_1m,
+                coalesce(count(1) filter (
+                    where created_at >= current_timestamp - interval '90 days'
+                ), 0) as cnt_3m
+            from thread
+            """
+        )
+        thread_rate_1d = f"{int(scrape_rate_stats['cnt_1d']):.0f}"
+        thread_rate_1w = f"{int(scrape_rate_stats['cnt_1w']) / 7:.1f}"
+        thread_rate_1m = f"{int(scrape_rate_stats['cnt_1m']) / 30:.1f}"
+        thread_rate_3m = f"{int(scrape_rate_stats['cnt_3m']) / 90:.1f}"
+
+        # Torrent fetch rate (torrents per day)
+        torrent_rate_stats = await pool.fetchrow(
+            """
+            select
+                coalesce(count(1) filter (
+                    where created_at >= current_timestamp - interval '1 day'
+                ), 0) as cnt_1d,
+                coalesce(count(1) filter (
+                    where created_at >= current_timestamp - interval '7 days'
+                ), 0) as cnt_1w,
+                coalesce(count(1) filter (
+                    where created_at >= current_timestamp - interval '30 days'
+                ), 0) as cnt_1m,
+                coalesce(count(1) filter (
+                    where created_at >= current_timestamp - interval '90 days'
+                ), 0) as cnt_3m
+            from torrent
+            """
+        )
+        torrent_rate_1d = f"{int(torrent_rate_stats['cnt_1d']):.0f}"
+        torrent_rate_1w = f"{int(torrent_rate_stats['cnt_1w']) / 7:.1f}"
+        torrent_rate_1m = f"{int(torrent_rate_stats['cnt_1m']) / 30:.1f}"
+        torrent_rate_3m = f"{int(torrent_rate_stats['cnt_3m']) / 90:.1f}"
+
         skipped = total - done - in_progress - failed - pending
 
         def pct(n: int) -> str:
@@ -442,6 +490,14 @@ def create_app() -> fastapi.FastAPI:
                 "byte_rate_3m": byte_rate_3m,
                 "byte_rate_6m": byte_rate_6m,
                 "byte_rate_1y": byte_rate_1y,
+                "thread_rate_1d": thread_rate_1d,
+                "thread_rate_1w": thread_rate_1w,
+                "thread_rate_1m": thread_rate_1m,
+                "thread_rate_3m": thread_rate_3m,
+                "torrent_rate_1d": torrent_rate_1d,
+                "torrent_rate_1w": torrent_rate_1w,
+                "torrent_rate_1m": torrent_rate_1m,
+                "torrent_rate_3m": torrent_rate_3m,
             },
         )
 
