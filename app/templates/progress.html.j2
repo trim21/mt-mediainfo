@@ -10,6 +10,8 @@
         rel="stylesheet"
         integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
         crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+          crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -171,5 +173,59 @@
     </div>
   </div>
 </div>
+
+<div class="container mt-4">
+  <h3>Average Byte Rate per Week (last 2 years)</h3>
+  <canvas id="weeklyByteRateChart" style="max-height: 350px;"></canvas>
+</div>
+
+<script>
+  (async () => {
+    const resp = await fetch('/stats/weekly-byte-rate');
+    const data = await resp.json();
+    const labels = data.map(d => d.week.slice(0, 10));
+    const values = data.map(d => d.byte_rate);
+
+    function fmtBytes(bps) {
+      const units = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s'];
+      let i = 0;
+      while (bps >= 1024 && i < units.length - 1) { bps /= 1024; i++; }
+      return bps.toFixed(2) + ' ' + units[i];
+    }
+
+    new Chart(document.getElementById('weeklyByteRateChart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Avg Byte Rate',
+          data: values,
+          backgroundColor: 'rgba(13, 110, 253, 0.5)',
+          borderColor: 'rgba(13, 110, 253, 1)',
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: v => fmtBytes(v)
+            }
+          }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: ctx => fmtBytes(ctx.parsed.y)
+            }
+          },
+          legend: { display: false }
+        }
+      }
+    });
+  })();
+</script>
 </body>
 </html>

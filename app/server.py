@@ -160,6 +160,27 @@ def create_app() -> fastapi.FastAPI:
         #     ctx={"torrent": torrent},
         # )
 
+    @app.get("/stats/weekly-byte-rate")
+    async def weekly_byte_rate() -> ORJSONResponse:
+        rows = await pool.fetch(
+            """
+            select
+                date_trunc('week', updated_at) as week_start,
+                (sum(download_size) / (7.0 * 86400))::float8 as avg_byte_rate
+            from job
+            where
+                status = $1 and
+                updated_at >= current_timestamp - interval '2 years'
+            group by week_start
+            order by week_start
+            """,
+            ITEM_STATUS_DONE,
+        )
+        return ORJSONResponse([
+            {"week": row["week_start"].isoformat(), "byte_rate": row["avg_byte_rate"]}
+            for row in rows
+        ])
+
     @app.get("/progress")
     async def progress(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
         # Scraping progress: how far along we are in scraping thread details
