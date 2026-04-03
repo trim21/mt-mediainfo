@@ -41,7 +41,7 @@ class Scrape:
             self.__db.fetch_val("select tid from thread order by tid desc limit 1") or 1
         )
 
-        c = 0
+        current_count = 0
 
         for lo in range(fetched_max_id, known_max_id, 100):
             hi = min(lo + 99, known_max_id - 1)
@@ -52,9 +52,7 @@ class Scrape:
                 )
             }
 
-            missing = [x for x in range(lo, hi + 1) if x not in current_ids]
-
-            for i in missing:
+            for i in (x for x in range(lo, hi + 1) if x not in current_ids):
                 logger.info("fetch {}", i)
                 try:
                     r = self.mteam_client.torrent_detail(i)
@@ -90,8 +88,8 @@ class Scrape:
                     ],
                 )
 
-                c += 1
-                if limit and c >= limit:
+                current_count += 1
+                if limit and current_count >= limit:
                     return
 
     def fetch_torrent(self) -> bool:
@@ -156,19 +154,19 @@ class Scrape:
     def __is_rate_limited(e: MTeamRequestError) -> bool:
         return e.message in ("請求過於頻繁", "今日下載配額用盡")
 
-    def __run_fetch(self) -> tuple[RunResult, bool]:
+    def __run_fetch(self) -> RunResult:
         """Returns (result, no_pending)."""
         try:
-            no_pending = self.fetch_torrent()
+            self.fetch_torrent()
         except httpx_network_errors:
-            return RunResult.error, False
+            return RunResult.error
         except MTeamRequestError as e:
             if self.__is_rate_limited(e):
                 logger.info("operator {!r} get rate limited: {}", e.op, e.message)
-                return RunResult.rate_limited, False
+                return RunResult.rate_limited
             logger.exception("failed to fetch torrents")
-            return RunResult.error, False
-        return RunResult.ok, no_pending
+            return RunResult.error
+        return RunResult.ok
 
     def __run_scrape(self, limit: int) -> RunResult:
         try:
@@ -188,11 +186,10 @@ class Scrape:
         while True:
             logger.info("fetch torrents")
 
-            fetch_result, _ = self.__run_fetch()
-
+            fetch_result = self.__run_fetch()
             scrape_result = self.__run_scrape(limit)
 
-            if fetch_result == RunResult.rate_limited or scrape_result == RunResult.rate_limited:
+            if fetch_result == RunResult.rate_limited and scrape_result == RunResult.rate_limited:
                 time.sleep(30 * 60)  # 30 minutes
             else:
                 time.sleep(10 * 60)  # 10 minutes
