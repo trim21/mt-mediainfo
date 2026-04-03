@@ -191,7 +191,7 @@ class Scrape:
             fetch_result, no_pending = self.__run_fetch()
 
             scrape_result = RunResult.ok
-            if fetch_result == RunResult.ok and no_pending:
+            if no_pending:
                 scrape_result = self.__run_scrape(limit)
 
             if fetch_result == RunResult.rate_limited or scrape_result == RunResult.rate_limited:
