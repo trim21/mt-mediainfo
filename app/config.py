@@ -41,6 +41,7 @@ class Config:
 
     pg_host: Annotated[str, Field(os.environ.get("PG_HOST", "127.0.0.1"), validate_default=True)]
     pg_port: Annotated[int, Field(os.environ.get("PG_PORT", "5432"), validate_default=True)]
+    pg_db: Annotated[str, Field(os.environ.get("PG_DB", "public"))]
     pg_user: Annotated[
         str | None, Field(os.environ.get("PG_PASSWORD", "postgres"), validate_default=True)
     ]
@@ -62,12 +63,12 @@ class Config:
 
     total_process_size: Annotated[
         ByteSize,
-        Field(os.environ.get("TOTAL_SIZE", "100G"), validate_default=True),
+        Field(os.environ.get("TOTAL_SIZE", "100GiB"), validate_default=True),
     ]
 
     single_torrent_size_limit: Annotated[
         ByteSize,
-        Field(os.environ.get("SINGLE_TORRENT_SIZE_LIMIT", "10G"), validate_default=True),
+        Field(os.environ.get("SINGLE_TORRENT_SIZE_LIMIT", "10GiB"), validate_default=True),
     ]
 
     def pg_dsn(self) -> str:
@@ -78,6 +79,7 @@ class Config:
                 password=self.pg_password,
                 host=self.pg_host,
                 port=self.pg_port,
+                path="/" + self.pg_db,
             )
         )
 

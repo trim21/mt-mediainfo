@@ -497,6 +497,14 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
+        total_torrent_size = (
+            await pool.fetchval(
+                "select coalesce(sum(size), 0) from thread where category = any($1)",
+                SELECTED_CATEGORY,
+            )
+            or 0
+        )
+
         done = (
             await pool.fetchval(
                 "select count(1) from thread where mediainfo != '' and category = any($1)",
@@ -529,6 +537,18 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
+        failed_size = (
+            await pool.fetchval(
+                """
+            select coalesce(sum(thread.size), 0) from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1
+            """,
+                ITEM_STATUS_FAILED,
+            )
+            or 0
+        )
+
         pending = (
             await pool.fetchval(
                 """
@@ -547,7 +567,7 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
-        pending_size = (
+        pending_size_raw = (
             await pool.fetchval(
                 """
             select coalesce(sum(size), 0) from thread
@@ -565,7 +585,7 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
-        downloading_size = (
+        downloading_size_raw = (
             await pool.fetchval(
                 """
             select coalesce(sum(thread.size), 0) from job
@@ -694,6 +714,10 @@ def create_app() -> fastapi.FastAPI:
 
         skipped = total - done - in_progress - failed - pending
 
+        skipped_size = (
+            total_torrent_size - done_size - downloading_size_raw - failed_size - pending_size_raw
+        )
+
         def pct(n: int) -> str:
             if total == 0:
                 return "0.0"
@@ -709,18 +733,21 @@ def create_app() -> fastapi.FastAPI:
                 "known_max_id": known_max_id,
                 "scrape_pct": scrape_pct,
                 "total": total,
+                "total_torrent_size": human_readable_size(total_torrent_size),
                 "done": done,
                 "done_size": human_readable_size(done_size),
                 "done_pct": pct(done),
                 "in_progress": in_progress,
                 "in_progress_pct": pct(in_progress),
                 "failed": failed,
+                "failed_size": human_readable_size(failed_size),
                 "failed_pct": pct(failed),
                 "pending": pending,
-                "pending_size": human_readable_size(pending_size),
+                "pending_size": human_readable_size(pending_size_raw),
                 "skipped": skipped,
+                "skipped_size": human_readable_size(skipped_size),
                 "missing_torrent": missing_torrent,
-                "downloading_size": human_readable_size(downloading_size),
+                "downloading_size": human_readable_size(downloading_size_raw),
                 "total_process_size": human_readable_size(cfg.total_process_size),
                 "single_torrent_size_limit": human_readable_size(cfg.single_torrent_size_limit),
                 "byte_rate_1d": byte_rate_1d,
