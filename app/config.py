@@ -41,7 +41,7 @@ class Config:
 
     pg_host: Annotated[str, Field(os.environ.get("PG_HOST", "127.0.0.1"), validate_default=True)]
     pg_port: Annotated[int, Field(os.environ.get("PG_PORT", "5432"), validate_default=True)]
-    pg_db: Annotated[str, Field(os.environ.get("PG_DB", "public"))]
+    pg_db: Annotated[str, Field(os.environ.get("PG_DB", "postgres"))]
     pg_user: Annotated[
         str | None, Field(os.environ.get("PG_PASSWORD", "postgres"), validate_default=True)
     ]
