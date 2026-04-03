@@ -1,7 +1,9 @@
+import enum
 import itertools
 import os
 import time
 from pathlib import Path
+from typing import LiteralString, cast
 
 import pydantic
 from bencode2 import BencodeDecodeError
@@ -17,6 +19,12 @@ from app.utils import get_info_hash_v1_from_content, parse_obj_as
 known_max_id = 1150590
 
 
+class RunResult(enum.Enum):
+    ok = "ok"
+    rate_limited = "rate_limited"
+    error = "error"
+
+
 class Scrape:
     mteam_client: MTeamAPI
     __db: Database
@@ -27,7 +35,7 @@ class Scrape:
 
         for sql_file in Path(__file__, "../sql/").resolve().iterdir():
             print(f"executing {sql_file.name}")
-            self.__db.execute(sql_file.read_text(encoding="utf-8"))
+            self.__db.execute(cast(LiteralString, sql_file.read_text(encoding="utf-8")))
 
     def scrape(self, limit: int = 0) -> None:
         fetched_max_id = (
@@ -144,44 +152,48 @@ class Scrape:
             )
         return False
 
+    def __run_fetch(self) -> tuple[RunResult, bool]:
+        """Returns (result, no_pending)."""
+        try:
+            no_pending = self.fetch_torrent()
+        except httpx_network_errors:
+            return RunResult.error, False
+        except MTeamRequestError as e:
+            if e.message == "請求過於頻繁":
+                logger.info("operator {!r} get rate limited", e.op)
+                return RunResult.rate_limited, False
+            logger.exception("failed to fetch torrents")
+            return RunResult.error, False
+        return RunResult.ok, no_pending
+
+    def __run_scrape(self, limit: int) -> RunResult:
+        try:
+            self.scrape(limit=limit)
+        except httpx_network_errors:
+            return RunResult.error
+        except MTeamRequestError as e:
+            if e.message == "請求過於頻繁":
+                logger.info("operator {!r} get rate limited", e.op)
+                return RunResult.rate_limited
+            logger.exception("failed to fetch threads")
+            return RunResult.error
+        return RunResult.ok
+
     def __run(self) -> None:
         limit = parse_obj_as(int, os.environ.get("SCRAPE_LIMIT", "100"))
         while True:
             logger.info("fetch torrents")
-            try:
-                no_pending = self.fetch_torrent()
-            except httpx_network_errors:
-                time.sleep(60)
-                continue
-            except MTeamRequestError as e:
-                if e.message == "請求過於頻繁":
-                    logger.info("operator {!r} get rate limited, sleep for 1h", e.op)
-                    time.sleep(3600)
-                else:
-                    logger.exception("failed to fetch torrents")
-                    time.sleep(60)
-                continue
 
-            if not no_pending:
-                time.sleep(10)
-                continue
+            fetch_result, no_pending = self.__run_fetch()
 
-            # zero pending torrents to download, scrape new threads
-            try:
-                self.scrape(limit=limit)
-            except httpx_network_errors:
-                time.sleep(60)
-                continue
-            except MTeamRequestError as e:
-                if e.message == "請求過於頻繁":
-                    logger.info("operator {!r} get rate limited, sleep for 1h", e.op)
-                    time.sleep(3600)
-                else:
-                    logger.exception("failed to fetch threads")
-                    time.sleep(60)
-                continue
+            scrape_result = RunResult.ok
+            if fetch_result == RunResult.ok and no_pending:
+                scrape_result = self.__run_scrape(limit)
 
-            time.sleep(60)
+            if fetch_result == RunResult.rate_limited or scrape_result == RunResult.rate_limited:
+                time.sleep(30 * 60)  # 30 minutes
+            else:
+                time.sleep(10 * 60)  # 10 minutes
 
     def start(self) -> None:
         self.__run()
