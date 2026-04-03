@@ -188,11 +188,9 @@ class Scrape:
         while True:
             logger.info("fetch torrents")
 
-            fetch_result, no_pending = self.__run_fetch()
+            fetch_result, _ = self.__run_fetch()
 
-            scrape_result = RunResult.ok
-            if no_pending:
-                scrape_result = self.__run_scrape(limit)
+            scrape_result = self.__run_scrape(limit)
 
             if fetch_result == RunResult.rate_limited or scrape_result == RunResult.rate_limited:
                 time.sleep(30 * 60)  # 30 minutes
