@@ -597,6 +597,22 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
+        missing_torrent = (
+            await pool.fetchval(
+                """
+            select count(1) from thread
+            where
+              deleted = false and
+              seeders != 0 and
+              info_hash = '' and
+              mediainfo = '' and
+              category = any($1)
+            """,
+                SELECTED_CATEGORY,
+            )
+            or 0
+        )
+
         skipped = total - done - in_progress - failed - pending
 
         skipped_size = (
@@ -632,6 +648,7 @@ def create_app() -> fastapi.FastAPI:
                 "skipped": skipped,
                 "skipped_size": human_readable_size(skipped_size),
                 "downloading_size": human_readable_size(downloading_size_raw),
+                "missing_torrent": missing_torrent,
             },
         )
 
