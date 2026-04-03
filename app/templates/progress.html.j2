@@ -145,8 +145,13 @@
           y: {
             beginAtZero: true,
             ticks: {
-              callback: (_, i) => data[i]?.byte_rate_fmt ?? ''
-            }
+              callback: (value) => {
+                const units = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'];
+                let v = value;
+                let u = 0;
+                while (v >= 1024 && u < units.length - 1) { v /= 1024; u++; }
+                return v.toFixed(2) + ' ' + units[u];
+              }
           }
         },
         plugins: {
