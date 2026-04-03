@@ -66,30 +66,43 @@
       </div>
 
       <table class="table table-bordered">
+        <thead>
+        <tr>
+          <th></th>
+          <th>Count</th>
+          <th>Size</th>
+        </tr>
+        </thead>
         <tbody>
         <tr>
-          <th>Total (selected categories)</th>
-          <td>{{ total }} ({{ total_torrent_size }})</td>
+          <th>Total</th>
+          <td>{{ total }}</td>
+          <td>{{ total_torrent_size }}</td>
         </tr>
         <tr class="table-success">
-          <th>Done (has mediainfo)</th>
-          <td>{{ done }} ({{ done_size }})</td>
+          <th>Done</th>
+          <td>{{ done }}</td>
+          <td>{{ done_size }}</td>
         </tr>
         <tr class="table-info">
-          <th>In progress (downloading)</th>
-          <td>{{ in_progress }} ({{ downloading_size }})</td>
+          <th>In progress</th>
+          <td>{{ in_progress }}</td>
+          <td>{{ downloading_size }}</td>
         </tr>
         <tr class="table-danger">
           <th>Failed</th>
-          <td>{{ failed }} ({{ failed_size }})</td>
+          <td>{{ failed }}</td>
+          <td>{{ failed_size }}</td>
         </tr>
         <tr class="table-warning">
-          <th>Pending (waiting)</th>
-          <td>{{ pending }} ({{ pending_size }})</td>
+          <th>Pending</th>
+          <td>{{ pending }}</td>
+          <td>{{ pending_size }}</td>
         </tr>
         <tr>
           <th>Skipped / No seeders</th>
-          <td>{{ skipped }} ({{ skipped_size }})</td>
+          <td>{{ skipped }}</td>
+          <td>{{ skipped_size }}</td>
         </tr>
         </tbody>
       </table>
