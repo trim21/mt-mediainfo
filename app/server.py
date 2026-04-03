@@ -597,121 +597,6 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
-        # Download byte rate statistics
-        rate_stats = await pool.fetchrow(
-            """
-            select
-                coalesce(sum(job.download_size) filter (
-                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '1 day'
-                ), 0) as size_1d,
-                coalesce(sum(job.download_size) filter (
-                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '3 days'
-                ), 0) as size_3d,
-                coalesce(sum(job.download_size) filter (
-                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '7 days'
-                ), 0) as size_1w,
-                coalesce(sum(job.download_size) filter (
-                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '14 days'
-                ), 0) as size_2w,
-                coalesce(sum(job.download_size) filter (
-                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '30 days'
-                ), 0) as size_1m,
-                coalesce(sum(job.download_size) filter (
-                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '90 days'
-                ), 0) as size_3m,
-                coalesce(sum(job.download_size) filter (
-                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '180 days'
-                ), 0) as size_6m,
-                coalesce(sum(job.download_size) filter (
-                    where coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '365 days'
-                ), 0) as size_1y
-            from job
-            where job.status = $1
-            """,
-            ITEM_STATUS_DONE,
-        )
-        size_1d = int(rate_stats["size_1d"])
-        size_3d = int(rate_stats["size_3d"])
-        size_1w = int(rate_stats["size_1w"])
-        size_2w = int(rate_stats["size_2w"])
-        size_1m = int(rate_stats["size_1m"])
-        size_3m = int(rate_stats["size_3m"])
-        size_6m = int(rate_stats["size_6m"])
-        size_1y = int(rate_stats["size_1y"])
-        byte_rate_1d = human_readable_byte_rate(size_1d / 86400)
-        byte_rate_3d = human_readable_byte_rate(size_3d / (3 * 86400))
-        byte_rate_1w = human_readable_byte_rate(size_1w / (7 * 86400))
-        byte_rate_2w = human_readable_byte_rate(size_2w / (14 * 86400))
-        byte_rate_1m = human_readable_byte_rate(size_1m / (30 * 86400))
-        byte_rate_3m = human_readable_byte_rate(size_3m / (90 * 86400))
-        byte_rate_6m = human_readable_byte_rate(size_6m / (180 * 86400))
-        byte_rate_1y = human_readable_byte_rate(size_1y / (365 * 86400))
-
-        # API bottleneck: threads scraped but torrent not yet fetched
-        missing_torrent = (
-            await pool.fetchval(
-                """
-            select count(1) from thread
-            where
-              deleted = false and
-              seeders != 0 and
-              info_hash = '' and
-              mediainfo = '' and
-              category = any($1)
-            """,
-                SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        # Thread scrape rate (threads per day)
-        scrape_rate_stats = await pool.fetchrow(
-            """
-            select
-                coalesce(count(1) filter (
-                    where created_at >= current_timestamp - interval '1 day'
-                ), 0) as cnt_1d,
-                coalesce(count(1) filter (
-                    where created_at >= current_timestamp - interval '7 days'
-                ), 0) as cnt_1w,
-                coalesce(count(1) filter (
-                    where created_at >= current_timestamp - interval '30 days'
-                ), 0) as cnt_1m,
-                coalesce(count(1) filter (
-                    where created_at >= current_timestamp - interval '90 days'
-                ), 0) as cnt_3m
-            from thread
-            """
-        )
-        thread_rate_1d = f"{int(scrape_rate_stats['cnt_1d']):.0f}"
-        thread_rate_1w = f"{int(scrape_rate_stats['cnt_1w']) / 7:.1f}"
-        thread_rate_1m = f"{int(scrape_rate_stats['cnt_1m']) / 30:.1f}"
-        thread_rate_3m = f"{int(scrape_rate_stats['cnt_3m']) / 90:.1f}"
-
-        # Torrent fetch rate (torrents per day)
-        torrent_rate_stats = await pool.fetchrow(
-            """
-            select
-                coalesce(count(1) filter (
-                    where created_at >= current_timestamp - interval '1 day'
-                ), 0) as cnt_1d,
-                coalesce(count(1) filter (
-                    where created_at >= current_timestamp - interval '7 days'
-                ), 0) as cnt_1w,
-                coalesce(count(1) filter (
-                    where created_at >= current_timestamp - interval '30 days'
-                ), 0) as cnt_1m,
-                coalesce(count(1) filter (
-                    where created_at >= current_timestamp - interval '90 days'
-                ), 0) as cnt_3m
-            from torrent
-            """
-        )
-        torrent_rate_1d = f"{int(torrent_rate_stats['cnt_1d']):.0f}"
-        torrent_rate_1w = f"{int(torrent_rate_stats['cnt_1w']) / 7:.1f}"
-        torrent_rate_1m = f"{int(torrent_rate_stats['cnt_1m']) / 30:.1f}"
-        torrent_rate_3m = f"{int(torrent_rate_stats['cnt_3m']) / 90:.1f}"
-
         skipped = total - done - in_progress - failed - pending
 
         skipped_size = (
@@ -746,26 +631,7 @@ def create_app() -> fastapi.FastAPI:
                 "pending_size": human_readable_size(pending_size_raw),
                 "skipped": skipped,
                 "skipped_size": human_readable_size(skipped_size),
-                "missing_torrent": missing_torrent,
                 "downloading_size": human_readable_size(downloading_size_raw),
-                "total_process_size": human_readable_size(cfg.total_process_size),
-                "single_torrent_size_limit": human_readable_size(cfg.single_torrent_size_limit),
-                "byte_rate_1d": byte_rate_1d,
-                "byte_rate_3d": byte_rate_3d,
-                "byte_rate_1w": byte_rate_1w,
-                "byte_rate_2w": byte_rate_2w,
-                "byte_rate_1m": byte_rate_1m,
-                "byte_rate_3m": byte_rate_3m,
-                "byte_rate_6m": byte_rate_6m,
-                "byte_rate_1y": byte_rate_1y,
-                "thread_rate_1d": thread_rate_1d,
-                "thread_rate_1w": thread_rate_1w,
-                "thread_rate_1m": thread_rate_1m,
-                "thread_rate_3m": thread_rate_3m,
-                "torrent_rate_1d": torrent_rate_1d,
-                "torrent_rate_1w": torrent_rate_1w,
-                "torrent_rate_1m": torrent_rate_1m,
-                "torrent_rate_3m": torrent_rate_3m,
             },
         )
 
