@@ -152,6 +152,10 @@ class Scrape:
             )
         return False
 
+    @staticmethod
+    def __is_rate_limited(e: MTeamRequestError) -> bool:
+        return e.message in ("請求過於頻繁", "今日下載配額用盡")
+
     def __run_fetch(self) -> tuple[RunResult, bool]:
         """Returns (result, no_pending)."""
         try:
@@ -159,8 +163,8 @@ class Scrape:
         except httpx_network_errors:
             return RunResult.error, False
         except MTeamRequestError as e:
-            if e.message == "請求過於頻繁":
-                logger.info("operator {!r} get rate limited", e.op)
+            if self.__is_rate_limited(e):
+                logger.info("operator {!r} get rate limited: {}", e.op, e.message)
                 return RunResult.rate_limited, False
             logger.exception("failed to fetch torrents")
             return RunResult.error, False
@@ -172,8 +176,8 @@ class Scrape:
         except httpx_network_errors:
             return RunResult.error
         except MTeamRequestError as e:
-            if e.message == "請求過於頻繁":
-                logger.info("operator {!r} get rate limited", e.op)
+            if self.__is_rate_limited(e):
+                logger.info("operator {!r} get rate limited: {}", e.op, e.message)
                 return RunResult.rate_limited
             logger.exception("failed to fetch threads")
             return RunResult.error
