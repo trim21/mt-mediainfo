@@ -1,5 +1,4 @@
 import enum
-import itertools
 import os
 import time
 from pathlib import Path
@@ -44,15 +43,16 @@ class Scrape:
 
         c = 0
 
-        for ids in itertools.batched(range(fetched_max_id, known_max_id), 100):
+        for lo in range(fetched_max_id, known_max_id, 100):
+            hi = min(lo + 99, known_max_id - 1)
             current_ids = {
                 x[0]
                 for x in self.__db.fetch_all(
-                    """select tid from thread where tid = any($1)""", [list(ids)]
+                    """select tid from thread where tid >= $1 and tid <= $2""", [lo, hi]
                 )
             }
 
-            missing = [x for x in ids if x not in current_ids]
+            missing = [x for x in range(lo, hi + 1) if x not in current_ids]
 
             for i in missing:
                 logger.info("fetch {}", i)
