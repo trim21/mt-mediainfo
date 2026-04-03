@@ -48,7 +48,7 @@ class Scrape:
             current_ids = {
                 x[0]
                 for x in self.__db.fetch_all(
-                    """select tid from thread where tid = any($1)""", [ids]
+                    """select tid from thread where tid = any($1)""", [list(ids)]
                 )
             }
 
