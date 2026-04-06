@@ -337,11 +337,13 @@ class Application:
 
         picked: list[tuple[int, str]] = []
 
+        logger.info("pick lock")
         with (
             self.db.lock(LOCK_KEY_PICK_RSS_JOB),
             self.db.connection() as conn,
             conn.transaction() as _,
         ):
+            logger.info("get lock")
             rows: list[tuple[int, str, int]] = conn.fetch_all(
                 """
                 select thread.tid, thread.info_hash, thread.selected_size from thread
