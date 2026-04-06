@@ -164,7 +164,9 @@ class Application:
                     t.seen_complete,
                 )
                 self.__update_job_status(
-                    status=ITEM_STATUS_FAILED, info_hash=t.hash, failed_reason="no seeders"
+                    status=ITEM_STATUS_FAILED,
+                    info_hash=t.hash,
+                    failed_reason="no seeders",
                 )
                 self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
@@ -286,7 +288,9 @@ class Application:
                 self.__process_local_torrent(t)
             except Exception as e:
                 self.__update_job_status(
-                    status=ITEM_STATUS_FAILED, info_hash=t.hash, failed_reason=format_exc(e)
+                    status=ITEM_STATUS_FAILED,
+                    info_hash=t.hash,
+                    failed_reason=format_exc(e),
                 )
                 self.qb.torrents_add_tags(tags=QB_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
                 logger.error("failed to process local torrent {}", e)
@@ -342,6 +346,7 @@ class Application:
         )
         left_size = int(self.config.total_process_size) - current_total_size
         if left_size <= 0:
+            logger.info("no left size, skipping")
             return
 
         picked: list[tuple[int, str]] = []
@@ -414,7 +419,9 @@ class Application:
         )
         if not tc:
             self.__update_job_status(
-                status=ITEM_STATUS_FAILED, tid=tid, failed_reason="torrent content not found"
+                status=ITEM_STATUS_FAILED,
+                tid=tid,
+                failed_reason="torrent content not found",
             )
             return
 
