@@ -685,12 +685,12 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
-        # Lifecycle: done (mediainfo obtained)
+        # Lifecycle: done (mediainfo obtained via download)
         done = (
             await pool.fetchval(
                 """
             select count(1) from thread
-            where mediainfo != '' and category = any($1)
+            where mediainfo != '' and info_hash != '' and category = any($1)
             """,
                 SELECTED_CATEGORY,
             )
@@ -701,7 +701,7 @@ def create_app() -> fastapi.FastAPI:
             await pool.fetchval(
                 """
             select coalesce(sum(selected_size), 0) from thread
-            where mediainfo != '' and category = any($1)
+            where mediainfo != '' and info_hash != '' and category = any($1)
             """,
                 SELECTED_CATEGORY,
             )
@@ -874,6 +874,7 @@ def create_app() -> fastapi.FastAPI:
               and selected_size > 0
               and category = any($1) and job.tid is null
             order by selected_size desc
+            limit 100
             """,
             SELECTED_CATEGORY,
         )
@@ -936,9 +937,9 @@ def create_app() -> fastapi.FastAPI:
         rows = await pool.fetch(
             """
             select tid, category, size, selected_size, seeders, created_at from thread
-            where mediainfo != '' and category = any($1)
+            where mediainfo != '' and info_hash != '' and category = any($1)
             order by tid desc
-            limit 500
+            limit 100
             """,
             SELECTED_CATEGORY,
         )
