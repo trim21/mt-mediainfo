@@ -210,12 +210,13 @@ def create_app() -> fastapi.FastAPI:
         rows = await pool.fetch(
             """
             select
-                coalesce(completed_at, updated_at) as ts,
-                download_size
+                coalesce(job.completed_at, job.updated_at) as ts,
+                thread.selected_size
             from job
+            join thread on (thread.tid = job.tid)
             where
-                status = $1 and
-                coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'
+                job.status = $1 and thread.selected_size > 0
+                and coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '1 year'
             """,
             ITEM_STATUS_DONE,
         )
@@ -225,10 +226,10 @@ def create_app() -> fastapi.FastAPI:
         today = _today_start()
         df = pl.DataFrame({
             "ts": [row["ts"] for row in rows],
-            "download_size": [row["download_size"] for row in rows],
+            "selected_size": [row["selected_size"] for row in rows],
         })
         df = df.with_columns(_compute_week_num_col(today))
-        grouped = df.group_by("week_num").agg(pl.col("download_size").sum().alias("total_size"))
+        grouped = df.group_by("week_num").agg(pl.col("selected_size").sum().alias("total_size"))
         min_week, max_week = _week_range()
         all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
         result = (
@@ -385,11 +386,13 @@ def create_app() -> fastapi.FastAPI:
         days_back = (today - start).days
         rows = await pool.fetch(
             """
-            select coalesce(completed_at, updated_at) as ts, download_size
+            select coalesce(job.completed_at, job.updated_at) as ts,
+                   thread.selected_size
             from job
+            join thread on (thread.tid = job.tid)
             where
-                status = $1 and download_size > 0
-                and coalesce(completed_at, updated_at) >= $2
+                job.status = $1 and thread.selected_size > 0
+                and coalesce(job.completed_at, job.updated_at) >= $2
             """,
             ITEM_STATUS_DONE,
             start,
@@ -401,10 +404,10 @@ def create_app() -> fastapi.FastAPI:
 
         df = pl.DataFrame({
             "ts": [row["ts"] for row in rows],
-            "download_size": [row["download_size"] for row in rows],
+            "selected_size": [row["selected_size"] for row in rows],
         })
         df = df.with_columns(_compute_day_num_col(today))
-        grouped = df.group_by("day_num").agg(pl.col("download_size").sum().alias("total_size"))
+        grouped = df.group_by("day_num").agg(pl.col("selected_size").sum().alias("total_size"))
         all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
         result = (
             all_days
@@ -564,7 +567,7 @@ def create_app() -> fastapi.FastAPI:
 
         total_size = (
             await pool.fetchval(
-                "select coalesce(sum(size), 0) from thread where category = any($1)",
+                "select coalesce(sum(selected_size), 0) from thread where category = any($1)",
                 SELECTED_CATEGORY,
             )
             or 0
@@ -614,7 +617,7 @@ def create_app() -> fastapi.FastAPI:
         pending_to_download_size = (
             await pool.fetchval(
                 """
-            select coalesce(sum(thread.size), 0) from thread
+            select coalesce(sum(thread.selected_size), 0) from thread
             left join job on (job.tid = thread.tid)
             where deleted = false and seeders != 0
               and mediainfo = '' and thread.info_hash != ''
@@ -642,7 +645,7 @@ def create_app() -> fastapi.FastAPI:
         downloading_size = (
             await pool.fetchval(
                 """
-            select coalesce(sum(thread.size), 0) from job
+            select coalesce(sum(thread.selected_size), 0) from job
             join thread on (thread.tid = job.tid)
             where job.status = $1 and thread.category = any($2)
             """,
@@ -669,7 +672,7 @@ def create_app() -> fastapi.FastAPI:
         failed_size = (
             await pool.fetchval(
                 """
-            select coalesce(sum(thread.size), 0) from job
+            select coalesce(sum(thread.selected_size), 0) from job
             join thread on (thread.tid = job.tid)
             where job.status = $1 and thread.category = any($2)
             """,
@@ -694,7 +697,7 @@ def create_app() -> fastapi.FastAPI:
         done_size = (
             await pool.fetchval(
                 """
-            select coalesce(sum(size), 0) from thread
+            select coalesce(sum(selected_size), 0) from thread
             where mediainfo != '' and category = any($1)
             """,
                 SELECTED_CATEGORY,

@@ -281,8 +281,8 @@ class Application:
             [media_info, hard_code_subtitle, t.hash],
         )
         self.db.execute(
-            "update job set status = $1, download_size = $2, completed_at = current_timestamp where info_hash = $3 and node_id = $4",
-            [ITEM_STATUS_DONE, t.size, t.hash, self.config.node_id],
+            "update job set status = $1, completed_at = current_timestamp where info_hash = $2 and node_id = $3",
+            [ITEM_STATUS_DONE, t.hash, self.config.node_id],
         )
         self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 

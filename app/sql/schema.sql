@@ -20,7 +20,6 @@ create table if not exists job(
     failed_reason text not null default '',
     status text not null default '',
     start_download_time timestamptz default null,
-    download_size int8 not null default 0,
     updated_at timestamptz default current_timestamp,
     completed_at timestamptz default null,
     primary key (tid, node_id)
@@ -46,3 +45,4 @@ create table if not exists config (
 );
 
 alter table thread add column if not exists selected_size int8 not null default 0;
+alter table job drop column if exists download_size;
