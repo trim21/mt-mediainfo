@@ -250,14 +250,6 @@ class Application:
                 self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
 
-            # Paused → fix file selection if needed, then resume
-            if t.state.is_paused:
-                logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
-                self.__fix_file_selection(t)
-                self.__set_tags(t.hash, remove=QB_TAG_SELECTING_FILES, add=QB_TAG_DOWNLOADING)
-                self.qb.torrents_resume(torrent_hashes=t.hash)
-                continue
-
             # Upload complete → process mediainfo
             if t.state.is_uploading:
                 self.__set_tags(t.hash, remove=QB_TAG_DOWNLOADING, add=QB_TAG_PROCESSING)
@@ -273,9 +265,17 @@ class Application:
                     logger.error("failed to process local torrent {}", e)
                 continue
 
-            # Downloading — fix file selection if needed, update progress
+            # Fix file selection for any torrent not yet fully downloaded
             self.__fix_file_selection(t)
 
+            # Paused → resume
+            if t.state.is_paused:
+                logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
+                self.__set_tags(t.hash, remove=QB_TAG_SELECTING_FILES, add=QB_TAG_DOWNLOADING)
+                self.qb.torrents_resume(torrent_hashes=t.hash)
+                continue
+
+            # Downloading — update progress
             self.db.execute(
                 """
                 update job set
