@@ -1,5 +1,6 @@
 import subprocess
 import tempfile
+from collections.abc import Generator
 from datetime import timedelta
 from pathlib import Path
 from typing import NamedTuple
@@ -60,10 +61,9 @@ def generate_images(
     tmpdir: Path,
     image_format: str = "png",
     count: int = 3,
-) -> list[Path]:
+) -> Generator[Path]:
     temp = tmpdir.joinpath("images")
     temp.mkdir(exist_ok=True, parents=True)
-    results = []
     duration = get_video_duration(video_file)
 
     # long enough
@@ -103,18 +103,14 @@ def generate_images(
         )
 
         if image_file.exists():
-            results.append(image_file)
-
-    return results
+            yield image_file
 
 
 def check_hardcode_chinese_subtitle(video_file: Path) -> bool:
     engine = RapidOCR()
 
     with tempfile.TemporaryDirectory(prefix="mt-") as tempdir:
-        image_files = generate_images(video_file, Path(tempdir), count=10)
-
-        for file in image_files:
+        for file in generate_images(video_file, Path(tempdir), count=10):
             with PIL.Image.open(file) as img:
                 size = Point(*img.size)
 
