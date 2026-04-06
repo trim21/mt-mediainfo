@@ -209,9 +209,13 @@ class Application:
             if QB_TAG_PROCESS_ERROR in t.tags:
                 continue
             logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
-            self.qb.torrents_remove_tags(tags=QB_TAG_SELECTING_FILES, torrent_hashes=t.hash)
-            self.qb.torrents_add_tags(tags=QB_TAG_DOWNLOADING, torrent_hashes=t.hash)
+            self.__set_tags(t.hash, remove=QB_TAG_SELECTING_FILES, add=QB_TAG_DOWNLOADING)
             self.qb.torrents_resume(torrent_hashes=t.hash)
+
+    def __set_tags(self, info_hash: str, *, remove: str, add: str) -> None:
+        """Swap informational tags on a torrent."""
+        self.qb.torrents_remove_tags(tags=remove, torrent_hashes=info_hash)
+        self.qb.torrents_add_tags(tags=add, torrent_hashes=info_hash)
 
     def __process_local_torrents(self) -> None:
         logger.info("__process_local_torrents")
@@ -233,8 +237,16 @@ class Application:
             )
 
         for t in torrents:
+            # skip paused torrents — handled by __resume_stopped_torrents
+            if t.state.is_paused:
+                continue
+
+            # skip torrents that failed processing
+            if QB_TAG_PROCESS_ERROR in t.tags:
+                continue
+
             if not t.state.is_uploading:
-                # fix file selection for torrents added before the file filtering logic
+                # Stage 2: Downloading — update progress
                 if t.total_size == t.size:
                     self.__fix_file_selection(t)
 
@@ -249,11 +261,8 @@ class Application:
                 )
                 continue
 
-            if QB_TAG_PROCESS_ERROR in t.tags:
-                continue
-
-            self.qb.torrents_remove_tags(tags=QB_TAG_DOWNLOADING, torrent_hashes=t.hash)
-            self.qb.torrents_add_tags(tags=QB_TAG_PROCESSING, torrent_hashes=t.hash)
+            # Stage 3: Processing — download complete, extract mediainfo
+            self.__set_tags(t.hash, remove=QB_TAG_DOWNLOADING, add=QB_TAG_PROCESSING)
             try:
                 self.__process_local_torrent(t)
             except Exception as e:
@@ -499,8 +508,7 @@ class Application:
                 )
 
         # now start the torrent
-        self.qb.torrents_remove_tags(tags=QB_TAG_SELECTING_FILES, torrent_hashes=info_hash)
-        self.qb.torrents_add_tags(tags=QB_TAG_DOWNLOADING, torrent_hashes=info_hash)
+        self.__set_tags(info_hash, remove=QB_TAG_SELECTING_FILES, add=QB_TAG_DOWNLOADING)
         self.qb.torrents_resume(torrent_hashes=info_hash)
 
 
