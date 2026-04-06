@@ -15,7 +15,7 @@ from app.const import SELECTED_CATEGORY
 from app.db import Database
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
-from app.torrent import parse_torrent
+from app.torrent import find_largest_video_file, parse_torrent
 from app.utils import get_info_hash_v1_from_content, parse_obj
 
 TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -225,6 +225,14 @@ class Scrape:
 
             info_hash = get_info_hash_v1_from_content(tc)
 
+            files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
+            keep_idx = find_largest_video_file(files_data)
+            selected_size = (
+                next((size for i, _, size in files_data if i == keep_idx), 0)
+                if keep_idx is not None
+                else 0
+            )
+
             self.__db.execute(
                 """
                     insert into torrent (tid, info_hash, content)
@@ -235,10 +243,44 @@ class Scrape:
             )
 
             self.__db.execute(
-                """update thread set info_hash = $2, size = $3 where tid = $1""",
-                [tid, info_hash, t.total_length],
+                """update thread set info_hash = $2, size = $3, selected_size = $4 where tid = $1""",
+                [tid, info_hash, t.total_length, selected_size],
             )
         return False
+
+    def backfill_selected_size(self) -> None:
+        """Backfill selected_size for threads that already have a torrent but selected_size=0."""
+        while True:
+            rows: list[tuple[int, bytes]] = self.__db.fetch_all(
+                """
+                select thread.tid, torrent.content from thread
+                join torrent on (torrent.tid = thread.tid)
+                where thread.selected_size = 0 and thread.info_hash != ''
+                limit 200
+                """,
+            )
+
+            if not rows:
+                return
+
+            for tid, tc in rows:
+                try:
+                    t = parse_torrent(tc)
+                except (pydantic.ValidationError, BencodeDecodeError):
+                    continue
+
+                files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
+                keep_idx = find_largest_video_file(files_data)
+                selected_size = (
+                    next((size for i, _, size in files_data if i == keep_idx), 0)
+                    if keep_idx is not None
+                    else 0
+                )
+
+                self.__db.execute(
+                    """update thread set size = $2, selected_size = $3 where tid = $1""",
+                    [tid, t.total_length, selected_size],
+                )
 
     @staticmethod
     def __is_rate_limited(e: MTeamRequestError) -> bool:
@@ -247,6 +289,7 @@ class Scrape:
     def __run_fetch(self) -> RunResult:
         """Returns (result, no_pending)."""
         try:
+            self.backfill_selected_size()
             self.fetch_torrent()
         except httpx_network_errors:
             return RunResult.error

@@ -8,6 +8,8 @@ import pydantic
 import six
 from pydantic import Field
 
+from app.const import VIDEO_FILE_EXT
+
 
 def _transform_info(obj: dict[bytes, Any]) -> dict[str, Any]:
     d = {}
@@ -91,3 +93,18 @@ __t = pydantic.TypeAdapter(Torrent)
 
 def parse_torrent(tc: bytes) -> Torrent:
     return __t.validate_python(_transform_torrent(bencode2.bdecode(tc)))
+
+
+def find_largest_video_file(files: list[tuple[int, str, int]]) -> int | None:
+    """Return the index of the largest video file, or None if no video file found.
+
+    Args:
+        files: list of (index, name, size) tuples.
+    """
+    best: tuple[int, int] | None = None  # (index, size)
+    for index, name, size in files:
+        if not name.lower().endswith(VIDEO_FILE_EXT):
+            continue
+        if best is None or size > best[1]:
+            best = (index, size)
+    return best[0] if best is not None else None

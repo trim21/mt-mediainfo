@@ -44,3 +44,5 @@ create table if not exists config (
     key text primary key,
     value text not null
 );
+
+alter table thread add column if not exists selected_size int8 not null default 0;

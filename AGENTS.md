@@ -28,6 +28,9 @@ The application uses PostgreSQL with the following tables (see [`app/sql/schema.
 - **node** - Manages distributed nodes
 - **torrent** - Stores raw torrent content and info hashes
 
+Please ntice that the `schema.sql` is used as  init.sql and migration,
+so if you want to update database schema, use SQL like `alter ... if not exists ...`
+
 ## Tech Stack
 
 - **Language**: Python 3.12.12

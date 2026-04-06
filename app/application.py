@@ -26,13 +26,12 @@ from app.const import (
     LOCK_KEY_PICK_RSS_JOB,
     QB_TAG_PROCESS_ERROR,
     SELECTED_CATEGORY,
-    VIDEO_FILE_EXT,
 )
 from app.db import Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
 from app.mt import MTeamDomain
-from app.torrent import parse_torrent
+from app.torrent import find_largest_video_file, parse_torrent
 from app.utils import parse_obj, set_torrent_comment
 
 
@@ -134,9 +133,9 @@ class Application:
 
     def __run_at_interval(self) -> None:
         self.__cleanup_old_torrents()
+        self.__cleanup_unselected_category()
         self.__process_local_torrents()
-        picked = self.__pick_job()
-        self.__add_picked_to_qb(picked)
+        self.__pick_and_add_jobs()
 
     def __heart_beat(self) -> None:
         self.db.execute(
@@ -161,6 +160,31 @@ class Application:
                     [ITEM_STATUS_FAILED, "no seeders", t.hash, self.config.node_id],
                 )
                 self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+
+    def __cleanup_unselected_category(self) -> None:
+        """Clean up downloading jobs whose thread category is no longer in SELECTED_CATEGORY."""
+        rows: list[tuple[str]] = self.db.fetch_all(
+            """
+            select job.info_hash from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and job.node_id = $2
+              and not (thread.category = any($3))
+            """,
+            [ITEM_STATUS_DOWNLOADING, self.config.node_id, SELECTED_CATEGORY],
+        )
+        for (info_hash,) in rows:
+            logger.info("cleanup unselected category torrent {}", info_hash)
+            self.db.execute(
+                "update job set status = $1, failed_reason = $2, updated_at = current_timestamp where info_hash = $3 and node_id = $4",
+                [
+                    ITEM_STATUS_SKIPPED,
+                    "category no longer selected",
+                    info_hash,
+                    self.config.node_id,
+                ],
+            )
+            with contextlib.suppress(NotFound404Error):
+                self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
 
     def __process_local_torrents(self) -> None:
         torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
@@ -213,22 +237,16 @@ class Application:
                 logger.error("failed to process local torrent {}", e)
 
     def __process_local_torrent(self, t: QbTorrent) -> None:
-        video_files: list[QbFile] = []
-
         files = parse_obj(list[QbFile], self.qb.torrents_files(torrent_hash=t.hash))
-        for file in files:
-            if file.priority == 0:
-                continue
+        active_files = [(f.index, f.name, f.size) for f in files if f.priority != 0]
+        selected_idx = find_largest_video_file(active_files)
 
-            if file.name.lower().endswith(VIDEO_FILE_EXT):
-                video_files.append(file)
-
-        if not video_files:
+        if selected_idx is None:
             self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
             return
 
-        video_files.sort(key=lambda x: x.size, reverse=True)
-        path = Path(t.save_path, video_files[0].name)
+        selected_file = next(f for f in files if f.index == selected_idx)
+        path = Path(t.save_path, selected_file.name)
 
         media_info = extract_mediainfo_from_file(path)
 
@@ -246,85 +264,15 @@ class Application:
         )
         self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
-    def __add_picked_to_qb(self, picked: list[tuple[int, str]]) -> None:
-        for tid, info_hash in picked:
-            tc = self.db.fetch_val(
-                "select content from torrent where tid = $1 limit 1",
-                [tid],
-            )
-            t = parse_torrent(tc)
-
-            video_files = [tf for tf in t.as_files() if tf.name.lower().endswith(VIDEO_FILE_EXT)]
-            if not video_files:
-                self.db.execute(
-                    """
-                    update job set
-                      status = $1,
-                      updated_at = current_timestamp
-                    where
-                      tid = $2 and node_id = $3
-                    """,
-                    [ITEM_STATUS_SKIPPED, tid, self.config.node_id],
-                )
-                continue
-
-            tc = set_torrent_comment(tc, f"https://{MTeamDomain}/detail/{tid}")
-
-            r = self.qb.torrents_add(
-                torrent_files=[tc],
-                save_path=os.path.join(self.config.download_path, info_hash),
-                use_auto_torrent_management=False,
-                is_paused=False,
-                is_stopped=False,
-            )
-            if r != "Ok.":
-                self.db.execute(
-                    """
-                    update job set
-                      status = $1,
-                      failed_reason = $2,
-                      updated_at = current_timestamp
-                    where tid = $3 and node_id = $4
-                    """,
-                    [ITEM_STATUS_FAILED, "failed to add", tid, self.config.node_id],
-                )
-                continue
-
-            # only download lartest single video file
-            if t.info.files:
-                files = list(enumerate(list(t.info.files)))
-                file_ids: set[int] = set()
-                find_video_file = False
-
-                for index, file in sorted(
-                    [(index, file) for index, file in files],
-                    key=lambda y: y[1].length,
-                    reverse=True,
-                ):
-                    if file.name.lower().endswith(VIDEO_FILE_EXT) and not find_video_file:
-                        find_video_file = True
-                        continue
-                    file_ids.add(index)
-
-                if file_ids:
-                    # give qbittorrent some time to process the torrent
-                    time.sleep(10)
-                    with contextlib.suppress(NotFound404Error):
-                        self.qb.torrents_file_priority(
-                            torrent_hash=info_hash,
-                            file_ids=list(file_ids),
-                            priority=0,
-                        )
-
-    def __pick_job(self) -> list[tuple[int, str]]:
-        logger.debug("__pick_job")
+    def __pick_and_add_jobs(self) -> None:
+        logger.debug("__pick_and_add_jobs")
 
         current_total_size = sum(
             t.size for t in parse_obj(list[QbTorrent], self.qb.torrents_info())
         )
         left_size = int(self.config.total_process_size) - current_total_size
         if left_size <= 0:
-            return []
+            return
 
         picked: list[tuple[int, str]] = []
 
@@ -335,16 +283,17 @@ class Application:
         ):
             rows: list[tuple[int, str, int]] = conn.fetch_all(
                 """
-                select thread.tid, thread.info_hash, thread.size from thread
+                select thread.tid, thread.info_hash, thread.selected_size from thread
                 left join job on (job.tid = thread.tid)
                 where
                     mediainfo = '' and
-                    size < $1 and
                     thread.info_hash != '' and
+                    thread.selected_size > 0 and
+                    thread.selected_size < $1 and
                     category = any ($2) and
                     job.tid is null and
                     seeders != 0
-                order by size desc
+                order by selected_size desc
                 limit 6
                 """,
                 [
@@ -354,25 +303,125 @@ class Application:
             )
 
             if not rows:
-                return []
+                return
 
-            logger.info("pick {} new jobs", len(rows))
-
-            for tid, info_hash, size in rows:
-                if left_size - size <= 0:
+            for tid, info_hash, selected_size in rows:
+                if left_size - selected_size <= 0:
                     continue
-                left_size = left_size - size
 
                 conn.execute(
                     """
-                insert into job (tid, node_id, info_hash, start_download_time, updated_at, status)
-                VALUES ($1, $2, $3, current_timestamp, current_timestamp, $4)
+                    insert into job (tid, node_id, info_hash, start_download_time, updated_at, status)
+                    VALUES ($1, $2, $3, current_timestamp, current_timestamp, $4)
                     """,
                     [tid, self.config.node_id, info_hash, ITEM_STATUS_DOWNLOADING],
                 )
+                left_size -= selected_size
                 picked.append((tid, info_hash))
 
-        return picked
+        # add to qBittorrent outside the lock to avoid blocking other nodes
+        for tid, info_hash in picked:
+            self.__add_to_qb(tid, info_hash)
+
+    def __add_to_qb(
+        self,
+        tid: int,
+        info_hash: str,
+    ) -> None:
+        tc = self.db.fetch_val(
+            "select content from torrent where tid = $1 limit 1",
+            [tid],
+        )
+        if not tc:
+            self.db.execute(
+                """
+                update job set
+                  status = $1,
+                  failed_reason = $2,
+                  updated_at = current_timestamp
+                where tid = $3 and node_id = $4
+                """,
+                [ITEM_STATUS_FAILED, "torrent content not found", tid, self.config.node_id],
+            )
+            return
+
+        t = parse_torrent(tc)
+        tc = set_torrent_comment(tc, f"https://{MTeamDomain}/detail/{tid}")
+
+        # add torrent in stopped state so we can set file priorities before downloading
+        r = self.qb.torrents_add(
+            torrent_files=[tc],
+            save_path=os.path.join(self.config.download_path, info_hash),
+            use_auto_torrent_management=False,
+            is_paused=True,
+            is_stopped=True,
+        )
+        if r != "Ok.":
+            self.db.execute(
+                """
+                update job set
+                  status = $1,
+                  failed_reason = $2,
+                  updated_at = current_timestamp
+                where tid = $3 and node_id = $4
+                """,
+                [ITEM_STATUS_FAILED, "failed to add", tid, self.config.node_id],
+            )
+            return
+
+        # wait for qBittorrent to register the torrent
+        registered = False
+        for _ in range(30):
+            if self.qb.torrents_info(torrent_hashes=info_hash):
+                registered = True
+                break
+            time.sleep(1)
+
+        if not registered:
+            self.db.execute(
+                """
+                update job set
+                  status = $1,
+                  failed_reason = $2,
+                  updated_at = current_timestamp
+                where tid = $3 and node_id = $4
+                """,
+                [
+                    ITEM_STATUS_FAILED,
+                    "torrent not registered in qBittorrent",
+                    tid,
+                    self.config.node_id,
+                ],
+            )
+            return
+
+        # only download largest single video file
+        if t.info.files:
+            files_data = [(i, f.name, f.length) for i, f in enumerate(t.info.files)]
+            keep_idx = find_largest_video_file(files_data)
+            if keep_idx is None:
+                self.db.execute(
+                    """
+                    update job set
+                      status = $1,
+                      failed_reason = $2,
+                      updated_at = current_timestamp
+                    where tid = $3 and node_id = $4
+                    """,
+                    [ITEM_STATUS_SKIPPED, "no video file in torrent", tid, self.config.node_id],
+                )
+                self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+                return
+            file_ids = [i for i, _, _ in files_data if i != keep_idx]
+            if file_ids:
+                self.qb.torrents_file_priority(
+                    torrent_hash=info_hash,
+                    file_ids=file_ids,
+                    priority=0,
+                )
+
+        # now start the torrent
+        self.qb.torrents_resume(torrent_hashes=info_hash)
 
 
 @dataclasses.dataclass(kw_only=True, slots=True)
