@@ -222,6 +222,7 @@ class Application:
         for t in torrents:
             # Skip torrents not managed by us
             if t.hash not in managed_hashes:
+                logger.info("{} not managed", t.hash)
                 continue
 
             # Cleanup old torrents (no seeders for 10+ days)
