@@ -120,7 +120,7 @@ class Lock:
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
         exc_tb: TracebackType | None,
-    ) -> bool:
+    ):
         """Exit the context manager."""
         self.__release()
         self.__lock.release()
