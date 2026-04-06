@@ -125,9 +125,6 @@ class Lock:
         self.__release()
         self.__lock.release()
 
-        # do not suppress any error
-        return exc is None
-
     def __acquire(self) -> bool:
         with self.__conn.cursor() as cursor:
             try:

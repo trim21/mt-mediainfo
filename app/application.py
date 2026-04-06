@@ -26,6 +26,7 @@ from app.const import (
     ITEM_STATUS_SKIPPED,
     LOCK_KEY_PICK_RSS_JOB,
     QB_TAG_DOWNLOADING,
+    QB_TAG_NEED_SELECT,
     QB_TAG_PROCESS_ERROR,
     QB_TAG_PROCESSING,
     QB_TAG_SELECTING_FILES,
@@ -272,8 +273,12 @@ class Application:
                     logger.error("failed to process local torrent {}", e)
                 continue
 
-            # Fix file selection for any torrent not yet fully downloaded
-            self.__fix_file_selection(t)
+            # Newly added torrent → select files, clear limit, remove tag
+            if QB_TAG_NEED_SELECT in t.tags:
+                self.__fix_file_selection(t)
+                self.qb.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
+                self.qb.torrents_remove_tags(tags=QB_TAG_NEED_SELECT, torrent_hashes=t.hash)
+                continue
 
             # Paused → resume
             if t.state.is_paused:
@@ -429,7 +434,8 @@ class Application:
             torrent_files=[tc],
             save_path=os.path.join(self.config.download_path, info_hash),
             use_auto_torrent_management=False,
-            tags=QB_TAG_DOWNLOADING,
+            tags=[QB_TAG_DOWNLOADING, QB_TAG_NEED_SELECT],
+            download_limit=1,
         )
         if r != "Ok.":
             self.__update_job_status(
