@@ -411,7 +411,7 @@ class Application:
                 """,
                 [
                     ITEM_STATUS_FAILED,
-                    "torrent not registered in qBittorrent",
+                    f"torrent {info_hash} not found in qBittorrent after 30s waiting (tid={tid}, torrents_add returned Ok but torrent never appeared)",
                     tid,
                     self.config.node_id,
                 ],
