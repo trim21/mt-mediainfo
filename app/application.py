@@ -25,7 +25,10 @@ from app.const import (
     ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
     ITEM_STATUS_SKIPPED,
     LOCK_KEY_PICK_RSS_JOB,
+    QB_TAG_DOWNLOADING,
     QB_TAG_PROCESS_ERROR,
+    QB_TAG_PROCESSING,
+    QB_TAG_SELECTING_FILES,
     SELECTED_CATEGORY,
 )
 from app.db import Database
@@ -135,6 +138,7 @@ class Application:
     def __run_at_interval(self) -> None:
         self.__cleanup_old_torrents()
         self.__cleanup_unselected_category()
+        self.__resume_stopped_torrents()
         self.__process_local_torrents()
         self.__pick_and_add_jobs()
 
@@ -187,6 +191,25 @@ class Application:
             with contextlib.suppress(NotFound404Error):
                 self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
 
+    def __resume_stopped_torrents(self) -> None:
+        """Resume torrents that are stopped but should be downloading.
+
+        Handles both legacy torrents (no tags) and torrents stuck in
+        selecting-files stage due to previous errors.
+        """
+        torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
+        for t in torrents:
+            if not t.state.is_paused:
+                continue
+            if QB_TAG_PROCESS_ERROR in t.tags:
+                continue
+            # legacy torrent (no tags) or stuck in selecting-files
+            if not t.tags or t.tags == {QB_TAG_SELECTING_FILES}:
+                logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
+                self.qb.torrents_remove_tags(tags=QB_TAG_SELECTING_FILES, torrent_hashes=t.hash)
+                self.qb.torrents_add_tags(tags=QB_TAG_DOWNLOADING, torrent_hashes=t.hash)
+                self.qb.torrents_resume(torrent_hashes=t.hash)
+
     def __process_local_torrents(self) -> None:
         torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
         if torrents:
@@ -225,6 +248,8 @@ class Application:
             if QB_TAG_PROCESS_ERROR in t.tags:
                 continue
 
+            self.qb.torrents_remove_tags(tags=QB_TAG_DOWNLOADING, torrent_hashes=t.hash)
+            self.qb.torrents_add_tags(tags=QB_TAG_PROCESSING, torrent_hashes=t.hash)
             try:
                 self.__process_local_torrent(t)
             except Exception as e:
@@ -344,7 +369,22 @@ class Application:
 
         # add to qBittorrent outside the lock to avoid blocking other nodes
         for tid, info_hash in picked:
-            self.__add_to_qb(tid, info_hash)
+            try:
+                self.__add_to_qb(tid, info_hash)
+            except Exception as e:
+                logger.error("failed to add torrent tid={} to qb: {}", tid, e)
+                self.db.execute(
+                    """
+                    update job set
+                      status = $1,
+                      failed_reason = $2,
+                      updated_at = current_timestamp
+                    where tid = $3 and node_id = $4
+                    """,
+                    [ITEM_STATUS_FAILED, format_exc(e), tid, self.config.node_id],
+                )
+                with contextlib.suppress(NotFound404Error):
+                    self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
 
     def __add_to_qb(
         self,
@@ -378,6 +418,7 @@ class Application:
             use_auto_torrent_management=False,
             is_paused=True,
             is_stopped=True,
+            tags=QB_TAG_SELECTING_FILES,
         )
         if r != "Ok.":
             self.db.execute(
@@ -444,6 +485,8 @@ class Application:
                 )
 
         # now start the torrent
+        self.qb.torrents_remove_tags(tags=QB_TAG_SELECTING_FILES, torrent_hashes=info_hash)
+        self.qb.torrents_add_tags(tags=QB_TAG_DOWNLOADING, torrent_hashes=info_hash)
         self.qb.torrents_resume(torrent_hashes=info_hash)
 
 

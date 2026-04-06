@@ -27,6 +27,9 @@ ITEM_STATUS_PROCESSING: Final = (
 VIDEO_FILE_EXT = (".mkv", ".mp4", ".avi", ".wmv")
 
 QB_TAG_PROCESS_ERROR: Final = "process-error"
+QB_TAG_SELECTING_FILES: Final = "selecting-files"
+QB_TAG_DOWNLOADING: Final = "downloading"
+QB_TAG_PROCESSING: Final = "processing"
 
 MOVIE_CATEGORY = {401, 419, 420, 421, 439}
 
