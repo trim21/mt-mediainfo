@@ -136,10 +136,7 @@ class Application:
                 print("failed to run", format_exc(e))
 
     def __run_at_interval(self) -> None:
-        self.__cleanup_old_torrents()
-        self.__cleanup_unselected_category()
-        self.__resume_stopped_torrents()
-        self.__process_local_torrents()
+        self.__process_qb_torrents()
         self.__pick_and_add_jobs()
 
     def __heart_beat(self) -> None:
@@ -150,64 +147,6 @@ class Application:
             """,
             [self.config.node_id, datetime.now(tz=UTC)],
         )
-
-    def __cleanup_old_torrents(self) -> None:
-        """Delete torrents where Last Seen Complete is before 10 days ago."""
-        logger.info("__cleanup_old_torrents")
-        torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
-        cutoff = time.time() - 10 * 86400
-        for t in torrents:
-            if 0 < t.seen_complete < cutoff:
-                logger.info(
-                    "cleanup old torrent {} (last seen complete: {})",
-                    t.name,
-                    t.seen_complete,
-                )
-                self.__update_job_status(
-                    status=ITEM_STATUS_FAILED,
-                    info_hash=t.hash,
-                    failed_reason="no seeders",
-                )
-                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
-
-    def __cleanup_unselected_category(self) -> None:
-        """Clean up downloading jobs whose thread category is no longer in SELECTED_CATEGORY."""
-        logger.info("__cleanup_unselected_category")
-        rows: list[tuple[str]] = self.db.fetch_all(
-            """
-            select job.info_hash from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and job.node_id = $2
-              and not (thread.category = any($3))
-            """,
-            [ITEM_STATUS_DOWNLOADING, self.config.node_id, SELECTED_CATEGORY],
-        )
-        for (info_hash,) in rows:
-            logger.info("cleanup unselected category torrent {}", info_hash)
-            self.__update_job_status(
-                status=ITEM_STATUS_SKIPPED,
-                info_hash=info_hash,
-                failed_reason="category no longer selected",
-            )
-            with contextlib.suppress(NotFound404Error):
-                self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
-
-    def __resume_stopped_torrents(self) -> None:
-        """Resume torrents that are stopped but should be downloading.
-
-        Handles both legacy torrents (no tags) and torrents stuck in
-        stopped state due to previous errors.
-        """
-        logger.info("__resume_stopped_torrents")
-        torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
-        for t in torrents:
-            if not t.state.is_paused:
-                continue
-            if QB_TAG_PROCESS_ERROR in t.tags:
-                continue
-            logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
-            self.__set_tags(t.hash, remove=QB_TAG_SELECTING_FILES, add=QB_TAG_DOWNLOADING)
-            self.qb.torrents_resume(torrent_hashes=t.hash)
 
     def __set_tags(self, info_hash: str, *, remove: str, add: str) -> None:
         """Swap informational tags on a torrent."""
@@ -238,62 +177,114 @@ class Application:
                 [status, failed_reason, tid, self.config.node_id],
             )
 
-    def __process_local_torrents(self) -> None:
-        logger.info("__process_local_torrents")
+    def __process_qb_torrents(self) -> None:
+        """Process all torrents in qBittorrent in a single pass."""
         torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
-        if torrents:
-            self.db.execute(
-                """
-                    update job set
-                      status = $1,
-                      updated_at = current_timestamp
-                    where (not info_hash = any($2)) and node_id = $3 and status = $4
-                    """,
-                [
-                    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-                    [x.hash for x in torrents],
-                    self.config.node_id,
-                    ITEM_STATUS_DOWNLOADING,
-                ],
-            )
+        if not torrents:
+            return
+
+        # Mark jobs as removed-from-client if their torrent is no longer in qb
+        self.db.execute(
+            """
+                update job set
+                  status = $1,
+                  updated_at = current_timestamp
+                where (not info_hash = any($2)) and node_id = $3 and status = $4
+                """,
+            [
+                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+                [x.hash for x in torrents],
+                self.config.node_id,
+                ITEM_STATUS_DOWNLOADING,
+            ],
+        )
+
+        # Fetch all downloading jobs for this node, and which ones have unselected category
+        job_rows: list[tuple[str, bool]] = self.db.fetch_all(
+            """
+            select job.info_hash,
+                   not (thread.category = any($3)) as unselected
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.node_id = $1 and job.status = $2
+            """,
+            [self.config.node_id, ITEM_STATUS_DOWNLOADING, SELECTED_CATEGORY],
+        )
+        managed_hashes: set[str] = {info_hash for info_hash, _ in job_rows}
+        unselected_hashes: set[str] = {
+            info_hash for info_hash, unselected in job_rows if unselected
+        }
+
+        cutoff = time.time() - 10 * 86400
 
         for t in torrents:
-            # skip paused torrents — handled by __resume_stopped_torrents
-            if t.state.is_paused:
+            # Skip torrents not managed by us
+            if t.hash not in managed_hashes:
                 continue
 
-            # skip torrents that failed processing
+            # Cleanup old torrents (no seeders for 10+ days)
+            if 0 < t.seen_complete < cutoff:
+                logger.info(
+                    "cleanup old torrent {} (last seen complete: {})",
+                    t.name,
+                    t.seen_complete,
+                )
+                self.__update_job_status(
+                    status=ITEM_STATUS_FAILED, info_hash=t.hash, failed_reason="no seeders"
+                )
+                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+                continue
+
+            # Skip torrents that failed processing
             if QB_TAG_PROCESS_ERROR in t.tags:
                 continue
 
-            if not t.state.is_uploading:
-                # Stage 2: Downloading — update progress
-                if t.total_size == t.size:
-                    self.__fix_file_selection(t)
-
-                self.db.execute(
-                    """
-                    update job set
-                      progress = $1,
-                      updated_at = current_timestamp
-                    where info_hash = $2 and node_id = $3 and status = $4
-                    """,
-                    [t.progress, t.hash, self.config.node_id, ITEM_STATUS_DOWNLOADING],
+            # Cleanup torrents whose category is no longer selected
+            if t.hash in unselected_hashes:
+                logger.info("cleanup unselected category torrent {}", t.hash)
+                self.__update_job_status(
+                    status=ITEM_STATUS_SKIPPED,
+                    info_hash=t.hash,
+                    failed_reason="category no longer selected",
                 )
+                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
 
-            # Stage 3: Processing — download complete, extract mediainfo
-            self.__set_tags(t.hash, remove=QB_TAG_DOWNLOADING, add=QB_TAG_PROCESSING)
-            try:
-                self.__process_local_torrent(t)
-            except Exception as e:
-                self.__update_job_status(
-                    status=ITEM_STATUS_FAILED,
-                    info_hash=t.hash,
-                    failed_reason=format_exc(e),
-                )
-                self.qb.torrents_add_tags(tags=QB_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
-                logger.error("failed to process local torrent {}", e)
+            # Paused → fix file selection if needed, then resume
+            if t.state.is_paused:
+                logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
+                self.__fix_file_selection(t)
+                self.__set_tags(t.hash, remove=QB_TAG_SELECTING_FILES, add=QB_TAG_DOWNLOADING)
+                self.qb.torrents_resume(torrent_hashes=t.hash)
+                continue
+
+            # Upload complete → process mediainfo
+            if t.state.is_uploading:
+                self.__set_tags(t.hash, remove=QB_TAG_DOWNLOADING, add=QB_TAG_PROCESSING)
+                try:
+                    self.__process_local_torrent(t)
+                except Exception as e:
+                    self.__update_job_status(
+                        status=ITEM_STATUS_FAILED,
+                        info_hash=t.hash,
+                        failed_reason=format_exc(e),
+                    )
+                    self.qb.torrents_add_tags(tags=QB_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
+                    logger.error("failed to process local torrent {}", e)
+                continue
+
+            # Downloading — fix file selection if needed, update progress
+            self.__fix_file_selection(t)
+
+            self.db.execute(
+                """
+                update job set
+                  progress = $1,
+                  updated_at = current_timestamp
+                where info_hash = $2 and node_id = $3 and status = $4
+                """,
+                [t.progress, t.hash, self.config.node_id, ITEM_STATUS_DOWNLOADING],
+            )
 
     def __fix_file_selection(self, t: QbTorrent) -> None:
         """Fix file priorities for torrents that are downloading all files."""
