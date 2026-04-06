@@ -56,6 +56,8 @@ check_untyped_defs = true
 
 [tool.pyright]
 pythonVersion = '3.12'
+venvPath = '.'
+venv = '.venv'
 
 [tool.ruff]
 cache-dir = '.venv/.cache/ruff'
