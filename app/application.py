@@ -223,6 +223,8 @@ class Application:
             # Skip torrents not managed by us
             if t.hash not in managed_hashes:
                 logger.info("{} not managed", t.hash)
+                if not t.state.is_paused:
+                    self.qb.torrents_pause(torrent_hashes=t.hash)
                 continue
 
             # Cleanup old torrents (no seeders for 10+ days)
