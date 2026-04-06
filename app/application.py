@@ -22,6 +22,7 @@ from app.const import (
     ITEM_STATUS_DONE,
     ITEM_STATUS_DOWNLOADING,
     ITEM_STATUS_FAILED,
+    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
     ITEM_STATUS_SKIPPED,
     LOCK_KEY_PICK_RSS_JOB,
     QB_TAG_PROCESS_ERROR,
@@ -197,7 +198,7 @@ class Application:
                     where (not info_hash = any($2)) and node_id = $3 and status = $4
                     """,
                 [
-                    ITEM_STATUS_SKIPPED,
+                    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
                     [x.hash for x in torrents],
                     self.config.node_id,
                     ITEM_STATUS_DOWNLOADING,

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>{{ title }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+        crossorigin="anonymous">
+</head>
+<body>
+
+<div class="container mt-4">
+  <p><a href="/progress">&larr; Back to Progress</a></p>
+  <h2>{{ title }} <small class="text-muted fs-6">({{ threads | length }})</small></h2>
+
+  {% if show_reset and threads %}
+  <div class="mb-3">
+    <button class="btn btn-warning btn-sm" onclick="resetAll()">Reset All</button>
+  </div>
+  {% endif %}
+
+  <table class="table table-bordered table-hover table-sm">
+    <thead class="table-light">
+    <tr>
+      <th>TID</th>
+      <th>Category</th>
+      <th>Size</th>
+      <th>Selected Size</th>
+      <th>Seeders</th>
+      {% if show_progress %}<th>Progress</th>{% endif %}
+      {% if show_failed_reason %}<th>Reason</th>{% endif %}
+      <th>Created</th>
+      <th>Link</th>
+      {% if show_reset %}<th>Action</th>{% endif %}
+    </tr>
+    </thead>
+    <tbody>
+    {% for t in threads %}
+    <tr id="row-{{ t.tid }}">
+      <td>{{ t.tid }}</td>
+      <td>{{ t.category }}</td>
+      <td>{{ t.size_fmt }}</td>
+      <td>{{ t.selected_size_fmt }}</td>
+      <td>{{ t.seeders }}</td>
+      {% if show_progress %}<td>{{ "%.1f" | format(t.progress * 100) }}%</td>{% endif %}
+      {% if show_failed_reason %}<td><small>{{ t.failed_reason }}</small></td>{% endif %}
+      <td>{{ t.created_at }}</td>
+      <td><a href="https://kp.m-team.cc/detail/{{ t.tid }}" target="_blank">MT</a></td>
+      {% if show_reset %}<td><button class="btn btn-outline-primary btn-sm" onclick="resetOne({{ t.tid }})">Reset</button></td>{% endif %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if show_reset %}
+<script>
+async function resetOne(tid) {
+  if (!confirm('Reset thread ' + tid + '?')) return;
+  const resp = await fetch('/api/thread/' + tid + '/reset', {method: 'POST'});
+  if (resp.ok) {
+    document.getElementById('row-' + tid)?.remove();
+  } else {
+    alert('Failed to reset');
+  }
+}
+async function resetAll() {
+  if (!confirm('Reset all removed threads?')) return;
+  const resp = await fetch('/api/threads/removed/reset', {method: 'POST'});
+  if (resp.ok) {
+    location.reload();
+  } else {
+    alert('Failed to reset');
+  }
+}
+</script>
+{% endif %}
+
+</body>
+</html>

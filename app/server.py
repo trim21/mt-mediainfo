@@ -18,6 +18,7 @@ from app.const import (
     ITEM_STATUS_DONE,
     ITEM_STATUS_DOWNLOADING,
     ITEM_STATUS_FAILED,
+    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
     ITEM_STATUS_SKIPPED,
     SELECTED_CATEGORY,
 )
@@ -707,17 +708,47 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
+        # Lifecycle: removed by client
+        removed_by_client = (
+            await pool.fetchval(
+                """
+            select count(1) from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            """,
+                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+                SELECTED_CATEGORY,
+            )
+            or 0
+        )
+
+        removed_by_client_size = (
+            await pool.fetchval(
+                """
+            select coalesce(sum(thread.selected_size), 0) from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            """,
+                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+                SELECTED_CATEGORY,
+            )
+            or 0
+        )
+
         skipped = (
             total
             - done
             - downloading
             - failed
+            - removed_by_client
             - pending_fetch_mediainfo
             - pending_fetch_torrent
             - pending_to_download
         )
 
-        skipped_size = total_size - done_size - downloading_size - failed_size
+        skipped_size = (
+            total_size - done_size - downloading_size - failed_size - removed_by_client_size
+        )
 
         def pct(n: int) -> str:
             if total == 0:
@@ -747,6 +778,9 @@ def create_app() -> fastapi.FastAPI:
                 "failed": failed,
                 "failed_size": human_readable_size(failed_size),
                 "failed_pct": pct(failed),
+                "removed_by_client": removed_by_client,
+                "removed_by_client_size": human_readable_size(removed_by_client_size),
+                "removed_by_client_pct": pct(removed_by_client),
                 "skipped": skipped,
                 "skipped_size": human_readable_size(skipped_size),
                 "skipped_pct": pct(skipped),
@@ -762,5 +796,262 @@ def create_app() -> fastapi.FastAPI:
         default_start = (today - timedelta(days=364)).strftime("%Y-%m-%d")
         start_value = start if start is not None else default_start
         return render("detail.html.j2", ctx={"start": start_value})
+
+    @app.get("/threads/pending-mediainfo")
+    async def threads_pending_mediainfo(
+        render: Annotated[_Render, Depends(__render)],
+    ) -> HTMLResponse:
+        rows = await pool.fetch(
+            """
+            select tid, category, size, selected_size, seeders, created_at from thread
+            where deleted = false and mediainfo_at is null
+              and upload_at >= '2024-01-01' and category = any($1)
+            order by tid desc
+            """,
+            SELECTED_CATEGORY,
+        )
+        return render(
+            "threads.html.j2",
+            ctx={
+                "title": "Pending Fetch Mediainfo",
+                "show_progress": False,
+                "show_failed_reason": False,
+                "threads": [
+                    dict(r)
+                    | {
+                        "size_fmt": human_readable_size(r["size"]),
+                        "selected_size_fmt": human_readable_size(r["selected_size"])
+                        if r["selected_size"] > 0
+                        else "-",
+                    }
+                    for r in rows
+                ],
+            },
+        )
+
+    @app.get("/threads/pending-torrent")
+    async def threads_pending_torrent(
+        render: Annotated[_Render, Depends(__render)],
+    ) -> HTMLResponse:
+        rows = await pool.fetch(
+            """
+            select tid, category, size, selected_size, seeders, created_at from thread
+            where deleted = false and mediainfo_at is not null
+              and mediainfo = '' and info_hash = '' and category = any($1)
+            order by tid desc
+            """,
+            SELECTED_CATEGORY,
+        )
+        return render(
+            "threads.html.j2",
+            ctx={
+                "title": "Pending Fetch Torrent",
+                "show_progress": False,
+                "show_failed_reason": False,
+                "threads": [
+                    dict(r)
+                    | {
+                        "size_fmt": human_readable_size(r["size"]),
+                        "selected_size_fmt": human_readable_size(r["selected_size"])
+                        if r["selected_size"] > 0
+                        else "-",
+                    }
+                    for r in rows
+                ],
+            },
+        )
+
+    @app.get("/threads/pending-download")
+    async def threads_pending_download(
+        render: Annotated[_Render, Depends(__render)],
+    ) -> HTMLResponse:
+        rows = await pool.fetch(
+            """
+            select thread.tid, category, size, selected_size, seeders, thread.created_at from thread
+            left join job on (job.tid = thread.tid)
+            where deleted = false and seeders != 0
+              and mediainfo = '' and thread.info_hash != ''
+              and selected_size > 0
+              and category = any($1) and job.tid is null
+            order by thread.tid desc
+            """,
+            SELECTED_CATEGORY,
+        )
+        return render(
+            "threads.html.j2",
+            ctx={
+                "title": "Pending to Download",
+                "show_progress": False,
+                "show_failed_reason": False,
+                "threads": [
+                    dict(r)
+                    | {
+                        "size_fmt": human_readable_size(r["size"]),
+                        "selected_size_fmt": human_readable_size(r["selected_size"]),
+                    }
+                    for r in rows
+                ],
+            },
+        )
+
+    @app.get("/threads/downloading")
+    async def threads_downloading(
+        render: Annotated[_Render, Depends(__render)],
+    ) -> HTMLResponse:
+        rows = await pool.fetch(
+            """
+            select thread.tid, category, size, selected_size, seeders, thread.created_at,
+                   job.progress, job.node_id
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            order by job.updated_at desc
+            """,
+            ITEM_STATUS_DOWNLOADING,
+            SELECTED_CATEGORY,
+        )
+        return render(
+            "threads.html.j2",
+            ctx={
+                "title": "Downloading",
+                "show_progress": True,
+                "show_failed_reason": False,
+                "threads": [
+                    dict(r)
+                    | {
+                        "size_fmt": human_readable_size(r["size"]),
+                        "selected_size_fmt": human_readable_size(r["selected_size"])
+                        if r["selected_size"] > 0
+                        else "-",
+                    }
+                    for r in rows
+                ],
+            },
+        )
+
+    @app.get("/threads/done")
+    async def threads_done(
+        render: Annotated[_Render, Depends(__render)],
+    ) -> HTMLResponse:
+        rows = await pool.fetch(
+            """
+            select tid, category, size, selected_size, seeders, created_at from thread
+            where mediainfo != '' and category = any($1)
+            order by tid desc
+            limit 500
+            """,
+            SELECTED_CATEGORY,
+        )
+        return render(
+            "threads.html.j2",
+            ctx={
+                "title": "Done",
+                "show_progress": False,
+                "show_failed_reason": False,
+                "threads": [
+                    dict(r)
+                    | {
+                        "size_fmt": human_readable_size(r["size"]),
+                        "selected_size_fmt": human_readable_size(r["selected_size"])
+                        if r["selected_size"] > 0
+                        else "-",
+                    }
+                    for r in rows
+                ],
+            },
+        )
+
+    @app.get("/threads/failed")
+    async def threads_failed(
+        render: Annotated[_Render, Depends(__render)],
+    ) -> HTMLResponse:
+        rows = await pool.fetch(
+            """
+            select thread.tid, category, size, selected_size, seeders, thread.created_at,
+                   job.failed_reason
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            order by job.updated_at desc
+            """,
+            ITEM_STATUS_FAILED,
+            SELECTED_CATEGORY,
+        )
+        return render(
+            "threads.html.j2",
+            ctx={
+                "title": "Failed",
+                "show_progress": False,
+                "show_failed_reason": True,
+                "threads": [
+                    dict(r)
+                    | {
+                        "size_fmt": human_readable_size(r["size"]),
+                        "selected_size_fmt": human_readable_size(r["selected_size"])
+                        if r["selected_size"] > 0
+                        else "-",
+                    }
+                    for r in rows
+                ],
+            },
+        )
+
+    @app.get("/threads/removed")
+    async def threads_removed(
+        render: Annotated[_Render, Depends(__render)],
+    ) -> HTMLResponse:
+        rows = await pool.fetch(
+            """
+            select thread.tid, category, size, selected_size, seeders, thread.created_at
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            order by job.updated_at desc
+            """,
+            ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+            SELECTED_CATEGORY,
+        )
+        return render(
+            "threads.html.j2",
+            ctx={
+                "title": "Removed by Client",
+                "show_progress": False,
+                "show_failed_reason": False,
+                "show_reset": True,
+                "threads": [
+                    dict(r)
+                    | {
+                        "size_fmt": human_readable_size(r["size"]),
+                        "selected_size_fmt": human_readable_size(r["selected_size"])
+                        if r["selected_size"] > 0
+                        else "-",
+                    }
+                    for r in rows
+                ],
+            },
+        )
+
+    @app.post("/api/threads/removed/reset")
+    async def reset_removed_threads() -> ORJSONResponse:
+        result = await pool.execute(
+            """
+            delete from job
+            where status = $1
+            """,
+            ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+        )
+        return ORJSONResponse({"deleted": result})
+
+    @app.post("/api/thread/{tid}/reset")
+    async def reset_thread(tid: int) -> ORJSONResponse:
+        result = await pool.execute(
+            """
+            delete from job
+            where tid = $1 and status = $2
+            """,
+            tid,
+            ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+        )
+        return ORJSONResponse({"deleted": result})
 
     return app

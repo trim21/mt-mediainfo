@@ -42,11 +42,11 @@
           <td>{{ total }}</td>
         </tr>
         <tr class="table-warning">
-          <th>Pending fetch mediainfo</th>
+          <th><a href="/threads/pending-mediainfo" class="text-reset text-decoration-none">Pending fetch mediainfo</a></th>
           <td>{{ pending_fetch_mediainfo }}</td>
         </tr>
         <tr class="table-warning">
-          <th>Pending fetch torrent (info_hash)</th>
+          <th><a href="/threads/pending-torrent" class="text-reset text-decoration-none">Pending fetch torrent (info_hash)</a></th>
           <td>{{ pending_fetch_torrent }}</td>
         </tr>
         <tr>
@@ -67,24 +67,29 @@
           <td>{{ total_size }}</td>
         </tr>
         <tr class="table-warning">
-          <th>Pending to download</th>
+          <th><a href="/threads/pending-download" class="text-reset text-decoration-none">Pending to download</a></th>
           <td>{{ pending_to_download }}</td>
           <td>{{ pending_to_download_size }}</td>
         </tr>
         <tr class="table-info">
-          <th>Downloading</th>
+          <th><a href="/threads/downloading" class="text-reset text-decoration-none">Downloading</a></th>
           <td>{{ downloading }}</td>
           <td>{{ downloading_size }}</td>
         </tr>
         <tr class="table-success">
-          <th>Done</th>
+          <th><a href="/threads/done" class="text-reset text-decoration-none">Done</a></th>
           <td>{{ done }}</td>
           <td>{{ done_size }}</td>
         </tr>
         <tr class="table-danger">
-          <th>Failed</th>
+          <th><a href="/threads/failed" class="text-reset text-decoration-none">Failed</a></th>
           <td>{{ failed }}</td>
           <td>{{ failed_size }}</td>
+        </tr>
+        <tr class="table-secondary">
+          <th><a href="/threads/removed" class="text-reset text-decoration-none">Removed by client</a></th>
+          <td>{{ removed_by_client }}</td>
+          <td>{{ removed_by_client_size }}</td>
         </tr>
         </tbody>
       </table>
