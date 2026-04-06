@@ -607,6 +607,7 @@ def create_app() -> fastapi.FastAPI:
             left join job on (job.tid = thread.tid)
             where deleted = false and seeders != 0
               and mediainfo = '' and thread.info_hash != ''
+              and selected_size > 0
               and category = any($1) and job.tid is null
             """,
                 SELECTED_CATEGORY,
@@ -621,6 +622,7 @@ def create_app() -> fastapi.FastAPI:
             left join job on (job.tid = thread.tid)
             where deleted = false and seeders != 0
               and mediainfo = '' and thread.info_hash != ''
+              and selected_size > 0
               and category = any($1) and job.tid is null
             """,
                 SELECTED_CATEGORY,

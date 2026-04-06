@@ -228,9 +228,9 @@ class Scrape:
             files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
             keep_idx = find_largest_video_file(files_data)
             selected_size = (
-                next((size for i, _, size in files_data if i == keep_idx), 0)
+                next((size for i, _, size in files_data if i == keep_idx), -1)
                 if keep_idx is not None
-                else 0
+                else -1
             )
 
             self.__db.execute(
@@ -272,9 +272,9 @@ class Scrape:
                 files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
                 keep_idx = find_largest_video_file(files_data)
                 selected_size = (
-                    next((size for i, _, size in files_data if i == keep_idx), 0)
+                    next((size for i, _, size in files_data if i == keep_idx), -1)
                     if keep_idx is not None
-                    else 0
+                    else -1
                 )
 
                 self.__db.execute(

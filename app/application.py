@@ -249,7 +249,7 @@ class Application:
         keep_idx = find_largest_video_file(files_data)
         if keep_idx is None:
             return
-        file_ids = [i for i, _, _ in files_data if i != keep_idx]
+        file_ids = [f.index for f in files if f.index != keep_idx and f.priority != 0]
         if file_ids:
             logger.info("fixing file selection for torrent {}", t.name)
             self.qb.torrents_file_priority(
