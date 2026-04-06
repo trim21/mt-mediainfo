@@ -54,6 +54,9 @@ strict = true
 ignore_missing_imports = true
 check_untyped_defs = true
 
+[tool.pyright]
+pythonVersion = '3.12'
+
 [tool.ruff]
 cache-dir = '.venv/.cache/ruff'
 line-length = 100

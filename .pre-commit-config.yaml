@@ -1,4 +1,11 @@
 repos:
+  - repo: https://github.com/abravalheri/validate-pyproject
+    rev: v0.25
+    hooks:
+      - id: validate-pyproject
+        additional_dependencies: ["validate-pyproject-schema-store[all]"]
+        args: [--disable, ruff]
+
   - repo: https://github.com/astral-sh/uv-pre-commit
     # uv version.
     rev: 0.11.3

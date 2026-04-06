@@ -6,6 +6,10 @@
     "local>trim21/renovate-config:python",
     "local>trim21/renovate-config:monthly"
   ],
+  "labels": [
+    "ci:auto-merge",
+    "dependencies"
+  ],
   "pip_requirements": {
     "enabled": false
   },
@@ -18,6 +22,17 @@
         "minor"
       ],
       "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": [
+        ".github/workflows/lint\\.yaml$"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\n\\s+version: '(?<currentValue>.*?)'"
+      ]
     }
   ]
 }
