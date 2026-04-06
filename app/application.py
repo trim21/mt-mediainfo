@@ -179,8 +179,10 @@ class Application:
 
     def __process_qb_torrents(self) -> None:
         """Process all torrents in qBittorrent in a single pass."""
+        logger.info("__process_qb_torrents")
         torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
         if not torrents:
+            logger.info("qb has no torrents")
             return
 
         # Mark jobs as removed-from-client if their torrent is no longer in qb
@@ -230,7 +232,9 @@ class Application:
                     t.seen_complete,
                 )
                 self.__update_job_status(
-                    status=ITEM_STATUS_FAILED, info_hash=t.hash, failed_reason="no seeders"
+                    status=ITEM_STATUS_FAILED,
+                    info_hash=t.hash,
+                    failed_reason="no seeders",
                 )
                 self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
