@@ -163,9 +163,8 @@ class Application:
                     t.name,
                     t.seen_complete,
                 )
-                self.db.execute(
-                    "update job set status = $1, failed_reason = $2, updated_at = current_timestamp where info_hash = $3 and node_id = $4",
-                    [ITEM_STATUS_FAILED, "no seeders", t.hash, self.config.node_id],
+                self.__update_job_status(
+                    status=ITEM_STATUS_FAILED, info_hash=t.hash, failed_reason="no seeders"
                 )
                 self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
@@ -183,14 +182,10 @@ class Application:
         )
         for (info_hash,) in rows:
             logger.info("cleanup unselected category torrent {}", info_hash)
-            self.db.execute(
-                "update job set status = $1, failed_reason = $2, updated_at = current_timestamp where info_hash = $3 and node_id = $4",
-                [
-                    ITEM_STATUS_SKIPPED,
-                    "category no longer selected",
-                    info_hash,
-                    self.config.node_id,
-                ],
+            self.__update_job_status(
+                status=ITEM_STATUS_SKIPPED,
+                info_hash=info_hash,
+                failed_reason="category no longer selected",
             )
             with contextlib.suppress(NotFound404Error):
                 self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
@@ -216,6 +211,30 @@ class Application:
         """Swap informational tags on a torrent."""
         self.qb.torrents_remove_tags(tags=remove, torrent_hashes=info_hash)
         self.qb.torrents_add_tags(tags=add, torrent_hashes=info_hash)
+
+    def __update_job_status(
+        self,
+        *,
+        status: str,
+        info_hash: str = "",
+        tid: int = 0,
+        failed_reason: str = "",
+    ) -> None:
+        """Update job status. Identify job by info_hash or tid (plus node_id)."""
+        if info_hash:
+            self.db.execute(
+                """update job set status = $1, failed_reason = $2, updated_at = current_timestamp,
+                   completed_at = case when $1 = 'done' then current_timestamp else completed_at end
+                   where info_hash = $3 and node_id = $4""",
+                [status, failed_reason, info_hash, self.config.node_id],
+            )
+        else:
+            self.db.execute(
+                """update job set status = $1, failed_reason = $2, updated_at = current_timestamp,
+                   completed_at = case when $1 = 'done' then current_timestamp else completed_at end
+                   where tid = $3 and node_id = $4""",
+                [status, failed_reason, tid, self.config.node_id],
+            )
 
     def __process_local_torrents(self) -> None:
         logger.info("__process_local_torrents")
@@ -266,15 +285,8 @@ class Application:
             try:
                 self.__process_local_torrent(t)
             except Exception as e:
-                self.db.execute(
-                    """
-                    update job set
-                      status = $1,
-                      failed_reason = $2,
-                      updated_at = current_timestamp
-                    where info_hash = $3 and node_id = $4
-                    """,
-                    [ITEM_STATUS_FAILED, format_exc(e), t.hash, self.config.node_id],
+                self.__update_job_status(
+                    status=ITEM_STATUS_FAILED, info_hash=t.hash, failed_reason=format_exc(e)
                 )
                 self.qb.torrents_add_tags(tags=QB_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
                 logger.error("failed to process local torrent {}", e)
@@ -319,10 +331,7 @@ class Application:
                 """,
             [media_info, hard_code_subtitle, t.hash],
         )
-        self.db.execute(
-            "update job set status = $1, completed_at = current_timestamp where info_hash = $2 and node_id = $3",
-            [ITEM_STATUS_DONE, t.hash, self.config.node_id],
-        )
+        self.__update_job_status(status=ITEM_STATUS_DONE, info_hash=t.hash)
         self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
     def __pick_and_add_jobs(self) -> None:
@@ -388,15 +397,8 @@ class Application:
                 self.__add_to_qb(tid, info_hash)
             except Exception as e:
                 logger.error("failed to add torrent tid={} to qb: {}", tid, e)
-                self.db.execute(
-                    """
-                    update job set
-                      status = $1,
-                      failed_reason = $2,
-                      updated_at = current_timestamp
-                    where tid = $3 and node_id = $4
-                    """,
-                    [ITEM_STATUS_FAILED, format_exc(e), tid, self.config.node_id],
+                self.__update_job_status(
+                    status=ITEM_STATUS_FAILED, tid=tid, failed_reason=format_exc(e)
                 )
                 with contextlib.suppress(NotFound404Error):
                     self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
@@ -411,20 +413,8 @@ class Application:
             [tid],
         )
         if not tc:
-            self.db.execute(
-                """
-                update job set
-                  status = $1,
-                  failed_reason = $2,
-                  updated_at = current_timestamp
-                where tid = $3 and node_id = $4
-                """,
-                [
-                    ITEM_STATUS_FAILED,
-                    "torrent content not found",
-                    tid,
-                    self.config.node_id,
-                ],
+            self.__update_job_status(
+                status=ITEM_STATUS_FAILED, tid=tid, failed_reason="torrent content not found"
             )
             return
 
@@ -441,15 +431,8 @@ class Application:
             tags=QB_TAG_SELECTING_FILES,
         )
         if r != "Ok.":
-            self.db.execute(
-                """
-                update job set
-                  status = $1,
-                  failed_reason = $2,
-                  updated_at = current_timestamp
-                where tid = $3 and node_id = $4
-                """,
-                [ITEM_STATUS_FAILED, "failed to add", tid, self.config.node_id],
+            self.__update_job_status(
+                status=ITEM_STATUS_FAILED, tid=tid, failed_reason="failed to add"
             )
             return
 
@@ -462,20 +445,10 @@ class Application:
             time.sleep(1)
 
         if not registered:
-            self.db.execute(
-                """
-                update job set
-                  status = $1,
-                  failed_reason = $2,
-                  updated_at = current_timestamp
-                where tid = $3 and node_id = $4
-                """,
-                [
-                    ITEM_STATUS_FAILED,
-                    f"torrent {info_hash} not found in qBittorrent after 30s waiting (tid={tid}, torrents_add returned Ok but torrent never appeared)",
-                    tid,
-                    self.config.node_id,
-                ],
+            self.__update_job_status(
+                status=ITEM_STATUS_FAILED,
+                tid=tid,
+                failed_reason=f"torrent {info_hash} not found in qBittorrent after 30s waiting (tid={tid}, torrents_add returned Ok but torrent never appeared)",
             )
             return
 
@@ -484,20 +457,10 @@ class Application:
             files_data = [(i, f.name, f.length) for i, f in enumerate(t.info.files)]
             keep_idx = find_largest_video_file(files_data)
             if keep_idx is None:
-                self.db.execute(
-                    """
-                    update job set
-                      status = $1,
-                      failed_reason = $2,
-                      updated_at = current_timestamp
-                    where tid = $3 and node_id = $4
-                    """,
-                    [
-                        ITEM_STATUS_SKIPPED,
-                        "no video file in torrent",
-                        tid,
-                        self.config.node_id,
-                    ],
+                self.__update_job_status(
+                    status=ITEM_STATUS_SKIPPED,
+                    tid=tid,
+                    failed_reason="no video file in torrent",
                 )
                 self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
                 return
