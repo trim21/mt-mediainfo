@@ -10,18 +10,19 @@
         rel="stylesheet"
         integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
         crossorigin="anonymous">
+  <style>
+    .reason-cell { max-width: 400px; }
+    .reason-short { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
+    .reason-full { display: none; white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; max-height: 300px; overflow-y: auto; }
+    .reason-cell.expanded .reason-short { display: none; }
+    .reason-cell.expanded .reason-full { display: block; }
+  </style>
 </head>
 <body>
 
 <div class="container mt-4">
   <p><a href="/progress">&larr; Back to Progress</a></p>
   <h2>{{ title }} <small class="text-muted fs-6">({{ threads | length }})</small></h2>
-
-  {% if show_reset and threads %}
-  <div class="mb-3">
-    <button class="btn btn-warning btn-sm" onclick="resetAll()">Reset All</button>
-  </div>
-  {% endif %}
 
   <table class="table table-bordered table-hover table-sm">
     <thead class="table-light">
@@ -47,7 +48,12 @@
       <td>{{ t.selected_size_fmt }}</td>
       <td>{{ t.seeders }}</td>
       {% if show_progress %}<td>{{ "%.1f" | format(t.progress * 100) }}%</td>{% endif %}
-      {% if show_failed_reason %}<td><small>{{ t.failed_reason }}</small></td>{% endif %}
+      {% if show_failed_reason %}
+      <td class="reason-cell" onclick="this.classList.toggle('expanded')">
+        <div class="reason-short" title="{{ t.failed_reason }}">{{ t.failed_reason.split('\n')[0] }}</div>
+        <div class="reason-full">{{ t.failed_reason }}</div>
+      </td>
+      {% endif %}
       <td>{{ t.created_at }}</td>
       <td><a href="https://kp.m-team.cc/detail/{{ t.tid }}" target="_blank">MT</a></td>
       {% if show_reset %}<td><button class="btn btn-outline-primary btn-sm" onclick="resetOne({{ t.tid }})">Reset</button></td>{% endif %}
@@ -64,15 +70,6 @@ async function resetOne(tid) {
   const resp = await fetch('/api/thread/' + tid + '/reset', {method: 'POST'});
   if (resp.ok) {
     document.getElementById('row-' + tid)?.remove();
-  } else {
-    alert('Failed to reset');
-  }
-}
-async function resetAll() {
-  if (!confirm('Reset all removed threads?')) return;
-  const resp = await fetch('/api/threads/removed/reset', {method: 'POST'});
-  if (resp.ok) {
-    location.reload();
   } else {
     alert('Failed to reset');
   }

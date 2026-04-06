@@ -984,6 +984,7 @@ def create_app() -> fastapi.FastAPI:
                 "title": "Failed",
                 "show_progress": False,
                 "show_failed_reason": True,
+                "show_reset": True,
                 "threads": [
                     dict(r)
                     | {
@@ -1032,26 +1033,15 @@ def create_app() -> fastapi.FastAPI:
             },
         )
 
-    @app.post("/api/threads/removed/reset")
-    async def reset_removed_threads() -> ORJSONResponse:
-        result = await pool.execute(
-            """
-            delete from job
-            where status = $1
-            """,
-            ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-        )
-        return ORJSONResponse({"deleted": result})
-
     @app.post("/api/thread/{tid}/reset")
     async def reset_thread(tid: int) -> ORJSONResponse:
         result = await pool.execute(
             """
             delete from job
-            where tid = $1 and status = $2
+            where tid = $1 and status = any($2)
             """,
             tid,
-            ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+            [ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT, ITEM_STATUS_FAILED],
         )
         return ORJSONResponse({"deleted": result})
 
