@@ -873,7 +873,7 @@ def create_app() -> fastapi.FastAPI:
               and mediainfo = '' and thread.info_hash != ''
               and selected_size > 0
               and category = any($1) and job.tid is null
-            order by thread.tid desc
+            order by selected_size desc
             """,
             SELECTED_CATEGORY,
         )
