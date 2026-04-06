@@ -195,7 +195,7 @@ class Application:
         """Resume torrents that are stopped but should be downloading.
 
         Handles both legacy torrents (no tags) and torrents stuck in
-        selecting-files stage due to previous errors.
+        stopped state due to previous errors.
         """
         torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
         for t in torrents:
@@ -203,12 +203,10 @@ class Application:
                 continue
             if QB_TAG_PROCESS_ERROR in t.tags:
                 continue
-            # legacy torrent (no tags) or stuck in selecting-files
-            if not t.tags or t.tags == {QB_TAG_SELECTING_FILES}:
-                logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
-                self.qb.torrents_remove_tags(tags=QB_TAG_SELECTING_FILES, torrent_hashes=t.hash)
-                self.qb.torrents_add_tags(tags=QB_TAG_DOWNLOADING, torrent_hashes=t.hash)
-                self.qb.torrents_resume(torrent_hashes=t.hash)
+            logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
+            self.qb.torrents_remove_tags(tags=QB_TAG_SELECTING_FILES, torrent_hashes=t.hash)
+            self.qb.torrents_add_tags(tags=QB_TAG_DOWNLOADING, torrent_hashes=t.hash)
+            self.qb.torrents_resume(torrent_hashes=t.hash)
 
     def __process_local_torrents(self) -> None:
         torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
