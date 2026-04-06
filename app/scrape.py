@@ -38,7 +38,7 @@ class Scrape:
 
         for sql_file in Path(__file__, "../sql/").resolve().iterdir():
             print(f"executing {sql_file.name}")
-            self.__db.execute(sql_file.read_text(encoding="utf-8"))  # type: ignore[arg-type]
+            self.__db.execute(sql_file.read_text(encoding="utf-8"))  # type: ignore[arg-type,unused-ignore]
 
     def scrape_detail(self, limit: int = 0) -> None:
         """Fetch torrent details for threads missing mediainfo, or fill tid gaps."""

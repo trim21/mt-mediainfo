@@ -64,7 +64,7 @@ class Lock:
         self.__conn = psycopg.Connection.connect(conn_info, autocommit=True)
         if timeout_ms:
             if isinstance(timeout_ms, int):
-                self.__conn.execute(f"set statement_timeout = {timeout_ms:d}")
+                self.__conn.execute(f"set statement_timeout = {timeout_ms:d}")  # pyright: ignore[reportArgumentType]
             else:
                 raise ValueError(f"timeout_ms must be int or None, get {timeout_ms!r}")
 

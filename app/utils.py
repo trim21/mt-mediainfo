@@ -32,6 +32,7 @@ def must_run_command(
 
 def human_readable_size(size: float, decimal_places: int = 2) -> str:
     size = float(size)
+    unit = "B"
     for unit in ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]:
         if size < 1024.0 or unit == "PiB":
             break

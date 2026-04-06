@@ -122,7 +122,7 @@ def check_hardcode_chinese_subtitle(video_file: Path) -> bool:
             if not result:
                 continue
             for points, s, _ in result:
-                points = [Point(x, y) for x, y in points]
+                points = [Point(int(x), int(y)) for x, y in points]
                 if points[0].y <= size.y / 2:
                     continue
 
