@@ -35,7 +35,7 @@ from app.db import Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
 from app.mt import MTeamDomain
-from app.torrent import find_largest_video_file, parse_torrent
+from app.torrent import find_largest_video_file
 from app.utils import parse_obj, set_torrent_comment
 
 
@@ -423,63 +423,18 @@ class Application:
             )
             return
 
-        t = parse_torrent(tc)
         tc = set_torrent_comment(tc, f"https://{MTeamDomain}/detail/{tid}")
 
-        # add torrent in stopped state so we can set file priorities before downloading
         r = self.qb.torrents_add(
             torrent_files=[tc],
             save_path=os.path.join(self.config.download_path, info_hash),
             use_auto_torrent_management=False,
-            is_paused=True,
-            is_stopped=True,
-            tags=QB_TAG_SELECTING_FILES,
+            tags=QB_TAG_DOWNLOADING,
         )
         if r != "Ok.":
             self.__update_job_status(
                 status=ITEM_STATUS_FAILED, tid=tid, failed_reason="failed to add"
             )
-            return
-
-        # wait for qBittorrent to register the torrent
-        registered = False
-        for _ in range(30):
-            if self.qb.torrents_info(torrent_hashes=info_hash):
-                registered = True
-                break
-            time.sleep(1)
-
-        if not registered:
-            self.__update_job_status(
-                status=ITEM_STATUS_FAILED,
-                tid=tid,
-                failed_reason=f"torrent {info_hash} not found in qBittorrent after 30s waiting (tid={tid}, torrents_add returned Ok but torrent never appeared)",
-            )
-            return
-
-        # only download largest single video file
-        if t.info.files:
-            files_data = [(i, f.name, f.length) for i, f in enumerate(t.info.files)]
-            keep_idx = find_largest_video_file(files_data)
-            if keep_idx is None:
-                self.__update_job_status(
-                    status=ITEM_STATUS_SKIPPED,
-                    tid=tid,
-                    failed_reason="no video file in torrent",
-                )
-                self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
-                return
-            file_ids = [i for i, _, _ in files_data if i != keep_idx]
-            if file_ids:
-                self.qb.torrents_file_priority(
-                    torrent_hash=info_hash,
-                    file_ids=file_ids,
-                    priority=0,
-                )
-
-        # now start the torrent
-        self.__set_tags(info_hash, remove=QB_TAG_SELECTING_FILES, add=QB_TAG_DOWNLOADING)
-        self.qb.torrents_resume(torrent_hashes=info_hash)
 
 
 @dataclasses.dataclass(kw_only=True, slots=True)
