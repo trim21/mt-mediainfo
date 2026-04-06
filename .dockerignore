@@ -1,0 +1,10 @@
+.venv/
+data/
+.idea/
+.vscode/
+config.toml
+.github/
+.python-version
+config.example.toml
+readme.md
+Dockerfile

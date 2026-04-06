@@ -1,0 +1,32 @@
+version: 3
+
+tasks:
+  default:
+    - ruff check . --fix --fixable=ALL
+    - ruff format .
+    - mypy .
+
+  sync:
+    cmd: 'uv sync {{- if eq OS "linux" }} --locked --no-dev {{- end }}'
+
+  dev:
+    dotenv:
+      - .env
+    cmd: watchexec -r -e py,sql --delay-run 1s --no-process-group --shell=none --verbose -- python ./main.py node
+
+  node:
+    dotenv:
+      - .env
+    cmd: python ./main.py node
+
+
+  scrape:
+    dotenv:
+      - .env
+    cmd: python ./main.py scrape
+
+  dev:server:
+    dotenv:
+      - .env
+    cmds:
+      - watchexec -r -e py,sql,j2 --delay-run 1s --shell=none --verbose -- uvicorn app.server:create_app --factory --port=8745

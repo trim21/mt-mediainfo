@@ -1,0 +1,68 @@
+[project]
+name = 'pt-repost'
+version = '0'
+requires-python = '==3.12.12'
+description = ''
+dependencies = [
+    'orjson==3.11.8',
+    "uuid-utils==0.14.1",
+    'rich==14.3.3',
+    'xxhash==3.6.0',
+    'qbittorrent-api==2025.11.1',
+    'click==8.3.1',
+    'pydantic==2.12.5',
+    'httpx==0.28.1',
+    'bencode2==0.3.29',
+    'tomli==2.4.1',
+    'yarl==1.23.0',
+    'psycopg[binary,pool]==3.3.3',
+    'durationpy==0.10',
+    'fastapi==0.135.3',
+    'uvicorn==0.42.0',
+    'rapidocr-onnxruntime==1.4.4',
+    'jinja2==3.1.6',
+    'tzdata',
+    "six==1.17.0",
+    "tenacity==9.1.4",
+    "sslog==0.0.0a52",
+    "regex==2026.3.32",
+    "asyncpg==0.31.0",
+    "polars==1.39.3",
+]
+
+[dependency-groups]
+dev = [
+    "asyncpg-stubs==0.31.2",
+    'mypy',
+    "types-regex==2026.3.32.20260329",
+    "types-six==1.17.0.20251009",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+cache_dir = '.venv/.cache/pytest'
+
+[tool.mypy]
+exclude = 'build,data,.kilo'
+mypy_path = '$MYPY_CONFIG_FILE_DIR'
+cache_dir = '$MYPY_CONFIG_FILE_DIR/.cache/pytest'
+python_version = '3.12'
+disable_error_code = ["no-any-return"]
+strict = true
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[tool.ruff]
+cache-dir = '.venv/.cache/ruff'
+line-length = 100
+preview = true
+
+[tool.ruff.format]
+
+[tool.ruff.lint]
+preview = true
+extend-select = ['I', 'PLW1514']
+ignore = ['BLE001', 'TRY002', 'PLW1510']
+unfixable = ['F401']

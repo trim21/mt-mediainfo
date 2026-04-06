@@ -1,0 +1,14 @@
+.venv/
+.vscode/
+.idea/
+build/
+dist/
+data.db
+tmp/
+*.py[cd]
+config.toml
+data/
+
+a.py
+
+.env

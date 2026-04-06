@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Progress</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+        crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+          crossorigin="anonymous"></script>
+</head>
+<body>
+
+<div class="container mt-4">
+  <h2>Progress</h2>
+
+  <div class="progress mb-3" style="height: 30px;">
+    <div class="progress-bar" style="width: {{ skipped_pct }}%; background-color: #adb5bd;" role="progressbar" title="Skipped: {{ skipped }}"></div>
+    <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ pending_fetch_mediainfo_pct }}%" title="Pending mediainfo: {{ pending_fetch_mediainfo }}"></div>
+    <div class="progress-bar bg-warning" role="progressbar" style="width: {{ pending_fetch_torrent_pct }}%" title="Pending torrent: {{ pending_fetch_torrent }}"></div>
+    <div class="progress-bar bg-warning text-dark" role="progressbar" style="width: {{ pending_to_download_pct }}%" title="Pending download: {{ pending_to_download }}"></div>
+    <div class="progress-bar bg-info" role="progressbar" style="width: {{ downloading_pct }}%" title="Downloading: {{ downloading }}"></div>
+    <div class="progress-bar bg-danger" role="progressbar" style="width: {{ failed_pct }}%" title="Failed: {{ failed }}"></div>
+    <div class="progress-bar bg-success" role="progressbar" style="width: {{ done_pct }}%" title="Done: {{ done }}">{{ done_pct }}%</div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-6">
+      <h3>Scraping Progress <small class="text-muted fs-6">{{ search_cursor }}</small></h3>
+      <table class="table table-bordered mb-4">
+        <tbody>
+        <tr>
+          <th>Threads discovered (all categories)</th>
+          <td>{{ scraped_total }}</td>
+        </tr>
+        <tr>
+          <th>Total</th>
+          <td>{{ total }}</td>
+        </tr>
+        <tr class="table-warning">
+          <th>Pending fetch mediainfo</th>
+          <td>{{ pending_fetch_mediainfo }}</td>
+        </tr>
+        <tr class="table-warning">
+          <th>Pending fetch torrent (info_hash)</th>
+          <td>{{ pending_fetch_torrent }}</td>
+        </tr>
+        <tr>
+          <th>Skipped / No seeders</th>
+          <td>{{ skipped }}</td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col-md-6">
+      <h3>Download Progress</h3>
+      <table class="table table-bordered">
+        <tbody>
+        <tr>
+          <th>Total</th>
+          <td>{{ total }}</td>
+          <td>{{ total_size }}</td>
+        </tr>
+        <tr class="table-warning">
+          <th>Pending to download</th>
+          <td>{{ pending_to_download }}</td>
+          <td>{{ pending_to_download_size }}</td>
+        </tr>
+        <tr class="table-info">
+          <th>Downloading</th>
+          <td>{{ downloading }}</td>
+          <td>{{ downloading_size }}</td>
+        </tr>
+        <tr class="table-success">
+          <th>Done</th>
+          <td>{{ done }}</td>
+          <td>{{ done_size }}</td>
+        </tr>
+        <tr class="table-danger">
+          <th>Failed</th>
+          <td>{{ failed }}</td>
+          <td>{{ failed_size }}</td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="container mt-4">
+  <h3>Average Byte Rate per Week (last 1 year)</h3>
+  <canvas id="weeklyByteRateChart" style="max-height: 350px;"></canvas>
+</div>
+
+<div class="container mt-4">
+  <h3>Threads & Torrents Fetched per Week (last 1 year)</h3>
+  <canvas id="weeklyFetchChart" style="max-height: 350px;"></canvas>
+</div>
+
+<div class="container mt-4 mb-4">
+  <a href="/detail">View daily detail (last 365 days) &rarr;</a>
+</div>
+
+<script>
+  (async () => {
+    const resp = await fetch('/stats/weekly-byte-rate');
+    const data = await resp.json();
+    const labels = data.map(d => d.week);
+    const byteRates = data.map(d => d.byte_rate);
+    const sizes = data.map(d => d.total_size);
+
+    new Chart(document.getElementById('weeklyByteRateChart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Avg Byte Rate',
+          data: byteRates,
+          backgroundColor: 'rgba(13, 110, 253, 0.5)',
+          borderColor: 'rgba(13, 110, 253, 1)',
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => {
+                const units = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'];
+                let v = value;
+                let u = 0;
+                while (v >= 1024 && u < units.length - 1) { v /= 1024; u++; }
+                return v.toFixed(2) + ' ' + units[u];
+              }
+            }
+          }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: ctx => [
+                'Avg rate: ' + data[ctx.dataIndex].byte_rate_fmt,
+                'Total size: ' + data[ctx.dataIndex].total_size_fmt,
+              ]
+            }
+          },
+          legend: { display: false }
+        }
+      }
+    });
+
+    // Thread & torrent fetches per week chart
+    const [threadResp, torrentResp, doneResp, mediainfoResp] = await Promise.all([
+      fetch('/stats/weekly-thread-count'),
+      fetch('/stats/weekly-torrent-count'),
+      fetch('/stats/weekly-done-count'),
+      fetch('/stats/weekly-mediainfo-count'),
+    ]);
+    const threadData = await threadResp.json();
+    const torrentData = await torrentResp.json();
+    const doneData = await doneResp.json();
+    const mediainfoData = await mediainfoResp.json();
+
+    const threadMap = Object.fromEntries(threadData.map(d => [d.week, d.count]));
+    const torrentMap = Object.fromEntries(torrentData.map(d => [d.week, d.count]));
+    const doneMap = Object.fromEntries(doneData.map(d => [d.week, d.count]));
+    const mediainfoMap = Object.fromEntries(mediainfoData.map(d => [d.week, d.count]));
+    const allWeeks = [...new Set([
+      ...threadData.map(d => d.week),
+      ...torrentData.map(d => d.week),
+      ...doneData.map(d => d.week),
+      ...mediainfoData.map(d => d.week),
+    ])].sort();
+
+    new Chart(document.getElementById('weeklyFetchChart'), {
+      type: 'line',
+      data: {
+        labels: allWeeks,
+        datasets: [
+          {
+            label: 'Threads Fetched',
+            data: allWeeks.map(d => threadMap[d] ?? 0),
+            backgroundColor: 'rgba(25, 135, 84, 0.5)',
+            borderColor: 'rgba(25, 135, 84, 1)',
+            borderWidth: 1,
+          },
+          {
+            label: 'Mediainfo Fetched',
+            data: allWeeks.map(d => mediainfoMap[d] ?? 0),
+            backgroundColor: 'rgba(111, 66, 193, 0.5)',
+            borderColor: 'rgba(111, 66, 193, 1)',
+            borderWidth: 1,
+          },
+          {
+            label: 'Torrents Fetched',
+            data: allWeeks.map(d => torrentMap[d] ?? 0),
+            backgroundColor: 'rgba(255, 193, 7, 0.5)',
+            borderColor: 'rgba(255, 193, 7, 1)',
+            borderWidth: 1,
+          },
+          {
+            label: 'Downloads Done',
+            data: allWeeks.map(d => doneMap[d] ?? 0),
+            backgroundColor: 'rgba(13, 110, 253, 0.5)',
+            borderColor: 'rgba(13, 110, 253, 1)',
+            borderWidth: 1,
+          },
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: { y: { beginAtZero: true } },
+      }
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "local>trim21/renovate-config",
+    "local>trim21/renovate-config:app",
+    "local>trim21/renovate-config:python",
+    "local>trim21/renovate-config:monthly"
+  ],
+  "pip_requirements": {
+    "enabled": false
+  },
+  "packageRules": [
+    {
+      "matchPackageNames": [
+        "python"
+      ],
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "enabled": false
+    }
+  ]
+}
