@@ -153,12 +153,15 @@ class Application:
 
     def __cleanup_old_torrents(self) -> None:
         """Delete torrents where Last Seen Complete is before 10 days ago."""
+        logger.info("__cleanup_old_torrents")
         torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
         cutoff = time.time() - 10 * 86400
         for t in torrents:
             if 0 < t.seen_complete < cutoff:
                 logger.info(
-                    "cleanup old torrent {} (last seen complete: {})", t.name, t.seen_complete
+                    "cleanup old torrent {} (last seen complete: {})",
+                    t.name,
+                    t.seen_complete,
                 )
                 self.db.execute(
                     "update job set status = $1, failed_reason = $2, updated_at = current_timestamp where info_hash = $3 and node_id = $4",
@@ -168,6 +171,7 @@ class Application:
 
     def __cleanup_unselected_category(self) -> None:
         """Clean up downloading jobs whose thread category is no longer in SELECTED_CATEGORY."""
+        logger.info("__cleanup_unselected_category")
         rows: list[tuple[str]] = self.db.fetch_all(
             """
             select job.info_hash from job
@@ -197,6 +201,7 @@ class Application:
         Handles both legacy torrents (no tags) and torrents stuck in
         stopped state due to previous errors.
         """
+        logger.info("__resume_stopped_torrents")
         torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
         for t in torrents:
             if not t.state.is_paused:
@@ -209,6 +214,7 @@ class Application:
             self.qb.torrents_resume(torrent_hashes=t.hash)
 
     def __process_local_torrents(self) -> None:
+        logger.info("__process_local_torrents")
         torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
         if torrents:
             self.db.execute(
@@ -311,7 +317,7 @@ class Application:
         self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
     def __pick_and_add_jobs(self) -> None:
-        logger.debug("__pick_and_add_jobs")
+        logger.info("__pick_and_add_jobs")
 
         current_total_size = sum(
             t.size for t in parse_obj(list[QbTorrent], self.qb.torrents_info())
@@ -402,7 +408,12 @@ class Application:
                   updated_at = current_timestamp
                 where tid = $3 and node_id = $4
                 """,
-                [ITEM_STATUS_FAILED, "torrent content not found", tid, self.config.node_id],
+                [
+                    ITEM_STATUS_FAILED,
+                    "torrent content not found",
+                    tid,
+                    self.config.node_id,
+                ],
             )
             return
 
@@ -470,7 +481,12 @@ class Application:
                       updated_at = current_timestamp
                     where tid = $3 and node_id = $4
                     """,
-                    [ITEM_STATUS_SKIPPED, "no video file in torrent", tid, self.config.node_id],
+                    [
+                        ITEM_STATUS_SKIPPED,
+                        "no video file in torrent",
+                        tid,
+                        self.config.node_id,
+                    ],
                 )
                 self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
                 return
