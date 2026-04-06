@@ -206,6 +206,10 @@ class Application:
 
         for t in torrents:
             if not t.state.is_uploading:
+                # fix file selection for torrents added before the file filtering logic
+                if t.total_size == t.size:
+                    self.__fix_file_selection(t)
+
                 self.db.execute(
                     """
                     update job set
@@ -235,6 +239,24 @@ class Application:
                 )
                 self.qb.torrents_add_tags(tags=QB_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
                 logger.error("failed to process local torrent {}", e)
+
+    def __fix_file_selection(self, t: QbTorrent) -> None:
+        """Fix file priorities for torrents that are downloading all files."""
+        files = parse_obj(list[QbFile], self.qb.torrents_files(torrent_hash=t.hash))
+        if len(files) <= 1:
+            return
+        files_data = [(f.index, f.name, f.size) for f in files]
+        keep_idx = find_largest_video_file(files_data)
+        if keep_idx is None:
+            return
+        file_ids = [i for i, _, _ in files_data if i != keep_idx]
+        if file_ids:
+            logger.info("fixing file selection for torrent {}", t.name)
+            self.qb.torrents_file_priority(
+                torrent_hash=t.hash,
+                file_ids=file_ids,
+                priority=0,
+            )
 
     def __process_local_torrent(self, t: QbTorrent) -> None:
         files = parse_obj(list[QbFile], self.qb.torrents_files(torrent_hash=t.hash))
