@@ -52,7 +52,7 @@ class Scrape:
               deleted = false and
               mediainfo_at is null and
               category = any($1)
-            order by (category = any($3)) desc, tid desc
+            order by (category = any($3)) desc, tid asc
             limit $2
             """,
             [SELECTED_CATEGORY, effective_limit, PRIORITY_CATEGORY],
