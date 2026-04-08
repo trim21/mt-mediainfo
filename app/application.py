@@ -25,6 +25,7 @@ from app.const import (
     ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
     ITEM_STATUS_SKIPPED,
     LOCK_KEY_PICK_RSS_JOB,
+    PRIORITY_CATEGORY,
     QB_TAG_DOWNLOADING,
     QB_TAG_NEED_SELECT,
     QB_TAG_PROCESS_ERROR,
@@ -373,12 +374,13 @@ class Application:
                     category = any ($2) and
                     job.tid is null and
                     seeders != 0
-                order by selected_size desc
+                order by (category = any($3)) desc, selected_size desc
                 limit 6
                 """,
                 [
                     min(int(self.config.single_torrent_size_limit), left_size),
                     SELECTED_CATEGORY,
+                    PRIORITY_CATEGORY,
                 ],
             )
 

@@ -11,7 +11,7 @@ from bencode2 import BencodeDecodeError
 from sslog import logger
 
 from app.config import Config
-from app.const import SELECTED_CATEGORY
+from app.const import PRIORITY_CATEGORY, SELECTED_CATEGORY
 from app.db import Database
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
@@ -52,10 +52,10 @@ class Scrape:
               deleted = false and
               mediainfo_at is null and
               category = any($1)
-            order by tid desc
+            order by (category = any($3)) desc, tid desc
             limit $2
             """,
-            [SELECTED_CATEGORY, effective_limit],
+            [SELECTED_CATEGORY, effective_limit, PRIORITY_CATEGORY],
         )
 
         if not threads:
@@ -192,10 +192,10 @@ class Scrape:
               mediainfo = '' and
               seeders != 0 and
               category = any($1)
-            order by seeders desc
+            order by (category = any($2)) desc, seeders desc
             limit 50
             """,
-            [SELECTED_CATEGORY],
+            [SELECTED_CATEGORY, PRIORITY_CATEGORY],
         )
 
         if not threads:
@@ -336,10 +336,10 @@ class Scrape:
               deleted = false and
               mediainfo_at is null and
               category = any($1)
-            order by tid desc
+            order by (category = any($3)) desc, tid desc
             limit $2
             """,
-            [SELECTED_CATEGORY, limit],
+            [SELECTED_CATEGORY, limit, PRIORITY_CATEGORY],
         )
 
         for (tid,) in threads:

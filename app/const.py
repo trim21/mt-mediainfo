@@ -34,6 +34,14 @@ QB_TAG_NEED_SELECT: Final = "need-select"
 
 MOVIE_CATEGORY = {401, 419, 420, 421, 439}
 
+PRIORITY_CATEGORY = [
+    401,
+    419,
+    420,
+    421,
+    439,
+]
+
 # SELECTED_CATEGORY = list(MOVIE_CATEGORY)
 
 
