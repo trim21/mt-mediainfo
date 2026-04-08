@@ -438,6 +438,7 @@ class Application:
             use_auto_torrent_management=False,
             tags=[QB_TAG_DOWNLOADING, QB_TAG_NEED_SELECT],
             download_limit=1,
+            is_sequential_download=True,
         )
         if r != "Ok.":
             self.__update_job_status(
