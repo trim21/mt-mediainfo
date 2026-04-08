@@ -89,7 +89,10 @@ class MTeamAPI:
         url = self.get_download_url(str(tid))
 
         for _ in range(4):
-            rr = self._httpx.get(url, follow_redirects=True).raise_for_status()
+            try:
+                rr = self._httpx.get(url, follow_redirects=True).raise_for_status()
+            except httpx.TooManyRedirects:
+                raise TorrentFileError
             if rr.content == b"file error.":
                 raise TorrentFileError
             if rr.content[0] == 123:  # "{"
