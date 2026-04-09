@@ -422,6 +422,8 @@ class Application:
                 left_size -= selected_size
                 picked.append((tid, info_hash))
 
+        logger.info("pick {} items", len(picked))
+
         # add to qBittorrent outside the lock to avoid blocking other nodes
         for tid, info_hash in picked:
             try:
