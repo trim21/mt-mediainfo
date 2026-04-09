@@ -306,7 +306,7 @@ class Application:
         """
         restored = self.db.fetch_val(
             """
-            update job set status = $1, updated_at = current_timestamp
+            update job set status = $1, failed_reason = '', updated_at = current_timestamp
             where info_hash = $2 and node_id = $3 and status != $1
             returning info_hash
             """,
