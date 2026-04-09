@@ -405,6 +405,7 @@ class Application:
                 ],
             )
 
+            logger.info("fetch {} rows", len(rows))
             if not rows:
                 return
 
