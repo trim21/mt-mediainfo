@@ -188,6 +188,7 @@ class Application:
             return
 
         # Mark jobs as removed-from-client if their torrent is no longer in qb
+        qb_hashes = [x.hash for x in torrents]
         self.db.execute(
             """
                 update job set
@@ -197,7 +198,7 @@ class Application:
                 """,
             [
                 ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-                [x.hash for x in torrents],
+                qb_hashes,
                 self.config.node_id,
                 ITEM_STATUS_DOWNLOADING,
             ],
@@ -222,11 +223,9 @@ class Application:
         cutoff = time.time() - 10 * 86400
 
         for t in torrents:
-            # Skip torrents not managed by us
+            # Torrent not in managed (downloading) jobs — check if it has a job at all
             if t.hash not in managed_hashes:
-                logger.info("{} not managed", t.hash)
-                if not t.state.is_paused:
-                    self.qb.torrents_pause(torrent_hashes=t.hash)
+                self.__handle_unmanaged_torrent(t)
                 continue
 
             # Cleanup old torrents (no seeders for 10+ days)
@@ -298,6 +297,28 @@ class Application:
                 """,
                 [t.progress, t.hash, self.config.node_id, ITEM_STATUS_DOWNLOADING],
             )
+
+    def __handle_unmanaged_torrent(self, t: QbTorrent) -> None:
+        """Handle a torrent in qB that has no active downloading job.
+
+        Try to reclaim if a job exists (e.g. was prematurely marked
+        removed-by-client due to async qB add), otherwise pause it.
+        """
+        restored = self.db.fetch_val(
+            """
+            update job set status = $1, updated_at = current_timestamp
+            where info_hash = $2 and node_id = $3 and status != $1
+            returning info_hash
+            """,
+            [ITEM_STATUS_DOWNLOADING, t.hash, self.config.node_id],
+        )
+        if restored:
+            logger.info("reclaimed job for torrent {}", t.hash)
+            return
+
+        logger.info("{} not managed", t.hash)
+        if not t.state.is_paused:
+            self.qb.torrents_pause(torrent_hashes=t.hash)
 
     def __fix_file_selection(self, t: QbTorrent) -> None:
         """Fix file priorities for torrents that are downloading all files."""
