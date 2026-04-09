@@ -46,3 +46,24 @@ create table if not exists config (
 
 alter table thread add column if not exists selected_size int8 not null default 0;
 alter table job drop column if exists download_size;
+
+-- job: lookup by info_hash (hot path: update status/progress every minute)
+create index if not exists job_info_hash on job (info_hash);
+
+-- job: lookup by node_id + status (hot path: fetch downloading jobs per node)
+create index if not exists job_node_id_status on job (node_id, status);
+
+-- thread: update mediainfo by info_hash after local extraction
+create index if not exists thread_info_hash on thread (info_hash) where info_hash != '';
+
+-- thread: scrape_detail / scrape_mediainfo (pending mediainfo)
+create index if not exists thread_pending_mediainfo on thread (category, tid)
+  where deleted = false and mediainfo_at is null;
+
+-- thread: fetch_torrent (pending torrent download)
+create index if not exists thread_pending_torrent on thread (category, seeders)
+  where deleted = false and mediainfo_at is not null and mediainfo = '' and info_hash = '';
+
+-- thread: pick_job (pending to download)
+create index if not exists thread_pending_download on thread (category, selected_size)
+  where mediainfo = '' and info_hash != '' and selected_size > 0 and seeders != 0;
