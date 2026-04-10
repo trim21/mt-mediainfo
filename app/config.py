@@ -49,6 +49,27 @@ class Config:
         str | None, None, Field(os.environ.get("PG_PASSWORD", "postgres"), validate_default=True)
     ]
 
+    pg_sslmode: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("PG_SSLMODE")),
+    ]
+    pg_ssl_rootcert: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("PG_SSL_ROOTCERT")),
+    ]
+    pg_ssl_cert: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("PG_SSL_CERT")),
+    ]
+    pg_ssl_key: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("PG_SSL_KEY")),
+    ]
+
     qb_url: Annotated[
         HttpUrl, Field(os.environ.get("QB_URL", "http://127.0.0.1:8084"), validate_default=True)
     ]
@@ -72,16 +93,30 @@ class Config:
     ]
 
     def pg_dsn(self) -> str:
-        return str(
-            yarl.URL.build(
-                scheme="postgresql",
-                user=self.pg_user,
-                password=self.pg_password,
-                host=self.pg_host,
-                port=self.pg_port,
-                path="/" + self.pg_db,
-            )
+        url = yarl.URL.build(
+            scheme="postgresql",
+            user=self.pg_user,
+            password=self.pg_password,
+            host=self.pg_host,
+            port=self.pg_port,
+            path="/" + self.pg_db,
         )
+
+        query: dict[str, str] = {}
+        if self.pg_sslmode:
+            query["sslmode"] = self.pg_sslmode
+        if self.pg_ssl_rootcert:
+            query["sslrootcert"] = self.pg_ssl_rootcert
+        if self.pg_ssl_cert:
+            query["sslcert"] = self.pg_ssl_cert
+        if self.pg_ssl_key:
+            os.chmod(self.pg_ssl_key, 0o600)
+            query["sslkey"] = self.pg_ssl_key
+
+        if query:
+            url = url.with_query(query)
+
+        return str(url)
 
 
 def load_config() -> Config:
