@@ -429,25 +429,28 @@ def create_app() -> fastapi.FastAPI:
         )
         if not rows:
             return []
-        elapsed_today = (datetime.now(_tz_shanghai) - today).total_seconds()
         df = pl.DataFrame({
             "ts": [row["ts"] for row in rows],
             "selected_size": [row["selected_size"] for row in rows],
         })
         df = df.with_columns(_compute_day_num_col(today))
-        grouped = df.group_by("day_num").agg(pl.col("selected_size").sum().alias("total_size"))
+        grouped = df.group_by("day_num").agg(
+            pl.col("selected_size").sum().alias("total_size"),
+            pl.col("selected_size").len().alias("count"),
+        )
         all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
         result = (
             all_days
             .join(grouped, on="day_num", how="left")
             .with_columns(pl.col("total_size").fill_null(0))
+            .with_columns(pl.col("count").fill_null(0))
             .sort("day_num")
         )
         return [
             {
                 "day": _day_label(today, r["day_num"]),
-                "byte_rate": r["total_size"] / elapsed_today
-                if r["day_num"] == 0
+                "byte_rate": (r["total_size"] / r["count"]) * 1200 / 86400.0
+                if r["day_num"] == 0 and r["count"] > 0
                 else r["total_size"] / 86400.0,
             }
             for r in result.iter_rows(named=True)
