@@ -243,7 +243,7 @@ class Scrape:
             )
 
             self.__db.execute(
-                """update thread set info_hash = $2, size = $3, selected_size = $4 where tid = $1""",
+                """update thread set info_hash = $2, size = $3, selected_size = $4, torrent_fetched_at = current_timestamp where tid = $1""",
                 [tid, info_hash, t.total_length, selected_size],
             )
         return False

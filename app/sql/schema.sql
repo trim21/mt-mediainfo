@@ -45,7 +45,13 @@ create table if not exists config (
 );
 
 alter table thread add column if not exists selected_size int8 not null default 0;
+alter table thread add column if not exists torrent_fetched_at timestamptz default null;
 alter table job drop column if exists download_size;
+
+-- backfill torrent_fetched_at for threads that already have a torrent record
+update thread set torrent_fetched_at = torrent.created_at
+from torrent
+where torrent.tid = thread.tid and thread.torrent_fetched_at is null;
 
 -- job: lookup by info_hash (hot path: update status/progress every minute)
 create index if not exists job_info_hash on job (info_hash);
@@ -67,3 +73,7 @@ create index if not exists thread_pending_torrent on thread (category, seeders)
 -- thread: pick_job (pending to download)
 create index if not exists thread_pending_download on thread (category, selected_size)
   where mediainfo = '' and info_hash != '' and selected_size > 0 and seeders != 0;
+
+-- thread: daily fetched size chart (torrent_fetched_at range scan)
+create index if not exists thread_torrent_fetched_at on thread (torrent_fetched_at, category)
+  where torrent_fetched_at is not null and selected_size > 0;

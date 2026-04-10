@@ -408,6 +408,50 @@ def create_app() -> fastapi.FastAPI:
 
         return {"labels": labels, "totals": totals, "per_node": per_node}
 
+    async def _get_daily_fetched_size_data(
+        start: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        today = _today_start()
+        if start is None:
+            start = today - timedelta(days=364)
+        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
+        days_back = (today - start).days
+        rows = await pool.fetch(
+            """
+            select torrent_fetched_at as ts, selected_size
+            from thread
+            where torrent_fetched_at >= $1 and selected_size > 0
+              and category = any($2)
+            """,
+            start,
+            SELECTED_CATEGORY,
+        )
+        if not rows:
+            return []
+        elapsed_today = (datetime.now(_tz_shanghai) - today).total_seconds()
+        df = pl.DataFrame({
+            "ts": [row["ts"] for row in rows],
+            "selected_size": [row["selected_size"] for row in rows],
+        })
+        df = df.with_columns(_compute_day_num_col(today))
+        grouped = df.group_by("day_num").agg(pl.col("selected_size").sum().alias("total_size"))
+        all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
+        result = (
+            all_days
+            .join(grouped, on="day_num", how="left")
+            .with_columns(pl.col("total_size").fill_null(0))
+            .sort("day_num")
+        )
+        return [
+            {
+                "day": _day_label(today, r["day_num"]),
+                "byte_rate": r["total_size"] / elapsed_today
+                if r["day_num"] == 0
+                else r["total_size"] / 86400.0,
+            }
+            for r in result.iter_rows(named=True)
+        ]
+
     async def _get_daily_count_data(
         sql: str,
         params: list[Any] | None = None,
@@ -798,6 +842,7 @@ def create_app() -> fastapi.FastAPI:
             start_dt = datetime.strptime(start_value, "%Y-%m-%d").replace(tzinfo=_tz_shanghai)
 
         daily_byte_rate_data = await _get_daily_byte_rate_data(start_dt)
+        daily_fetched_size_data = await _get_daily_fetched_size_data(start_dt)
         daily_thread_count_data = await _get_daily_count_data(
             "select created_at as ts from thread where created_at >= $1",
             [start_dt],
@@ -820,6 +865,7 @@ def create_app() -> fastapi.FastAPI:
             ctx={
                 "start": start_value,
                 "daily_byte_rate": daily_byte_rate_data,
+                "daily_fetched_size": daily_fetched_size_data,
                 "daily_thread_count": daily_thread_count_data,
                 "daily_torrent_count": daily_torrent_count_data,
                 "daily_done_count": daily_done_count_data,

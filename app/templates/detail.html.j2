@@ -58,15 +58,25 @@
   // Daily byte rate chart (inlined data)
   (() => {
     const data = {{ daily_byte_rate | tojson }};
+    const fetchedData = {{ daily_fetched_size | tojson }};
     const labels = data.labels;
     const nodeIds = Object.keys(data.per_node);
 
+    const fetchedMap = Object.fromEntries(fetchedData.map(d => [d.day, d.byte_rate]));
+
     const datasets = [
       {
-        label: 'Total',
+        label: 'Downloaded',
         data: data.totals.map(d => d.byte_rate),
         backgroundColor: 'rgba(13, 110, 253, 0.3)',
         borderColor: 'rgba(13, 110, 253, 1)',
+        borderWidth: 2,
+      },
+      {
+        label: 'Fetched (need to download)',
+        data: labels.map(l => fetchedMap[l] ?? 0),
+        backgroundColor: 'rgba(220, 53, 69, 0.2)',
+        borderColor: 'rgba(220, 53, 69, 1)',
         borderWidth: 2,
       },
       ...nodeIds.map((nid, i) => {
