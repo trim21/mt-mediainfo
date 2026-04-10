@@ -47,7 +47,7 @@ cache_dir = '.venv/.cache/pytest'
 [tool.mypy]
 exclude = 'build,data,.kilo'
 mypy_path = '$MYPY_CONFIG_FILE_DIR'
-cache_dir = '$MYPY_CONFIG_FILE_DIR/.cache/pytest'
+cache_dir = '$MYPY_CONFIG_FILE_DIR/.venv/.cache/pytest'
 python_version = '3.12'
 disable_error_code = ["no-any-return", "unused-ignore"]
 strict = true
