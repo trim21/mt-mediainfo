@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -553,54 +554,56 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/")
     async def progress(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
-        scraped_total = await pool.fetchval("select count(1) from thread") or 0
-        search_cursor = await pool.fetchval("select value from config where key = 'search_cursor'")
-
-        total = (
-            await pool.fetchval(
+        (
+            scraped_total,
+            search_cursor,
+            total,
+            total_size,
+            pending_fetch_mediainfo,
+            pending_fetch_torrent,
+            pending_to_download,
+            pending_to_download_size,
+            downloading_rows,
+            failed,
+            failed_size,
+            done,
+            done_size,
+            done_job_rows,
+            removed_by_client,
+            removed_by_client_size,
+            weekly_byte_rate_data,
+            weekly_thread_count_data,
+            weekly_torrent_count_data,
+            weekly_done_count_data,
+            weekly_mediainfo_count_data,
+        ) = await asyncio.gather(
+            pool.fetchval("select count(1) from thread"),
+            pool.fetchval("select value from config where key = 'search_cursor'"),
+            pool.fetchval(
                 "select count(1) from thread where category = any($1)",
                 SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        total_size = (
-            await pool.fetchval(
+            ),
+            pool.fetchval(
                 "select coalesce(sum(selected_size), 0) from thread where category = any($1)",
                 SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        # Lifecycle: pending fetch mediainfo
-        pending_fetch_mediainfo = (
-            await pool.fetchval(
+            ),
+            pool.fetchval(
                 """
             select count(1) from thread
             where deleted = false and mediainfo_at is null
               and upload_at >= '2024-01-01' and category = any($1)
             """,
                 SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        # Lifecycle: pending fetch torrent (info_hash)
-        pending_fetch_torrent = (
-            await pool.fetchval(
+            ),
+            pool.fetchval(
                 """
             select count(1) from thread
             where deleted = false and mediainfo_at is not null
               and mediainfo = '' and info_hash = '' and category = any($1)
             """,
                 SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        # Lifecycle: pending to download (has info_hash, no job, has seeders)
-        pending_to_download = (
-            await pool.fetchval(
+            ),
+            pool.fetchval(
                 """
             select count(1) from thread
             left join job on (job.tid = thread.tid)
@@ -610,12 +613,8 @@ def create_app() -> fastapi.FastAPI:
               and category = any($1) and job.tid is null
             """,
                 SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        pending_to_download_size = (
-            await pool.fetchval(
+            ),
+            pool.fetchval(
                 """
             select coalesce(sum(thread.selected_size), 0) from thread
             left join job on (job.tid = thread.tid)
@@ -625,20 +624,102 @@ def create_app() -> fastapi.FastAPI:
               and category = any($1) and job.tid is null
             """,
                 SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        # Lifecycle: downloading
-        downloading_rows = await pool.fetch(
-            """
+            ),
+            pool.fetch(
+                """
             select job.node_id, thread.selected_size from job
             join thread on (thread.tid = job.tid)
             where job.status = $1 and thread.category = any($2)
             """,
-            ITEM_STATUS_DOWNLOADING,
-            SELECTED_CATEGORY,
+                ITEM_STATUS_DOWNLOADING,
+                SELECTED_CATEGORY,
+            ),
+            pool.fetchval(
+                """
+            select count(1) from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            """,
+                ITEM_STATUS_FAILED,
+                SELECTED_CATEGORY,
+            ),
+            pool.fetchval(
+                """
+            select coalesce(sum(thread.selected_size), 0) from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            """,
+                ITEM_STATUS_FAILED,
+                SELECTED_CATEGORY,
+            ),
+            pool.fetchval(
+                """
+            select count(1) from thread
+            where mediainfo != '' and info_hash != '' and category = any($1)
+            """,
+                SELECTED_CATEGORY,
+            ),
+            pool.fetchval(
+                """
+            select coalesce(sum(selected_size), 0) from thread
+            where mediainfo != '' and info_hash != '' and category = any($1)
+            """,
+                SELECTED_CATEGORY,
+            ),
+            pool.fetch(
+                """
+            select job.node_id, thread.selected_size from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            """,
+                ITEM_STATUS_DONE,
+                SELECTED_CATEGORY,
+            ),
+            pool.fetchval(
+                """
+            select count(1) from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            """,
+                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+                SELECTED_CATEGORY,
+            ),
+            pool.fetchval(
+                """
+            select coalesce(sum(thread.selected_size), 0) from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            """,
+                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+                SELECTED_CATEGORY,
+            ),
+            _get_weekly_byte_rate_data(),
+            _get_weekly_count_data(
+                "select created_at as ts from thread where created_at >= current_timestamp - interval '1 year'"
+            ),
+            _get_weekly_count_data(
+                "select created_at as ts from torrent where created_at >= current_timestamp - interval '1 year'"
+            ),
+            _get_weekly_done_count_data(),
+            _get_weekly_count_data(
+                "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= current_timestamp - interval '1 year'"
+            ),
         )
+
+        scraped_total = scraped_total or 0
+        total = total or 0
+        total_size = total_size or 0
+        pending_fetch_mediainfo = pending_fetch_mediainfo or 0
+        pending_fetch_torrent = pending_fetch_torrent or 0
+        pending_to_download = pending_to_download or 0
+        pending_to_download_size = pending_to_download_size or 0
+        failed = failed or 0
+        failed_size = failed_size or 0
+        done = done or 0
+        done_size = done_size or 0
+        removed_by_client = removed_by_client or 0
+        removed_by_client_size = removed_by_client_size or 0
+
         downloading = len(downloading_rows)
         downloading_size = sum(r["selected_size"] for r in downloading_rows)
 
@@ -656,66 +737,6 @@ def create_app() -> fastapi.FastAPI:
             for nid, v in sorted(downloading_per_node.items())
         ]
 
-        # Lifecycle: failed
-        failed = (
-            await pool.fetchval(
-                """
-            select count(1) from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
-            """,
-                ITEM_STATUS_FAILED,
-                SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        failed_size = (
-            await pool.fetchval(
-                """
-            select coalesce(sum(thread.selected_size), 0) from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
-            """,
-                ITEM_STATUS_FAILED,
-                SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        # Lifecycle: done (mediainfo obtained via download)
-        done = (
-            await pool.fetchval(
-                """
-            select count(1) from thread
-            where mediainfo != '' and info_hash != '' and category = any($1)
-            """,
-                SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        done_size = (
-            await pool.fetchval(
-                """
-            select coalesce(sum(selected_size), 0) from thread
-            where mediainfo != '' and info_hash != '' and category = any($1)
-            """,
-                SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        # Per-node done stats (from jobs)
-        done_job_rows = await pool.fetch(
-            """
-            select job.node_id, thread.selected_size from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
-            """,
-            ITEM_STATUS_DONE,
-            SELECTED_CATEGORY,
-        )
         done_per_node: dict[str, dict[str, Any]] = {}
         for r in done_job_rows:
             nid = str(r["node_id"])
@@ -728,33 +749,6 @@ def create_app() -> fastapi.FastAPI:
             {"node_id": nid[:8], "count": v["count"], "size_fmt": human_readable_size(v["size"])}
             for nid, v in sorted(done_per_node.items())
         ]
-
-        # Lifecycle: removed by client
-        removed_by_client = (
-            await pool.fetchval(
-                """
-            select count(1) from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
-            """,
-                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-                SELECTED_CATEGORY,
-            )
-            or 0
-        )
-
-        removed_by_client_size = (
-            await pool.fetchval(
-                """
-            select coalesce(sum(thread.selected_size), 0) from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
-            """,
-                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-                SELECTED_CATEGORY,
-            )
-            or 0
-        )
 
         skipped = (
             total
@@ -775,19 +769,6 @@ def create_app() -> fastapi.FastAPI:
             if total == 0:
                 return "0.0"
             return f"{n / total * 100:.1f}"
-
-        # Compute chart data for inline embedding
-        weekly_byte_rate_data = await _get_weekly_byte_rate_data()
-        weekly_thread_count_data = await _get_weekly_count_data(
-            "select created_at as ts from thread where created_at >= current_timestamp - interval '1 year'"
-        )
-        weekly_torrent_count_data = await _get_weekly_count_data(
-            "select created_at as ts from torrent where created_at >= current_timestamp - interval '1 year'"
-        )
-        weekly_done_count_data = await _get_weekly_done_count_data()
-        weekly_mediainfo_count_data = await _get_weekly_count_data(
-            "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= current_timestamp - interval '1 year'"
-        )
 
         return render(
             "index.html.j2",
@@ -841,23 +822,32 @@ def create_app() -> fastapi.FastAPI:
         if start_value:
             start_dt = datetime.strptime(start_value, "%Y-%m-%d").replace(tzinfo=_tz_shanghai)
 
-        daily_byte_rate_data = await _get_daily_byte_rate_data(start_dt)
-        daily_fetched_size_data = await _get_daily_fetched_size_data(start_dt)
-        daily_thread_count_data = await _get_daily_count_data(
-            "select created_at as ts from thread where created_at >= $1",
-            [start_dt],
-            start_dt,
-        )
-        daily_torrent_count_data = await _get_daily_count_data(
-            "select created_at as ts from torrent where created_at >= $1",
-            [start_dt],
-            start_dt,
-        )
-        daily_done_count_data = await _get_daily_done_count_data(start_dt)
-        daily_mediainfo_count_data = await _get_daily_count_data(
-            "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= $1",
-            [start_dt],
-            start_dt,
+        (
+            daily_byte_rate_data,
+            daily_fetched_size_data,
+            daily_thread_count_data,
+            daily_torrent_count_data,
+            daily_done_count_data,
+            daily_mediainfo_count_data,
+        ) = await asyncio.gather(
+            _get_daily_byte_rate_data(start_dt),
+            _get_daily_fetched_size_data(start_dt),
+            _get_daily_count_data(
+                "select created_at as ts from thread where created_at >= $1",
+                [start_dt],
+                start_dt,
+            ),
+            _get_daily_count_data(
+                "select created_at as ts from torrent where created_at >= $1",
+                [start_dt],
+                start_dt,
+            ),
+            _get_daily_done_count_data(start_dt),
+            _get_daily_count_data(
+                "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= $1",
+                [start_dt],
+                start_dt,
+            ),
         )
 
         return render(
