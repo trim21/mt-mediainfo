@@ -665,7 +665,7 @@ requires-dist = [
 dev = [
     { name = "asyncpg-stubs", specifier = "==0.31.2" },
     { name = "mypy" },
-    { name = "ty", specifier = ">=0.0.29" },
+    { name = "ty", specifier = "==0.0.29" },
     { name = "types-regex", specifier = "==2026.4.4.20260405" },
     { name = "types-six", specifier = "==1.17.0.20251009" },
 ]
