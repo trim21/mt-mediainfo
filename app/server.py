@@ -19,7 +19,6 @@ from app.const import (
     ITEM_STATUS_DOWNLOADING,
     ITEM_STATUS_FAILED,
     ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-    ITEM_STATUS_SKIPPED,
     SELECTED_CATEGORY,
 )
 from app.utils import human_readable_byte_rate, human_readable_size
@@ -137,18 +136,6 @@ def create_app() -> fastapi.FastAPI:
             "pending_size": human_readable_size(pending_size),
             "pending_count": pending_count,
         })
-
-    @app.get("/")
-    async def index(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
-        torrents = await pool.fetch(
-            """select * from job where (not status = any($1)) order by updated_at desc""",
-            [ITEM_STATUS_SKIPPED, ITEM_STATUS_DONE],
-        )
-
-        return render(
-            "index.html.j2",
-            ctx={"torrents": torrents},
-        )
 
     @app.get("/thread/{tid}")
     async def rss_item(tid: int) -> ORJSONResponse:
@@ -553,7 +540,7 @@ def create_app() -> fastapi.FastAPI:
             for r in result.iter_rows(named=True)
         ])
 
-    @app.get("/progress")
+    @app.get("/")
     async def progress(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
         scraped_total = await pool.fetchval("select count(1) from thread") or 0
         search_cursor = await pool.fetchval("select value from config where key = 'search_cursor'")
