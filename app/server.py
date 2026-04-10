@@ -278,6 +278,52 @@ def create_app() -> fastapi.FastAPI:
             for r in result.iter_rows(named=True)
         ]
 
+    async def _get_weekly_done_count_data() -> dict[str, Any]:
+        rows = await pool.fetch(
+            """select coalesce(completed_at, updated_at) as ts, node_id from job
+            where status = $1 and coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'""",
+            ITEM_STATUS_DONE,
+        )
+        if not rows:
+            return {"labels": [], "totals": [], "per_node": {}}
+
+        today = _today_start()
+        df = pl.DataFrame({
+            "ts": [row["ts"] for row in rows],
+            "node_id": [str(row["node_id"]) for row in rows],
+        })
+        df = df.with_columns(_compute_week_num_col(today))
+
+        min_week, max_week = _week_range()
+        all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
+
+        grouped_total = df.group_by("week_num").len(name="count")
+        result_total = (
+            all_weeks
+            .join(grouped_total, on="week_num", how="left")
+            .with_columns(pl.col("count").fill_null(0))
+            .sort("week_num")
+        )
+
+        grouped_node = df.group_by(["week_num", "node_id"]).len(name="count")
+        node_ids = sorted(df["node_id"].unique().to_list())
+
+        per_node: dict[str, list[int]] = {}
+        for nid in node_ids:
+            node_data = grouped_node.filter(pl.col("node_id") == nid)
+            node_result = (
+                all_weeks
+                .join(node_data.select(["week_num", "count"]), on="week_num", how="left")
+                .with_columns(pl.col("count").fill_null(0))
+                .sort("week_num")
+            )
+            per_node[nid] = [int(r["count"]) for r in node_result.iter_rows(named=True)]
+
+        labels = [_week_label(today, r["week_num"]) for r in result_total.iter_rows(named=True)]
+        totals = [int(r["count"]) for r in result_total.iter_rows(named=True)]
+
+        return {"labels": labels, "totals": totals, "per_node": per_node}
+
     async def _get_daily_byte_rate_data(
         start: datetime | None = None,
     ) -> dict[str, Any]:
@@ -382,43 +428,57 @@ def create_app() -> fastapi.FastAPI:
             for r in result.iter_rows(named=True)
         ]
 
-    @app.get("/stats/weekly-byte-rate")
-    async def weekly_byte_rate() -> ORJSONResponse:
-        return ORJSONResponse(await _get_weekly_byte_rate_data())
+    async def _get_daily_done_count_data(
+        start: datetime | None = None,
+    ) -> dict[str, Any]:
+        today = _today_start()
+        if start is None:
+            start = today - timedelta(days=364)
+        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
+        days_back = (today - start).days
+        rows = await pool.fetch(
+            """select coalesce(completed_at, updated_at) as ts, node_id from job
+            where status = $1 and coalesce(completed_at, updated_at) >= $2""",
+            ITEM_STATUS_DONE,
+            start,
+        )
+        if not rows:
+            return {"labels": [], "totals": [], "per_node": {}}
 
-    @app.get("/stats/weekly-thread-count")
-    async def weekly_thread_count() -> ORJSONResponse:
-        return ORJSONResponse(
-            await _get_weekly_count_data(
-                "select created_at as ts from thread where created_at >= current_timestamp - interval '1 year'"
-            )
+        df = pl.DataFrame({
+            "ts": [row["ts"] for row in rows],
+            "node_id": [str(row["node_id"]) for row in rows],
+        })
+        df = df.with_columns(_compute_day_num_col(today))
+
+        all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
+
+        grouped_total = df.group_by("day_num").len(name="count")
+        result_total = (
+            all_days
+            .join(grouped_total, on="day_num", how="left")
+            .with_columns(pl.col("count").fill_null(0))
+            .sort("day_num")
         )
 
-    @app.get("/stats/weekly-torrent-count")
-    async def weekly_torrent_count() -> ORJSONResponse:
-        return ORJSONResponse(
-            await _get_weekly_count_data(
-                "select created_at as ts from torrent where created_at >= current_timestamp - interval '1 year'"
-            )
-        )
+        grouped_node = df.group_by(["day_num", "node_id"]).len(name="count")
+        node_ids = sorted(df["node_id"].unique().to_list())
 
-    @app.get("/stats/weekly-done-count")
-    async def weekly_done_count() -> ORJSONResponse:
-        return ORJSONResponse(
-            await _get_weekly_count_data(
-                """select coalesce(completed_at, updated_at) as ts from job
-            where status = $1 and coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'""",
-                [ITEM_STATUS_DONE],
+        per_node: dict[str, list[int]] = {}
+        for nid in node_ids:
+            node_data = grouped_node.filter(pl.col("node_id") == nid)
+            node_result = (
+                all_days
+                .join(node_data.select(["day_num", "count"]), on="day_num", how="left")
+                .with_columns(pl.col("count").fill_null(0))
+                .sort("day_num")
             )
-        )
+            per_node[nid] = [int(r["count"]) for r in node_result.iter_rows(named=True)]
 
-    @app.get("/stats/weekly-mediainfo-count")
-    async def weekly_mediainfo_count() -> ORJSONResponse:
-        return ORJSONResponse(
-            await _get_weekly_count_data(
-                "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= current_timestamp - interval '1 year'"
-            )
-        )
+        labels = [_day_label(today, r["day_num"]) for r in result_total.iter_rows(named=True)]
+        totals = [int(r["count"]) for r in result_total.iter_rows(named=True)]
+
+        return {"labels": labels, "totals": totals, "per_node": per_node}
 
     def _day_num(ts: datetime, today: datetime) -> int:
         return int((ts - today).total_seconds() // 86400)
@@ -444,67 +504,6 @@ def create_app() -> fastapi.FastAPI:
             .join(grouped, on="day_num", how="left")
             .with_columns(pl.col("count").fill_null(0))
             .sort("day_num")
-        )
-
-    @app.get("/stats/daily-byte-rate")
-    async def daily_byte_rate(start: datetime | None = None) -> ORJSONResponse:
-        return ORJSONResponse(await _get_daily_byte_rate_data(start))
-
-    @app.get("/stats/daily-thread-count")
-    async def daily_thread_count(start: datetime | None = None) -> ORJSONResponse:
-        today = _today_start()
-        if start is None:
-            start = today - timedelta(days=364)
-        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        return ORJSONResponse(
-            await _get_daily_count_data(
-                "select created_at as ts from thread where created_at >= $1",
-                [start],
-                start,
-            )
-        )
-
-    @app.get("/stats/daily-torrent-count")
-    async def daily_torrent_count(start: datetime | None = None) -> ORJSONResponse:
-        today = _today_start()
-        if start is None:
-            start = today - timedelta(days=364)
-        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        return ORJSONResponse(
-            await _get_daily_count_data(
-                "select created_at as ts from torrent where created_at >= $1",
-                [start],
-                start,
-            )
-        )
-
-    @app.get("/stats/daily-done-count")
-    async def daily_done_count(start: datetime | None = None) -> ORJSONResponse:
-        today = _today_start()
-        if start is None:
-            start = today - timedelta(days=364)
-        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        return ORJSONResponse(
-            await _get_daily_count_data(
-                """select coalesce(completed_at, updated_at) as ts from job
-            where status = $1 and coalesce(completed_at, updated_at) >= $2""",
-                [ITEM_STATUS_DONE, start],
-                start,
-            )
-        )
-
-    @app.get("/stats/daily-mediainfo-count")
-    async def daily_mediainfo_count(start: datetime | None = None) -> ORJSONResponse:
-        today = _today_start()
-        if start is None:
-            start = today - timedelta(days=364)
-        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        return ORJSONResponse(
-            await _get_daily_count_data(
-                "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= $1",
-                [start],
-                start,
-            )
         )
 
     @app.get("/")
@@ -740,11 +739,7 @@ def create_app() -> fastapi.FastAPI:
         weekly_torrent_count_data = await _get_weekly_count_data(
             "select created_at as ts from torrent where created_at >= current_timestamp - interval '1 year'"
         )
-        weekly_done_count_data = await _get_weekly_count_data(
-            """select coalesce(completed_at, updated_at) as ts from job
-            where status = $1 and coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'""",
-            [ITEM_STATUS_DONE],
-        )
+        weekly_done_count_data = await _get_weekly_done_count_data()
         weekly_mediainfo_count_data = await _get_weekly_count_data(
             "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= current_timestamp - interval '1 year'"
         )
@@ -812,12 +807,7 @@ def create_app() -> fastapi.FastAPI:
             [start_dt],
             start_dt,
         )
-        daily_done_count_data = await _get_daily_count_data(
-            """select coalesce(completed_at, updated_at) as ts from job
-            where status = $1 and coalesce(completed_at, updated_at) >= $2""",
-            [ITEM_STATUS_DONE, start_dt],
-            start_dt,
-        )
+        daily_done_count_data = await _get_daily_done_count_data(start_dt)
         daily_mediainfo_count_data = await _get_daily_count_data(
             "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= $1",
             [start_dt],

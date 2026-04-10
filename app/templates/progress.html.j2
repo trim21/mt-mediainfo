@@ -204,14 +204,52 @@
 
     const threadMap = Object.fromEntries(threadData.map(d => [d.week, d.count]));
     const torrentMap = Object.fromEntries(torrentData.map(d => [d.week, d.count]));
-    const doneMap = Object.fromEntries(doneData.map(d => [d.week, d.count]));
     const mediainfoMap = Object.fromEntries(mediainfoData.map(d => [d.week, d.count]));
     const allWeeks = [...new Set([
       ...threadData.map(d => d.week),
       ...torrentData.map(d => d.week),
-      ...doneData.map(d => d.week),
+      ...(doneData.labels || []),
       ...mediainfoData.map(d => d.week),
     ])].sort();
+
+    const doneNodeIds = Object.keys(doneData.per_node || {});
+    const doneTotalMap = {};
+    (doneData.labels || []).forEach((l, i) => { doneTotalMap[l] = doneData.totals[i]; });
+    const doneNodeMaps = {};
+    doneNodeIds.forEach(nid => {
+      const m = {};
+      (doneData.labels || []).forEach((l, i) => { m[l] = doneData.per_node[nid][i]; });
+      doneNodeMaps[nid] = m;
+    });
+
+    const doneDatasets = doneNodeIds.length <= 1
+      ? [{
+          label: 'Downloads Done',
+          data: allWeeks.map(d => doneTotalMap[d] ?? 0),
+          backgroundColor: 'rgba(13, 110, 253, 0.5)',
+          borderColor: 'rgba(13, 110, 253, 1)',
+          borderWidth: 1,
+        }]
+      : [
+          {
+            label: 'Done (total)',
+            data: allWeeks.map(d => doneTotalMap[d] ?? 0),
+            backgroundColor: 'rgba(13, 110, 253, 0.3)',
+            borderColor: 'rgba(13, 110, 253, 1)',
+            borderWidth: 2,
+            borderDash: [5, 5],
+          },
+          ...doneNodeIds.map((nid, i) => {
+            const c = NODE_COLORS[i % NODE_COLORS.length];
+            return {
+              label: 'Done ' + nid.slice(0, 8),
+              data: allWeeks.map(d => doneNodeMaps[nid][d] ?? 0),
+              backgroundColor: c.bg,
+              borderColor: c.border,
+              borderWidth: 1,
+            };
+          }),
+        ];
 
     new Chart(document.getElementById('weeklyFetchChart'), {
       type: 'line',
@@ -239,13 +277,7 @@
             borderColor: 'rgba(255, 193, 7, 1)',
             borderWidth: 1,
           },
-          {
-            label: 'Downloads Done',
-            data: allWeeks.map(d => doneMap[d] ?? 0),
-            backgroundColor: 'rgba(13, 110, 253, 0.5)',
-            borderColor: 'rgba(13, 110, 253, 1)',
-            borderWidth: 1,
-          },
+          ...doneDatasets,
         ]
       },
       options: {
