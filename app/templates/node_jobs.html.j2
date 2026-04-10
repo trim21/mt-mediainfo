@@ -47,7 +47,7 @@
       </td>
       <td>{{ j.size_fmt }}</td>
       <td>{{ j.selected_size_fmt }}</td>
-      <td>{{ "%.1f" | format((j.progress * 1000 | int) / 10) }}%</td>
+      <td>{{ j.progress_fmt }}%</td>
       <td>{{ j.speed_fmt }}</td>
       <td>{{ j.eta_fmt }}</td>
       <td>{{ j.start_download_time | fmt_dt }}</td>

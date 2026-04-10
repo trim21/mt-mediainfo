@@ -1205,6 +1205,7 @@ def create_app() -> fastapi.FastAPI:
                     "selected_size_fmt": human_readable_size(r["selected_size"])
                     if r["selected_size"] > 0
                     else "-",
+                    "progress_fmt": f"{int(r['progress'] * 1000) / 10:.1f}",
                 }
                 | _calc_speed_eta(r)
                 for r in rows
