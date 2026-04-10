@@ -57,6 +57,13 @@ def create_app() -> fastapi.FastAPI:
         directory=str(Path(__file__).parent.joinpath("templates").resolve())
     )
 
+    def _fmt_dt(dt: datetime | None) -> str:
+        if dt is None:
+            return "-"
+        return dt.astimezone(_tz_shanghai).strftime("%Y-%m-%d %H:%M:%S")
+
+    templates.env.filters["fmt_dt"] = _fmt_dt
+
     async def __render(request: Request) -> _Render:
         def render(
             name: str,
@@ -1113,10 +1120,11 @@ def create_app() -> fastapi.FastAPI:
                    thread.size, thread.selected_size
             from job
             join thread on (thread.tid = job.tid)
-            where job.node_id = $1
+            where job.node_id = $1 and job.status = $2
             order by job.updated_at desc
             """,
             node_id,
+            ITEM_STATUS_DOWNLOADING,
         )
 
         jobs = [

@@ -10,20 +10,13 @@
         rel="stylesheet"
         integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
         crossorigin="anonymous">
-  <style>
-    .reason-cell { max-width: 400px; }
-    .reason-short { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
-    .reason-full { display: none; white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; max-height: 300px; overflow-y: auto; }
-    .reason-cell.expanded .reason-short { display: none; }
-    .reason-cell.expanded .reason-full { display: block; }
-  </style>
 </head>
 <body>
 
 <div class="container-fluid mt-4 px-4">
   <p><a href="/nodes">&larr; Back to Nodes</a></p>
   <h2>Node <code>{{ node_id[:8] }}</code> <small class="text-muted fs-6">({{ jobs | length }} jobs)</small></h2>
-  <p class="text-muted">Full ID: <code>{{ node_id }}</code> &mdash; Last seen: {{ last_seen }}</p>
+  <p class="text-muted">Full ID: <code>{{ node_id }}</code> &mdash; Last seen: {{ last_seen | fmt_dt }}</p>
 
   <table class="table table-bordered table-hover table-sm">
     <thead class="table-light">
@@ -33,7 +26,6 @@
       <th>Size</th>
       <th>Selected Size</th>
       <th>Progress</th>
-      <th>Failed Reason</th>
       <th>Started</th>
       <th>Updated</th>
       <th>Link</th>
@@ -54,14 +46,8 @@
       <td>{{ j.size_fmt }}</td>
       <td>{{ j.selected_size_fmt }}</td>
       <td>{{ "%.1f" | format(j.progress * 100) }}%</td>
-      <td class="reason-cell" onclick="this.classList.toggle('expanded')">
-        {% if j.failed_reason %}
-        <div class="reason-short" title="{{ j.failed_reason }}">{{ j.failed_reason.split('\n')[0] }}</div>
-        <div class="reason-full">{{ j.failed_reason }}</div>
-        {% endif %}
-      </td>
-      <td>{{ j.start_download_time or '-' }}</td>
-      <td>{{ j.updated_at }}</td>
+      <td>{{ j.start_download_time | fmt_dt }}</td>
+      <td>{{ j.updated_at | fmt_dt }}</td>
       <td><a href="https://kp.m-team.cc/detail/{{ j.tid }}" target="_blank">MT</a></td>
     </tr>
     {% endfor %}
