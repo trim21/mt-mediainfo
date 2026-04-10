@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Node {{ node_id[:8] }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+        crossorigin="anonymous">
+  <style>
+    .reason-cell { max-width: 400px; }
+    .reason-short { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
+    .reason-full { display: none; white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; max-height: 300px; overflow-y: auto; }
+    .reason-cell.expanded .reason-short { display: none; }
+    .reason-cell.expanded .reason-full { display: block; }
+  </style>
+</head>
+<body>
+
+<div class="container-fluid mt-4 px-4">
+  <p><a href="/nodes">&larr; Back to Nodes</a></p>
+  <h2>Node <code>{{ node_id[:8] }}</code> <small class="text-muted fs-6">({{ jobs | length }} jobs)</small></h2>
+  <p class="text-muted">Full ID: <code>{{ node_id }}</code> &mdash; Last seen: {{ last_seen }}</p>
+
+  <table class="table table-bordered table-hover table-sm">
+    <thead class="table-light">
+    <tr>
+      <th>TID</th>
+      <th>Status</th>
+      <th>Size</th>
+      <th>Selected Size</th>
+      <th>Progress</th>
+      <th>Failed Reason</th>
+      <th>Started</th>
+      <th>Updated</th>
+      <th>Link</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for j in jobs %}
+    <tr>
+      <td>{{ j.tid }}</td>
+      <td>
+        {% if j.status == 'downloading' %}<span class="badge bg-info text-dark">{{ j.status }}</span>
+        {% elif j.status == 'done' %}<span class="badge bg-success">{{ j.status }}</span>
+        {% elif j.status == 'failed' %}<span class="badge bg-danger">{{ j.status }}</span>
+        {% elif j.status == 'removed-by-client' %}<span class="badge bg-secondary">{{ j.status }}</span>
+        {% else %}<span class="badge bg-warning text-dark">{{ j.status }}</span>
+        {% endif %}
+      </td>
+      <td>{{ j.size_fmt }}</td>
+      <td>{{ j.selected_size_fmt }}</td>
+      <td>{{ "%.1f" | format(j.progress * 100) }}%</td>
+      <td class="reason-cell" onclick="this.classList.toggle('expanded')">
+        {% if j.failed_reason %}
+        <div class="reason-short" title="{{ j.failed_reason }}">{{ j.failed_reason.split('\n')[0] }}</div>
+        <div class="reason-full">{{ j.failed_reason }}</div>
+        {% endif %}
+      </td>
+      <td>{{ j.start_download_time or '-' }}</td>
+      <td>{{ j.updated_at }}</td>
+      <td><a href="https://kp.m-team.cc/detail/{{ j.tid }}" target="_blank">MT</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>
