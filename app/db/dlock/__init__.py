@@ -1,8 +1,9 @@
 import threading
 from types import TracebackType
-from typing import Literal, LiteralString
+from typing import Literal, LiteralString, cast
 
 import psycopg
+import psycopg.sql
 import six
 import xxhash
 from psycopg.errors import QueryCanceled
@@ -64,7 +65,11 @@ class Lock:
         self.__conn = psycopg.Connection.connect(conn_info, autocommit=True)
         if timeout_ms:
             if isinstance(timeout_ms, int):
-                self.__conn.execute(f"set statement_timeout = {timeout_ms:d}")  # type: ignore[arg-type]
+                self.__conn.execute(
+                    psycopg.sql.SQL("set statement_timeout = {}").format(
+                        psycopg.sql.Literal(timeout_ms)
+                    )
+                )
             else:
                 raise ValueError(f"timeout_ms must be int or None, get {timeout_ms!r}")
 
@@ -85,8 +90,9 @@ class Lock:
         if len(self.__lock_id) == 1:
             assert -9223372036854775808 <= self.__lock_id[0] <= +9223372036854775807
         else:
-            assert -2147483648 <= self.__lock_id[0] <= 2147483647
-            assert -2147483648 <= self.__lock_id[1] <= 2147483647
+            lock_id_2 = cast(tuple[int, int], self.__lock_id)  # type: ignore[redundant-cast]
+            assert -2147483648 <= lock_id_2[0] <= 2147483647
+            assert -2147483648 <= lock_id_2[1] <= 2147483647
 
         self.__scope = scope
         self.__shared = shared

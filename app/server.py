@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any, Protocol, cast
 from zoneinfo import ZoneInfo
 
 import asyncpg
@@ -709,19 +709,21 @@ def create_app() -> fastapi.FastAPI:
             ),
         )
 
-        scraped_total = scraped_total or 0
-        total = total or 0
-        total_size = total_size or 0
-        pending_fetch_mediainfo = pending_fetch_mediainfo or 0
-        pending_fetch_torrent = pending_fetch_torrent or 0
-        pending_to_download = pending_to_download or 0
-        pending_to_download_size = pending_to_download_size or 0
-        failed = failed or 0
-        failed_size = failed_size or 0
-        done = done or 0
-        done_size = done_size or 0
-        removed_by_client = removed_by_client or 0
-        removed_by_client_size = removed_by_client_size or 0
+        scraped_total = cast(int, scraped_total)
+        total = cast(int, total)
+        total_size = cast(int, total_size)
+        pending_fetch_mediainfo = cast(int, pending_fetch_mediainfo)
+        pending_fetch_torrent = cast(int, pending_fetch_torrent)
+        pending_to_download = cast(int, pending_to_download)
+        pending_to_download_size = cast(int, pending_to_download_size)
+        failed = cast(int, failed)
+        failed_size = cast(int, failed_size)
+        done = cast(int, done)
+        done_size = cast(int, done_size)
+        removed_by_client = cast(int, removed_by_client)
+        removed_by_client_size = cast(int, removed_by_client_size)
+        downloading_rows = cast(list[asyncpg.Record], downloading_rows)
+        done_job_rows = cast(list[asyncpg.Record], done_job_rows)
 
         downloading = len(downloading_rows)
         downloading_size = sum(r["selected_size"] for r in downloading_rows)
