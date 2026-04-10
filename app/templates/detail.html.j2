@@ -61,24 +61,16 @@
     const labels = data.labels;
     const nodeIds = Object.keys(data.per_node);
 
-    const datasets = nodeIds.length <= 1
-      ? [{
-          label: 'Avg Byte Rate',
-          data: data.totals.map(d => d.byte_rate),
-          backgroundColor: 'rgba(13, 110, 253, 0.5)',
-          borderColor: 'rgba(13, 110, 253, 1)',
-          borderWidth: 1,
-        }]
-      : nodeIds.map((nid, i) => {
-          const c = NODE_COLORS[i % NODE_COLORS.length];
-          return {
-            label: nid.slice(0, 8),
-            data: data.per_node[nid],
-            backgroundColor: c.bg,
-            borderColor: c.border,
-            borderWidth: 1,
-          };
-        });
+    const datasets = nodeIds.map((nid, i) => {
+      const c = NODE_COLORS[i % NODE_COLORS.length];
+      return {
+        label: nid.slice(0, 8),
+        data: data.per_node[nid],
+        backgroundColor: c.bg,
+        borderColor: c.border,
+        borderWidth: 1,
+      };
+    });
 
     new Chart(document.getElementById('dailyByteRateChart'), {
       type: 'bar',
@@ -133,34 +125,26 @@
       doneNodeMaps[nid] = m;
     });
 
-    const doneDatasets = doneNodeIds.length <= 1
-      ? [{
-          label: 'Downloads Done',
-          data: allDays.map(d => doneTotalMap[d] ?? 0),
-          backgroundColor: 'rgba(13, 110, 253, 0.5)',
-          borderColor: 'rgba(13, 110, 253, 1)',
+    const doneDatasets = [
+      {
+        label: 'Done (total)',
+        data: allDays.map(d => doneTotalMap[d] ?? 0),
+        backgroundColor: 'rgba(13, 110, 253, 0.3)',
+        borderColor: 'rgba(13, 110, 253, 1)',
+        borderWidth: 2,
+        borderDash: [5, 5],
+      },
+      ...doneNodeIds.map((nid, i) => {
+        const c = NODE_COLORS[i % NODE_COLORS.length];
+        return {
+          label: 'Done ' + nid.slice(0, 8),
+          data: allDays.map(d => doneNodeMaps[nid][d] ?? 0),
+          backgroundColor: c.bg,
+          borderColor: c.border,
           borderWidth: 1,
-        }]
-      : [
-          {
-            label: 'Done (total)',
-            data: allDays.map(d => doneTotalMap[d] ?? 0),
-            backgroundColor: 'rgba(13, 110, 253, 0.3)',
-            borderColor: 'rgba(13, 110, 253, 1)',
-            borderWidth: 2,
-            borderDash: [5, 5],
-          },
-          ...doneNodeIds.map((nid, i) => {
-            const c = NODE_COLORS[i % NODE_COLORS.length];
-            return {
-              label: 'Done ' + nid.slice(0, 8),
-              data: allDays.map(d => doneNodeMaps[nid][d] ?? 0),
-              backgroundColor: c.bg,
-              borderColor: c.border,
-              borderWidth: 1,
-            };
-          }),
-        ];
+        };
+      }),
+    ];
 
     new Chart(document.getElementById('dailyFetchChart'), {
       type: 'line',
