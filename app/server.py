@@ -1121,7 +1121,7 @@ def create_app() -> fastapi.FastAPI:
             from job
             join thread on (thread.tid = job.tid)
             where job.node_id = $1 and job.status = $2
-            order by job.updated_at desc
+            order by job.progress desc
             """,
             node_id,
             ITEM_STATUS_DOWNLOADING,
