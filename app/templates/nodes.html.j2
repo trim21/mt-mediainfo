@@ -33,7 +33,7 @@
     {% for n in nodes %}
     <tr>
       <td><a href="/nodes/{{ n.id }}"><code>{{ n.id[:8] }}</code></a> <small class="text-muted">{{ n.id[8:] }}</small></td>
-      <td>{{ n.last_seen }}</td>
+      <td>{{ n.last_seen | fmt_dt }}</td>
       <td>{{ n.downloading }}</td>
       <td>{{ n.done }}</td>
       <td>{{ n.failed }}</td>

@@ -54,7 +54,7 @@
         <div class="reason-full">{{ t.failed_reason }}</div>
       </td>
       {% endif %}
-      <td>{{ t.created_at }}</td>
+      <td>{{ t.created_at | fmt_dt }}</td>
       <td><a href="https://kp.m-team.cc/detail/{{ t.tid }}" target="_blank">MT</a></td>
       {% if show_reset %}<td><button class="btn btn-outline-primary btn-sm" onclick="resetOne({{ t.tid }})">Reset</button></td>{% endif %}
     </tr>
