@@ -76,11 +76,25 @@
           <td>{{ downloading }}</td>
           <td>{{ downloading_size }}</td>
         </tr>
+        {% for n in downloading_nodes %}
+        <tr class="table-info">
+          <td class="ps-4 text-muted">{{ n.node_id }}</td>
+          <td>{{ n.count }}</td>
+          <td>{{ n.size_fmt }}</td>
+        </tr>
+        {% endfor %}
         <tr class="table-success">
           <th><a href="/threads/done" class="text-reset text-decoration-none">Done</a></th>
           <td>{{ done }}</td>
           <td>{{ done_size }}</td>
         </tr>
+        {% for n in done_nodes %}
+        <tr class="table-success">
+          <td class="ps-4 text-muted">{{ n.node_id }}</td>
+          <td>{{ n.count }}</td>
+          <td>{{ n.size_fmt }}</td>
+        </tr>
+        {% endfor %}
         <tr class="table-danger">
           <th><a href="/threads/failed" class="text-reset text-decoration-none">Failed</a></th>
           <td>{{ failed }}</td>
@@ -113,66 +127,80 @@
 </div>
 
 <script>
-  (async () => {
-    const resp = await fetch('/stats/weekly-byte-rate');
-    const data = await resp.json();
-    const labels = data.map(d => d.week);
-    const byteRates = data.map(d => d.byte_rate);
-    const sizes = data.map(d => d.total_size);
+  const NODE_COLORS = [
+    {bg: 'rgba(13, 110, 253, 0.5)', border: 'rgba(13, 110, 253, 1)'},
+    {bg: 'rgba(220, 53, 69, 0.5)', border: 'rgba(220, 53, 69, 1)'},
+    {bg: 'rgba(25, 135, 84, 0.5)', border: 'rgba(25, 135, 84, 1)'},
+    {bg: 'rgba(255, 193, 7, 0.5)', border: 'rgba(255, 193, 7, 1)'},
+    {bg: 'rgba(111, 66, 193, 0.5)', border: 'rgba(111, 66, 193, 1)'},
+    {bg: 'rgba(32, 201, 151, 0.5)', border: 'rgba(32, 201, 151, 1)'},
+  ];
 
-    new Chart(document.getElementById('weeklyByteRateChart'), {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
+  function formatByteRate(bps) {
+    if (bps === 0) return '0 B/s';
+    const units = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s'];
+    let i = 0;
+    while (bps >= 1024 && i < units.length - 1) { bps /= 1024; i++; }
+    return bps.toFixed(2) + ' ' + units[i];
+  }
+
+  // Weekly byte rate chart (inlined data)
+  (() => {
+    const data = {{ weekly_byte_rate | tojson }};
+    const labels = data.labels;
+    const nodeIds = Object.keys(data.per_node);
+
+    const datasets = nodeIds.length <= 1
+      ? [{
           label: 'Avg Byte Rate',
-          data: byteRates,
+          data: data.totals.map(d => d.byte_rate),
           backgroundColor: 'rgba(13, 110, 253, 0.5)',
           borderColor: 'rgba(13, 110, 253, 1)',
           borderWidth: 1,
         }]
-      },
+      : nodeIds.map((nid, i) => {
+          const c = NODE_COLORS[i % NODE_COLORS.length];
+          return {
+            label: nid.slice(0, 8),
+            data: data.per_node[nid],
+            backgroundColor: c.bg,
+            borderColor: c.border,
+            borderWidth: 1,
+          };
+        });
+
+    new Chart(document.getElementById('weeklyByteRateChart'), {
+      type: 'bar',
+      data: { labels, datasets },
       options: {
         responsive: true,
         scales: {
+          x: { stacked: true },
           y: {
+            stacked: true,
             beginAtZero: true,
             ticks: {
-              callback: (value) => {
-                const units = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'];
-                let v = value;
-                let u = 0;
-                while (v >= 1024 && u < units.length - 1) { v /= 1024; u++; }
-                return v.toFixed(2) + ' ' + units[u];
-              }
+              callback: value => formatByteRate(value)
             }
           }
         },
         plugins: {
           tooltip: {
             callbacks: {
-              label: ctx => [
-                'Avg rate: ' + data[ctx.dataIndex].byte_rate_fmt,
-                'Total size: ' + data[ctx.dataIndex].total_size_fmt,
-              ]
+              label: ctx => formatByteRate(ctx.parsed.y)
             }
           },
-          legend: { display: false }
         }
       }
     });
+  })();
 
-    // Thread & torrent fetches per week chart
-    const [threadResp, torrentResp, doneResp, mediainfoResp] = await Promise.all([
-      fetch('/stats/weekly-thread-count'),
-      fetch('/stats/weekly-torrent-count'),
-      fetch('/stats/weekly-done-count'),
-      fetch('/stats/weekly-mediainfo-count'),
-    ]);
-    const threadData = await threadResp.json();
-    const torrentData = await torrentResp.json();
-    const doneData = await doneResp.json();
-    const mediainfoData = await mediainfoResp.json();
+  // Weekly fetch chart (inlined data)
+  (() => {
+    const threadData = {{ weekly_thread_count | tojson }};
+    const torrentData = {{ weekly_torrent_count | tojson }};
+    const doneData = {{ weekly_done_count | tojson }};
+    const mediainfoData = {{ weekly_mediainfo_count | tojson }};
 
     const threadMap = Object.fromEntries(threadData.map(d => [d.week, d.count]));
     const torrentMap = Object.fromEntries(torrentData.map(d => [d.week, d.count]));

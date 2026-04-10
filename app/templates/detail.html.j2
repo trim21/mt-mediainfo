@@ -38,6 +38,15 @@
 </div>
 
 <script>
+  const NODE_COLORS = [
+    {bg: 'rgba(13, 110, 253, 0.5)', border: 'rgba(13, 110, 253, 1)'},
+    {bg: 'rgba(220, 53, 69, 0.5)', border: 'rgba(220, 53, 69, 1)'},
+    {bg: 'rgba(25, 135, 84, 0.5)', border: 'rgba(25, 135, 84, 1)'},
+    {bg: 'rgba(255, 193, 7, 0.5)', border: 'rgba(255, 193, 7, 1)'},
+    {bg: 'rgba(111, 66, 193, 0.5)', border: 'rgba(111, 66, 193, 1)'},
+    {bg: 'rgba(32, 201, 151, 0.5)', border: 'rgba(32, 201, 151, 1)'},
+  ];
+
   function formatByteRate(bps) {
     if (bps === 0) return '0 B/s';
     const units = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s'];
@@ -46,30 +55,40 @@
     return bps.toFixed(2) + ' ' + units[i];
   }
 
-  (async () => {
-    const start = {{ start | tojson }};
-    const qs = start ? '?start=' + encodeURIComponent(start) : '';
-    const resp = await fetch('/stats/daily-byte-rate' + qs);
-    const data = await resp.json();
-    const labels = data.map(d => d.day);
-    const byteRates = data.map(d => d.byte_rate);
+  // Daily byte rate chart (inlined data)
+  (() => {
+    const data = {{ daily_byte_rate | tojson }};
+    const labels = data.labels;
+    const nodeIds = Object.keys(data.per_node);
 
-    new Chart(document.getElementById('dailyByteRateChart'), {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
+    const datasets = nodeIds.length <= 1
+      ? [{
           label: 'Avg Byte Rate',
-          data: byteRates,
+          data: data.totals.map(d => d.byte_rate),
           backgroundColor: 'rgba(13, 110, 253, 0.5)',
           borderColor: 'rgba(13, 110, 253, 1)',
           borderWidth: 1,
         }]
-      },
+      : nodeIds.map((nid, i) => {
+          const c = NODE_COLORS[i % NODE_COLORS.length];
+          return {
+            label: nid.slice(0, 8),
+            data: data.per_node[nid],
+            backgroundColor: c.bg,
+            borderColor: c.border,
+            borderWidth: 1,
+          };
+        });
+
+    new Chart(document.getElementById('dailyByteRateChart'), {
+      type: 'bar',
+      data: { labels, datasets },
       options: {
         responsive: true,
         scales: {
+          x: { stacked: true },
           y: {
+            stacked: true,
             beginAtZero: true,
             ticks: {
               callback: value => formatByteRate(value)
@@ -79,27 +98,20 @@
         plugins: {
           tooltip: {
             callbacks: {
-              label: ctx => [
-                'Avg rate: ' + data[ctx.dataIndex].byte_rate_fmt,
-                'Total size: ' + data[ctx.dataIndex].total_size_fmt,
-              ]
+              label: ctx => formatByteRate(ctx.parsed.y)
             }
           },
-          legend: { display: false }
         }
       }
     });
+  })();
 
-    const [threadResp, torrentResp, doneResp, mediainfoResp] = await Promise.all([
-      fetch('/stats/daily-thread-count' + qs),
-      fetch('/stats/daily-torrent-count' + qs),
-      fetch('/stats/daily-done-count' + qs),
-      fetch('/stats/daily-mediainfo-count' + qs),
-    ]);
-    const threadData = await threadResp.json();
-    const torrentData = await torrentResp.json();
-    const doneData = await doneResp.json();
-    const mediainfoData = await mediainfoResp.json();
+  // Daily fetch chart (inlined data)
+  (() => {
+    const threadData = {{ daily_thread_count | tojson }};
+    const torrentData = {{ daily_torrent_count | tojson }};
+    const doneData = {{ daily_done_count | tojson }};
+    const mediainfoData = {{ daily_mediainfo_count | tojson }};
 
     const threadMap = Object.fromEntries(threadData.map(d => [d.day, d.count]));
     const torrentMap = Object.fromEntries(torrentData.map(d => [d.day, d.count]));

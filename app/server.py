@@ -193,13 +193,13 @@ def create_app() -> fastapi.FastAPI:
         start = ref + timedelta(weeks=int(week_num))
         return start.strftime("%Y-%m-%d")
 
-    @app.get("/stats/weekly-byte-rate")
-    async def weekly_byte_rate() -> ORJSONResponse:
+    async def _get_weekly_byte_rate_data() -> dict[str, Any]:
         rows = await pool.fetch(
             """
             select
                 coalesce(job.completed_at, job.updated_at) as ts,
-                thread.selected_size
+                thread.selected_size,
+                job.node_id
             from job
             join thread on (thread.tid = job.tid)
             where
@@ -209,135 +209,216 @@ def create_app() -> fastapi.FastAPI:
             ITEM_STATUS_DONE,
         )
         if not rows:
-            return ORJSONResponse([])
+            return {"labels": [], "totals": [], "per_node": {}}
 
         today = _today_start()
         df = pl.DataFrame({
             "ts": [row["ts"] for row in rows],
             "selected_size": [row["selected_size"] for row in rows],
+            "node_id": [str(row["node_id"]) for row in rows],
         })
         df = df.with_columns(_compute_week_num_col(today))
-        grouped = df.group_by("week_num").agg(pl.col("selected_size").sum().alias("total_size"))
+
+        grouped_total = df.group_by("week_num").agg(
+            pl.col("selected_size").sum().alias("total_size")
+        )
         min_week, max_week = _week_range()
         all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
-        result = (
+        result_total = (
             all_weeks
-            .join(grouped, on="week_num", how="left")
+            .join(grouped_total, on="week_num", how="left")
             .with_columns(pl.col("total_size").fill_null(0))
             .with_columns((pl.col("total_size") / (7.0 * 86400)).alias("byte_rate"))
             .sort("week_num")
         )
-        return ORJSONResponse([
+
+        grouped_node = df.group_by(["week_num", "node_id"]).agg(
+            pl.col("selected_size").sum().alias("total_size")
+        )
+        node_ids = sorted(df["node_id"].unique().to_list())
+
+        per_node: dict[str, list[float]] = {}
+        for nid in node_ids:
+            node_data = grouped_node.filter(pl.col("node_id") == nid)
+            node_result = (
+                all_weeks
+                .join(node_data.select(["week_num", "total_size"]), on="week_num", how="left")
+                .with_columns(pl.col("total_size").fill_null(0))
+                .with_columns((pl.col("total_size") / (7.0 * 86400)).alias("byte_rate"))
+                .sort("week_num")
+            )
+            per_node[nid] = [r["byte_rate"] for r in node_result.iter_rows(named=True)]
+
+        labels = [_week_label(today, r["week_num"]) for r in result_total.iter_rows(named=True)]
+        totals = [
             {
-                "week": _week_label(today, r["week_num"]),
                 "byte_rate": r["byte_rate"],
                 "byte_rate_fmt": human_readable_byte_rate(r["byte_rate"]),
                 "total_size": int(r["total_size"]),
                 "total_size_fmt": human_readable_size(r["total_size"]),
             }
+            for r in result_total.iter_rows(named=True)
+        ]
+
+        return {"labels": labels, "totals": totals, "per_node": per_node}
+
+    async def _get_weekly_count_data(
+        sql: str,
+        params: list[Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        rows = await pool.fetch(sql, *(params or []))
+        if not rows:
+            return []
+        today = _today_start()
+        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
+        df = df.with_columns(_compute_week_num_col(today))
+        result = _fill_week_gaps_count(df)
+        return [
+            {"week": _week_label(today, r["week_num"]), "count": int(r["count"])}
             for r in result.iter_rows(named=True)
-        ])
+        ]
+
+    async def _get_daily_byte_rate_data(
+        start: datetime | None = None,
+    ) -> dict[str, Any]:
+        today = _today_start()
+        if start is None:
+            start = today - timedelta(days=364)
+        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
+        days_back = (today - start).days
+        rows = await pool.fetch(
+            """
+            select coalesce(job.completed_at, job.updated_at) as ts,
+                   thread.selected_size,
+                   job.node_id
+            from job
+            join thread on (thread.tid = job.tid)
+            where
+                job.status = $1 and thread.selected_size > 0
+                and coalesce(job.completed_at, job.updated_at) >= $2
+            """,
+            ITEM_STATUS_DONE,
+            start,
+        )
+        if not rows:
+            return {"labels": [], "totals": [], "per_node": {}}
+
+        elapsed_today = (datetime.now(_tz_shanghai) - today).total_seconds()
+
+        df = pl.DataFrame({
+            "ts": [row["ts"] for row in rows],
+            "selected_size": [row["selected_size"] for row in rows],
+            "node_id": [str(row["node_id"]) for row in rows],
+        })
+        df = df.with_columns(_compute_day_num_col(today))
+
+        grouped_total = df.group_by("day_num").agg(
+            pl.col("selected_size").sum().alias("total_size")
+        )
+        all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
+        result_total = (
+            all_days
+            .join(grouped_total, on="day_num", how="left")
+            .with_columns(pl.col("total_size").fill_null(0))
+            .with_columns((pl.col("total_size") / 86400.0).alias("byte_rate"))
+            .sort("day_num")
+        )
+
+        grouped_node = df.group_by(["day_num", "node_id"]).agg(
+            pl.col("selected_size").sum().alias("total_size")
+        )
+        node_ids = sorted(df["node_id"].unique().to_list())
+
+        per_node: dict[str, list[float]] = {}
+        for nid in node_ids:
+            node_data = grouped_node.filter(pl.col("node_id") == nid)
+            node_result = (
+                all_days
+                .join(node_data.select(["day_num", "total_size"]), on="day_num", how="left")
+                .with_columns(pl.col("total_size").fill_null(0))
+                .with_columns((pl.col("total_size") / 86400.0).alias("byte_rate"))
+                .sort("day_num")
+            )
+            per_node[nid] = [
+                r["total_size"] / elapsed_today if r["day_num"] == 0 else r["byte_rate"]
+                for r in node_result.iter_rows(named=True)
+            ]
+
+        labels = [_day_label(today, r["day_num"]) for r in result_total.iter_rows(named=True)]
+        totals = [
+            {
+                "byte_rate": r["total_size"] / elapsed_today
+                if r["day_num"] == 0
+                else r["byte_rate"],
+                "byte_rate_fmt": human_readable_byte_rate(
+                    r["total_size"] / elapsed_today if r["day_num"] == 0 else r["byte_rate"]
+                ),
+                "total_size": int(r["total_size"]),
+                "total_size_fmt": human_readable_size(r["total_size"]),
+            }
+            for r in result_total.iter_rows(named=True)
+        ]
+
+        return {"labels": labels, "totals": totals, "per_node": per_node}
+
+    async def _get_daily_count_data(
+        sql: str,
+        params: list[Any] | None = None,
+        start: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        today = _today_start()
+        if start is None:
+            start = today - timedelta(days=364)
+        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
+        days_back = (today - start).days
+        rows = await pool.fetch(sql, *(params or []))
+        if not rows:
+            return []
+        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
+        df = df.with_columns(_compute_day_num_col(today))
+        result = _fill_day_gaps_count(df, days_back)
+        return [
+            {"day": _day_label(today, r["day_num"]), "count": int(r["count"])}
+            for r in result.iter_rows(named=True)
+        ]
+
+    @app.get("/stats/weekly-byte-rate")
+    async def weekly_byte_rate() -> ORJSONResponse:
+        return ORJSONResponse(await _get_weekly_byte_rate_data())
 
     @app.get("/stats/weekly-thread-count")
     async def weekly_thread_count() -> ORJSONResponse:
-        rows = await pool.fetch(
-            """
-            select created_at as ts
-            from thread
-            where created_at >= current_timestamp - interval '1 year'
-            """
+        return ORJSONResponse(
+            await _get_weekly_count_data(
+                "select created_at as ts from thread where created_at >= current_timestamp - interval '1 year'"
+            )
         )
-        if not rows:
-            return ORJSONResponse([])
-
-        today = _today_start()
-        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
-        df = df.with_columns(_compute_week_num_col(today))
-        result = _fill_week_gaps_count(df)
-        return ORJSONResponse([
-            {
-                "week": _week_label(today, r["week_num"]),
-                "count": int(r["count"]),
-            }
-            for r in result.iter_rows(named=True)
-        ])
 
     @app.get("/stats/weekly-torrent-count")
     async def weekly_torrent_count() -> ORJSONResponse:
-        rows = await pool.fetch(
-            """
-            select created_at as ts
-            from torrent
-            where created_at >= current_timestamp - interval '1 year'
-            """
+        return ORJSONResponse(
+            await _get_weekly_count_data(
+                "select created_at as ts from torrent where created_at >= current_timestamp - interval '1 year'"
+            )
         )
-        if not rows:
-            return ORJSONResponse([])
-
-        today = _today_start()
-        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
-        df = df.with_columns(_compute_week_num_col(today))
-        result = _fill_week_gaps_count(df)
-        return ORJSONResponse([
-            {
-                "week": _week_label(today, r["week_num"]),
-                "count": int(r["count"]),
-            }
-            for r in result.iter_rows(named=True)
-        ])
 
     @app.get("/stats/weekly-done-count")
     async def weekly_done_count() -> ORJSONResponse:
-        rows = await pool.fetch(
-            """
-            select coalesce(completed_at, updated_at) as ts
-            from job
-            where
-                status = $1 and
-                coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'
-            """,
-            ITEM_STATUS_DONE,
+        return ORJSONResponse(
+            await _get_weekly_count_data(
+                """select coalesce(completed_at, updated_at) as ts from job
+            where status = $1 and coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'""",
+                [ITEM_STATUS_DONE],
+            )
         )
-        if not rows:
-            return ORJSONResponse([])
-
-        today = _today_start()
-        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
-        df = df.with_columns(_compute_week_num_col(today))
-        result = _fill_week_gaps_count(df)
-        return ORJSONResponse([
-            {
-                "week": _week_label(today, r["week_num"]),
-                "count": int(r["count"]),
-            }
-            for r in result.iter_rows(named=True)
-        ])
 
     @app.get("/stats/weekly-mediainfo-count")
     async def weekly_mediainfo_count() -> ORJSONResponse:
-        rows = await pool.fetch(
-            """
-            select mediainfo_at as ts
-            from thread
-            where
-                mediainfo_at is not null and
-                mediainfo_at >= current_timestamp - interval '1 year'
-            """
+        return ORJSONResponse(
+            await _get_weekly_count_data(
+                "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= current_timestamp - interval '1 year'"
+            )
         )
-        if not rows:
-            return ORJSONResponse([])
-
-        today = _today_start()
-        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
-        df = df.with_columns(_compute_week_num_col(today))
-        result = _fill_week_gaps_count(df)
-        return ORJSONResponse([
-            {
-                "week": _week_label(today, r["week_num"]),
-                "count": int(r["count"]),
-            }
-            for r in result.iter_rows(named=True)
-        ])
 
     def _day_num(ts: datetime, today: datetime) -> int:
         return int((ts - today).total_seconds() // 86400)
@@ -367,57 +448,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/stats/daily-byte-rate")
     async def daily_byte_rate(start: datetime | None = None) -> ORJSONResponse:
-        today = _today_start()
-        if start is None:
-            start = today - timedelta(days=364)
-        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        days_back = (today - start).days
-        rows = await pool.fetch(
-            """
-            select coalesce(job.completed_at, job.updated_at) as ts,
-                   thread.selected_size
-            from job
-            join thread on (thread.tid = job.tid)
-            where
-                job.status = $1 and thread.selected_size > 0
-                and coalesce(job.completed_at, job.updated_at) >= $2
-            """,
-            ITEM_STATUS_DONE,
-            start,
-        )
-        if not rows:
-            return ORJSONResponse([])
-
-        elapsed_today = (datetime.now(_tz_shanghai) - today).total_seconds()
-
-        df = pl.DataFrame({
-            "ts": [row["ts"] for row in rows],
-            "selected_size": [row["selected_size"] for row in rows],
-        })
-        df = df.with_columns(_compute_day_num_col(today))
-        grouped = df.group_by("day_num").agg(pl.col("selected_size").sum().alias("total_size"))
-        all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
-        result = (
-            all_days
-            .join(grouped, on="day_num", how="left")
-            .with_columns(pl.col("total_size").fill_null(0))
-            .with_columns((pl.col("total_size") / 86400.0).alias("byte_rate"))
-            .sort("day_num")
-        )
-        return ORJSONResponse([
-            {
-                "day": _day_label(today, r["day_num"]),
-                "byte_rate": r["total_size"] / elapsed_today
-                if r["day_num"] == 0
-                else r["byte_rate"],
-                "byte_rate_fmt": human_readable_byte_rate(
-                    r["total_size"] / elapsed_today if r["day_num"] == 0 else r["byte_rate"]
-                ),
-                "total_size": int(r["total_size"]),
-                "total_size_fmt": human_readable_size(r["total_size"]),
-            }
-            for r in result.iter_rows(named=True)
-        ])
+        return ORJSONResponse(await _get_daily_byte_rate_data(start))
 
     @app.get("/stats/daily-thread-count")
     async def daily_thread_count(start: datetime | None = None) -> ORJSONResponse:
@@ -425,28 +456,13 @@ def create_app() -> fastapi.FastAPI:
         if start is None:
             start = today - timedelta(days=364)
         start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        days_back = (today - start).days
-        rows = await pool.fetch(
-            """
-            select created_at as ts
-            from thread
-            where created_at >= $1
-            """,
-            start,
+        return ORJSONResponse(
+            await _get_daily_count_data(
+                "select created_at as ts from thread where created_at >= $1",
+                [start],
+                start,
+            )
         )
-        if not rows:
-            return ORJSONResponse([])
-
-        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
-        df = df.with_columns(_compute_day_num_col(today))
-        result = _fill_day_gaps_count(df, days_back)
-        return ORJSONResponse([
-            {
-                "day": _day_label(today, r["day_num"]),
-                "count": int(r["count"]),
-            }
-            for r in result.iter_rows(named=True)
-        ])
 
     @app.get("/stats/daily-torrent-count")
     async def daily_torrent_count(start: datetime | None = None) -> ORJSONResponse:
@@ -454,28 +470,13 @@ def create_app() -> fastapi.FastAPI:
         if start is None:
             start = today - timedelta(days=364)
         start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        days_back = (today - start).days
-        rows = await pool.fetch(
-            """
-            select created_at as ts
-            from torrent
-            where created_at >= $1
-            """,
-            start,
+        return ORJSONResponse(
+            await _get_daily_count_data(
+                "select created_at as ts from torrent where created_at >= $1",
+                [start],
+                start,
+            )
         )
-        if not rows:
-            return ORJSONResponse([])
-
-        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
-        df = df.with_columns(_compute_day_num_col(today))
-        result = _fill_day_gaps_count(df, days_back)
-        return ORJSONResponse([
-            {
-                "day": _day_label(today, r["day_num"]),
-                "count": int(r["count"]),
-            }
-            for r in result.iter_rows(named=True)
-        ])
 
     @app.get("/stats/daily-done-count")
     async def daily_done_count(start: datetime | None = None) -> ORJSONResponse:
@@ -483,31 +484,14 @@ def create_app() -> fastapi.FastAPI:
         if start is None:
             start = today - timedelta(days=364)
         start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        days_back = (today - start).days
-        rows = await pool.fetch(
-            """
-            select coalesce(completed_at, updated_at) as ts
-            from job
-            where
-                status = $1 and
-                coalesce(completed_at, updated_at) >= $2
-            """,
-            ITEM_STATUS_DONE,
-            start,
+        return ORJSONResponse(
+            await _get_daily_count_data(
+                """select coalesce(completed_at, updated_at) as ts from job
+            where status = $1 and coalesce(completed_at, updated_at) >= $2""",
+                [ITEM_STATUS_DONE, start],
+                start,
+            )
         )
-        if not rows:
-            return ORJSONResponse([])
-
-        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
-        df = df.with_columns(_compute_day_num_col(today))
-        result = _fill_day_gaps_count(df, days_back)
-        return ORJSONResponse([
-            {
-                "day": _day_label(today, r["day_num"]),
-                "count": int(r["count"]),
-            }
-            for r in result.iter_rows(named=True)
-        ])
 
     @app.get("/stats/daily-mediainfo-count")
     async def daily_mediainfo_count(start: datetime | None = None) -> ORJSONResponse:
@@ -515,30 +499,13 @@ def create_app() -> fastapi.FastAPI:
         if start is None:
             start = today - timedelta(days=364)
         start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        days_back = (today - start).days
-        rows = await pool.fetch(
-            """
-            select mediainfo_at as ts
-            from thread
-            where
-                mediainfo_at is not null and
-                mediainfo_at >= $1
-            """,
-            start,
+        return ORJSONResponse(
+            await _get_daily_count_data(
+                "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= $1",
+                [start],
+                start,
+            )
         )
-        if not rows:
-            return ORJSONResponse([])
-
-        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
-        df = df.with_columns(_compute_day_num_col(today))
-        result = _fill_day_gaps_count(df, days_back)
-        return ORJSONResponse([
-            {
-                "day": _day_label(today, r["day_num"]),
-                "count": int(r["count"]),
-            }
-            for r in result.iter_rows(named=True)
-        ])
 
     @app.get("/")
     async def progress(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
@@ -619,31 +586,31 @@ def create_app() -> fastapi.FastAPI:
         )
 
         # Lifecycle: downloading
-        downloading = (
-            await pool.fetchval(
-                """
-            select count(1) from job
+        downloading_rows = await pool.fetch(
+            """
+            select job.node_id, thread.selected_size from job
             join thread on (thread.tid = job.tid)
             where job.status = $1 and thread.category = any($2)
             """,
-                ITEM_STATUS_DOWNLOADING,
-                SELECTED_CATEGORY,
-            )
-            or 0
+            ITEM_STATUS_DOWNLOADING,
+            SELECTED_CATEGORY,
         )
+        downloading = len(downloading_rows)
+        downloading_size = sum(r["selected_size"] for r in downloading_rows)
 
-        downloading_size = (
-            await pool.fetchval(
-                """
-            select coalesce(sum(thread.selected_size), 0) from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
-            """,
-                ITEM_STATUS_DOWNLOADING,
-                SELECTED_CATEGORY,
-            )
-            or 0
-        )
+        # Per-node downloading stats
+        downloading_per_node: dict[str, dict[str, Any]] = {}
+        for r in downloading_rows:
+            nid = str(r["node_id"])
+            if nid not in downloading_per_node:
+                downloading_per_node[nid] = {"count": 0, "size": 0}
+            downloading_per_node[nid]["count"] += 1
+            downloading_per_node[nid]["size"] += r["selected_size"]
+
+        downloading_nodes = [
+            {"node_id": nid[:8], "count": v["count"], "size_fmt": human_readable_size(v["size"])}
+            for nid, v in sorted(downloading_per_node.items())
+        ]
 
         # Lifecycle: failed
         failed = (
@@ -695,6 +662,29 @@ def create_app() -> fastapi.FastAPI:
             or 0
         )
 
+        # Per-node done stats (from jobs)
+        done_job_rows = await pool.fetch(
+            """
+            select job.node_id, thread.selected_size from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            """,
+            ITEM_STATUS_DONE,
+            SELECTED_CATEGORY,
+        )
+        done_per_node: dict[str, dict[str, Any]] = {}
+        for r in done_job_rows:
+            nid = str(r["node_id"])
+            if nid not in done_per_node:
+                done_per_node[nid] = {"count": 0, "size": 0}
+            done_per_node[nid]["count"] += 1
+            done_per_node[nid]["size"] += r["selected_size"]
+
+        done_nodes = [
+            {"node_id": nid[:8], "count": v["count"], "size_fmt": human_readable_size(v["size"])}
+            for nid, v in sorted(done_per_node.items())
+        ]
+
         # Lifecycle: removed by client
         removed_by_client = (
             await pool.fetchval(
@@ -742,6 +732,23 @@ def create_app() -> fastapi.FastAPI:
                 return "0.0"
             return f"{n / total * 100:.1f}"
 
+        # Compute chart data for inline embedding
+        weekly_byte_rate_data = await _get_weekly_byte_rate_data()
+        weekly_thread_count_data = await _get_weekly_count_data(
+            "select created_at as ts from thread where created_at >= current_timestamp - interval '1 year'"
+        )
+        weekly_torrent_count_data = await _get_weekly_count_data(
+            "select created_at as ts from torrent where created_at >= current_timestamp - interval '1 year'"
+        )
+        weekly_done_count_data = await _get_weekly_count_data(
+            """select coalesce(completed_at, updated_at) as ts from job
+            where status = $1 and coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'""",
+            [ITEM_STATUS_DONE],
+        )
+        weekly_mediainfo_count_data = await _get_weekly_count_data(
+            "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= current_timestamp - interval '1 year'"
+        )
+
         return render(
             "progress.html.j2",
             ctx={
@@ -752,6 +759,7 @@ def create_app() -> fastapi.FastAPI:
                 "done": done,
                 "done_size": human_readable_size(done_size),
                 "done_pct": pct(done),
+                "done_nodes": done_nodes,
                 "pending_fetch_mediainfo": pending_fetch_mediainfo,
                 "pending_fetch_mediainfo_pct": pct(pending_fetch_mediainfo),
                 "pending_fetch_torrent": pending_fetch_torrent,
@@ -762,6 +770,7 @@ def create_app() -> fastapi.FastAPI:
                 "downloading": downloading,
                 "downloading_size": human_readable_size(downloading_size),
                 "downloading_pct": pct(downloading),
+                "downloading_nodes": downloading_nodes,
                 "failed": failed,
                 "failed_size": human_readable_size(failed_size),
                 "failed_pct": pct(failed),
@@ -771,6 +780,11 @@ def create_app() -> fastapi.FastAPI:
                 "skipped": skipped,
                 "skipped_size": human_readable_size(skipped_size),
                 "skipped_pct": pct(skipped),
+                "weekly_byte_rate": weekly_byte_rate_data,
+                "weekly_thread_count": weekly_thread_count_data,
+                "weekly_torrent_count": weekly_torrent_count_data,
+                "weekly_done_count": weekly_done_count_data,
+                "weekly_mediainfo_count": weekly_mediainfo_count_data,
             },
         )
 
@@ -782,7 +796,45 @@ def create_app() -> fastapi.FastAPI:
         today = _today_start()
         default_start = (today - timedelta(days=364)).strftime("%Y-%m-%d")
         start_value = start if start is not None else default_start
-        return render("detail.html.j2", ctx={"start": start_value})
+
+        start_dt: datetime | None = None
+        if start_value:
+            start_dt = datetime.strptime(start_value, "%Y-%m-%d").replace(tzinfo=_tz_shanghai)
+
+        daily_byte_rate_data = await _get_daily_byte_rate_data(start_dt)
+        daily_thread_count_data = await _get_daily_count_data(
+            "select created_at as ts from thread where created_at >= $1",
+            [start_dt],
+            start_dt,
+        )
+        daily_torrent_count_data = await _get_daily_count_data(
+            "select created_at as ts from torrent where created_at >= $1",
+            [start_dt],
+            start_dt,
+        )
+        daily_done_count_data = await _get_daily_count_data(
+            """select coalesce(completed_at, updated_at) as ts from job
+            where status = $1 and coalesce(completed_at, updated_at) >= $2""",
+            [ITEM_STATUS_DONE, start_dt],
+            start_dt,
+        )
+        daily_mediainfo_count_data = await _get_daily_count_data(
+            "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= $1",
+            [start_dt],
+            start_dt,
+        )
+
+        return render(
+            "detail.html.j2",
+            ctx={
+                "start": start_value,
+                "daily_byte_rate": daily_byte_rate_data,
+                "daily_thread_count": daily_thread_count_data,
+                "daily_torrent_count": daily_torrent_count_data,
+                "daily_done_count": daily_done_count_data,
+                "daily_mediainfo_count": daily_mediainfo_count_data,
+            },
+        )
 
     @app.get("/threads/pending-mediainfo")
     async def threads_pending_mediainfo(
