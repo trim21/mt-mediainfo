@@ -395,7 +395,7 @@ class Application:
                     category = any ($2) and
                     job.tid is null and
                     seeders != 0
-                order by (category = any($3)) desc, selected_size desc
+                order by (category = any($3)) desc, tid asc
                 limit 6
                 """,
                 [

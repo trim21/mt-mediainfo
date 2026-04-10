@@ -192,7 +192,7 @@ class Scrape:
               mediainfo = '' and
               seeders != 0 and
               category = any($1)
-            order by (category = any($2)) desc, seeders desc
+            order by (category = any($2)) desc, tid asc
             limit 50
             """,
             [SELECTED_CATEGORY, PRIORITY_CATEGORY],
@@ -336,7 +336,7 @@ class Scrape:
               deleted = false and
               mediainfo_at is null and
               category = any($1)
-            order by (category = any($3)) desc, tid desc
+            order by (category = any($3)) desc, tid asc
             limit $2
             """,
             [SELECTED_CATEGORY, limit, PRIORITY_CATEGORY],
