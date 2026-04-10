@@ -745,7 +745,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
         return render(
-            "progress.html.j2",
+            "index.html.j2",
             ctx={
                 "scraped_total": scraped_total,
                 "search_cursor": search_cursor or "N/A",
