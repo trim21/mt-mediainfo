@@ -76,12 +76,6 @@ def create_app() -> fastapi.FastAPI:
 
         return render
 
-    @app.get("/nodes")
-    async def nodes() -> ORJSONResponse:
-        torrents = await pool.fetch("""select * from node order by last_seen desc""")
-
-        return ORJSONResponse([dict(t) for t in torrents])
-
     @app.get("/threads")
     async def threads() -> ORJSONResponse:
         torrents = await pool.fetch(
