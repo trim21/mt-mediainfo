@@ -1074,4 +1074,75 @@ def create_app() -> fastapi.FastAPI:
         )
         return ORJSONResponse({"deleted": result})
 
+    @app.get("/nodes")
+    async def nodes_page(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
+        node_rows = await pool.fetch("select id, last_seen from node order by last_seen desc")
+        job_rows = await pool.fetch(
+            "select node_id, status, count(1) as cnt from job group by node_id, status"
+        )
+
+        counts: dict[str, dict[str, int]] = {}
+        for r in job_rows:
+            nid = str(r["node_id"])
+            counts.setdefault(nid, {})
+            counts[nid][r["status"]] = r["cnt"]
+
+        nodes_data = [
+            {
+                "id": str(n["id"]),
+                "last_seen": n["last_seen"],
+                "downloading": counts.get(str(n["id"]), {}).get(ITEM_STATUS_DOWNLOADING, 0),
+                "done": counts.get(str(n["id"]), {}).get(ITEM_STATUS_DONE, 0),
+                "failed": counts.get(str(n["id"]), {}).get(ITEM_STATUS_FAILED, 0),
+                "removed": counts.get(str(n["id"]), {}).get(
+                    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT, 0
+                ),
+                "total": sum(counts.get(str(n["id"]), {}).values()),
+            }
+            for n in node_rows
+        ]
+
+        return render("nodes.html.j2", ctx={"nodes": nodes_data})
+
+    @app.get("/nodes/{node_id}")
+    async def node_jobs_page(
+        node_id: str, render: Annotated[_Render, Depends(__render)]
+    ) -> HTMLResponse:
+        node_row = await pool.fetchrow("select id, last_seen from node where id = $1", node_id)
+        if node_row is None:
+            return render("nodes.html.j2", ctx={"nodes": []}, status_code=404)
+
+        rows = await pool.fetch(
+            """
+            select job.tid, job.status, job.progress, job.failed_reason,
+                   job.start_download_time, job.updated_at,
+                   thread.size, thread.selected_size
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.node_id = $1
+            order by job.updated_at desc
+            """,
+            node_id,
+        )
+
+        jobs = [
+            dict(r)
+            | {
+                "size_fmt": human_readable_size(r["size"]),
+                "selected_size_fmt": human_readable_size(r["selected_size"])
+                if r["selected_size"] > 0
+                else "-",
+            }
+            for r in rows
+        ]
+
+        return render(
+            "node_jobs.html.j2",
+            ctx={
+                "node_id": str(node_row["id"]),
+                "last_seen": node_row["last_seen"],
+                "jobs": jobs,
+            },
+        )
+
     return app
