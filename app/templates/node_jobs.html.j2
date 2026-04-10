@@ -26,6 +26,8 @@
       <th>Size</th>
       <th>Selected Size</th>
       <th>Progress</th>
+      <th>Speed</th>
+      <th>ETA</th>
       <th>Started</th>
       <th>Updated</th>
       <th>Link</th>
@@ -46,6 +48,8 @@
       <td>{{ j.size_fmt }}</td>
       <td>{{ j.selected_size_fmt }}</td>
       <td>{{ "%.1f" | format(j.progress * 100) }}%</td>
+      <td>{{ j.speed_fmt }}</td>
+      <td>{{ j.eta_fmt }}</td>
       <td>{{ j.start_download_time | fmt_dt }}</td>
       <td>{{ j.updated_at | fmt_dt }}</td>
       <td><a href="https://kp.m-team.cc/detail/{{ j.tid }}" target="_blank">MT</a></td>

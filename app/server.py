@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Protocol, cast
 from zoneinfo import ZoneInfo
@@ -1146,6 +1146,15 @@ def create_app() -> fastapi.FastAPI:
 
         return render("nodes.html.j2", ctx={"nodes": nodes_data})
 
+    def _fmt_eta(seconds: float) -> str:
+        if seconds <= 0:
+            return "∞"
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        if seconds < 3600:
+            return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+        return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m"
+
     @app.get("/nodes/{node_id}")
     async def node_jobs_page(
         node_id: str, render: Annotated[_Render, Depends(__render)]
@@ -1162,22 +1171,46 @@ def create_app() -> fastapi.FastAPI:
             from job
             join thread on (thread.tid = job.tid)
             where job.node_id = $1 and job.status = $2
-            order by job.progress desc
             """,
             node_id,
             ITEM_STATUS_DOWNLOADING,
         )
 
-        jobs = [
-            dict(r)
-            | {
-                "size_fmt": human_readable_size(r["size"]),
-                "selected_size_fmt": human_readable_size(r["selected_size"])
-                if r["selected_size"] > 0
-                else "-",
+        now = datetime.now(UTC)
+
+        def _calc_speed_eta(r: asyncpg.Record) -> dict[str, Any]:
+            selected_size: int = r["selected_size"]
+            progress: float = r["progress"]
+            start: datetime | None = r["start_download_time"]
+            if not start or selected_size <= 0 or progress <= 0:
+                return {"speed_fmt": "-", "eta_fmt": "-", "eta_seconds": float("inf")}
+            elapsed = (now - start).total_seconds()
+            if elapsed <= 0:
+                return {"speed_fmt": "-", "eta_fmt": "-", "eta_seconds": float("inf")}
+            bytes_done = selected_size * progress
+            speed = bytes_done / elapsed
+            remaining = selected_size * (1 - progress)
+            eta_seconds = remaining / speed if speed > 0 else float("inf")
+            return {
+                "speed_fmt": human_readable_byte_rate(speed),
+                "eta_fmt": _fmt_eta(eta_seconds),
+                "eta_seconds": eta_seconds,
             }
-            for r in rows
-        ]
+
+        jobs = sorted(
+            [
+                dict(r)
+                | {
+                    "size_fmt": human_readable_size(r["size"]),
+                    "selected_size_fmt": human_readable_size(r["selected_size"])
+                    if r["selected_size"] > 0
+                    else "-",
+                }
+                | _calc_speed_eta(r)
+                for r in rows
+            ],
+            key=lambda j: j["eta_seconds"],
+        )
 
         return render(
             "node_jobs.html.j2",

@@ -34,6 +34,7 @@ dependencies = [
 dev = [
     "asyncpg-stubs==0.31.2",
     'mypy',
+    "ty>=0.0.29",
     "types-regex==2026.4.4.20260405",
     "types-six==1.17.0.20251009",
 ]
@@ -58,6 +59,9 @@ check_untyped_defs = true
 pythonVersion = '3.12'
 venvPath = '.'
 venv = '.venv'
+
+[tool.ty.rules]
+all = "error"
 
 [tool.ruff]
 cache-dir = '.venv/.cache/ruff'
