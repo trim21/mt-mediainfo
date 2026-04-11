@@ -12,19 +12,24 @@
         crossorigin="anonymous">
   <style>
     .reason-cell { max-width: 420px; min-width: 260px; }
+    .reason-inline {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      min-width: 0;
+    }
     .reason-summary {
-      display: -webkit-box;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
+      flex: 1 1 auto;
+      min-width: 0;
       overflow: hidden;
-      word-break: break-word;
-      line-height: 1.35;
+      white-space: nowrap;
+      text-overflow: ellipsis;
     }
     .reason-link {
+      flex: 0 0 auto;
       border: 0;
       background: transparent;
       padding: 0;
-      margin-top: 0.25rem;
       color: var(--bs-link-color);
       text-decoration: underline;
       cursor: pointer;
@@ -105,11 +110,13 @@
       {% if show_progress %}<td>{{ "%.1f" | format(t.progress * 100) }}%</td>{% endif %}
       {% if show_failed_reason %}
       <td class="reason-cell">
-        <div class="reason-summary" title="{{ t.failed_reason_preview }}">{{ t.failed_reason_preview }}</div>
-        {% if t.failed_reason_has_details %}
-        <button type="button" class="reason-link" data-preview="{{ t.failed_reason_preview }}" onclick="showReasonDialog(this)">Details</button>
-        <template class="reason-detail-source">{{ t.failed_reason }}</template>
-        {% endif %}
+        <div class="reason-inline">
+          <div class="reason-summary" title="{{ t.failed_reason_preview }}">{{ t.failed_reason_preview }}</div>
+          {% if t.failed_reason_has_details %}
+          <button type="button" class="reason-link" data-preview="{{ t.failed_reason_preview }}" onclick="showReasonDialog(this)">Details</button>
+          <template class="reason-detail-source">{{ t.failed_reason }}</template>
+          {% endif %}
+        </div>
       </td>
       {% endif %}
       <td>{{ t.created_at | fmt_dt }}</td>
