@@ -14,7 +14,7 @@
 <body>
 
 <div class="container mt-4">
-  <p><a href="/">&larr; Back to Progress</a></p>
+  <p><a href="/">&larr; Back to Progress</a> | <a href="/rpc">RPC History</a></p>
   <h2>Nodes</h2>
 
   <table class="table table-bordered table-hover">
@@ -27,6 +27,7 @@
       <th>Failed</th>
       <th>Removed</th>
       <th>Total</th>
+      <th>Actions</th>
     </tr>
     </thead>
     <tbody>
@@ -43,11 +44,44 @@
       <td>{{ n.failed }}</td>
       <td>{{ n.removed }}</td>
       <td>{{ n.total }}</td>
+      <td>
+        <button class="btn btn-sm btn-outline-primary" onclick="pingNode('{{ n.id }}', this)">Ping</button>
+      </td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+
+<script>
+async function pingNode(nodeId, btn) {
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const resp = await fetch('/api/node/' + nodeId + '/rpc', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({method: 'ping', payload: {}})
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      btn.textContent = 'Error';
+      btn.classList.replace('btn-outline-primary', 'btn-outline-danger');
+      return;
+    }
+    btn.textContent = 'Queued #' + data.id;
+    btn.classList.replace('btn-outline-primary', 'btn-outline-success');
+  } catch (e) {
+    btn.textContent = 'Error';
+    btn.classList.replace('btn-outline-primary', 'btn-outline-danger');
+  }
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = 'Ping';
+    btn.className = 'btn btn-sm btn-outline-primary';
+  }, 5000);
+}
+</script>
 
 </body>
 </html>

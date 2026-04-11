@@ -10,8 +10,9 @@ from app.db import Database
 
 # RPC method names
 RPC_DELETE_TORRENT: Final = "delete-torrent"
+RPC_PING: Final = "ping"
 
-ALLOWED_METHODS: frozenset[str] = frozenset({RPC_DELETE_TORRENT})
+ALLOWED_METHODS: frozenset[str] = frozenset({RPC_DELETE_TORRENT, RPC_PING})
 
 
 # --- Payload dataclasses ---
@@ -22,9 +23,15 @@ class DeleteTorrentPayload:
     info_hash: str
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PingPayload:
+    pass
+
+
 # Method name → payload class mapping
 PAYLOAD_TYPES: dict[str, type[Any]] = {
     RPC_DELETE_TORRENT: DeleteTorrentPayload,
+    RPC_PING: PingPayload,
 }
 
 
@@ -50,16 +57,17 @@ def process_commands(
     for cmd_id, method, payload_str in rows:
         result: str | None = None
         error: str | None = None
+
+        handler = handlers.get(method)
+        payload_cls = PAYLOAD_TYPES.get(method)
+        if handler is None or payload_cls is None:
+            continue
+
         try:
             raw = json.loads(payload_str)
-            handler = handlers.get(method)
-            payload_cls = PAYLOAD_TYPES.get(method)
-            if handler is None or payload_cls is None:
-                error = f"unknown method: {method}"
-            else:
-                payload = payload_cls(**raw)
-                ret = handler(payload)
-                result = json.dumps(ret)
+            payload = payload_cls(**raw)
+            ret = handler(payload)
+            result = json.dumps(ret)
         except Exception as e:
             error = str(e)
         db.execute(

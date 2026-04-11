@@ -37,7 +37,13 @@ from app.db import Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
 from app.mt import MTeamDomain
-from app.rpc import RPC_DELETE_TORRENT, DeleteTorrentPayload, process_commands
+from app.rpc import (
+    RPC_DELETE_TORRENT,
+    RPC_PING,
+    DeleteTorrentPayload,
+    PingPayload,
+    process_commands,
+)
 from app.torrent import find_largest_video_file
 from app.utils import parse_obj, set_torrent_comment
 
@@ -149,8 +155,15 @@ class Node:
         process_commands(
             self.db,
             self.config.node_id,
-            {RPC_DELETE_TORRENT: self.__handle_cmd_delete_torrent},
+            {
+                RPC_DELETE_TORRENT: self.__handle_cmd_delete_torrent,
+                RPC_PING: self.__handle_cmd_ping,
+            },
         )
+
+    @staticmethod
+    def __handle_cmd_ping(_payload: PingPayload) -> dict[str, str]:
+        return {"pong": "ok"}
 
     def __handle_cmd_delete_torrent(self, payload: DeleteTorrentPayload) -> dict[str, str]:
         self.qb.torrents_delete(torrent_hashes=payload.info_hash, delete_files=True)

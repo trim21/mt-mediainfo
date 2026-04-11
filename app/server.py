@@ -1176,4 +1176,30 @@ def create_app() -> fastapi.FastAPI:
             },
         )
 
+    @app.get("/rpc")
+    async def rpc_history_page(render: Render) -> HTMLResponse:
+        rows = await pool.fetch(
+            """select id, node_id, method, payload, result, error, created_at, executed_at
+               from node_command
+               order by id desc
+               limit 200"""
+        )
+        commands = [
+            {
+                "id": r["id"],
+                "node_id": str(r["node_id"]),
+                "method": r["method"],
+                "payload": r["payload"],
+                "result": r["result"],
+                "error": r["error"],
+                "created_at": r["created_at"],
+                "executed_at": r["executed_at"],
+                "status": "pending"
+                if r["executed_at"] is None
+                else ("error" if r["error"] else "done"),
+            }
+            for r in rows
+        ]
+        return render("rpc.html.j2", ctx={"commands": commands})
+
     return app
