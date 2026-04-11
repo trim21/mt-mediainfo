@@ -10,7 +10,7 @@
 - `app/scrape.py` - Thread discovery, API mediainfo fetch, torrent download, and `selected_size` backfill
 - `app/server.py` - FastAPI dashboard, JSON endpoints, daily stats cache, node and RPC views
 - `app/rpc.py` - RPC method definitions, payload validation, queue polling, and enqueue helpers
-- `app/sql/schema.sql` - PostgreSQL schema; acts as both init SQL and migration source
+- `app/sql/migrations/` - Numbered SQL migrations executed once on scraper startup; version tracked in the `config` table (`schema_version` key)
 - `app/const.py` - Status, tag, lock, and category constants
 - `taskfile.yaml` - Standard local commands
 - `pyproject.toml` - Dependency and tooling configuration
@@ -20,7 +20,7 @@
 - Python 3.12.12 project with environment-driven config in `app/config.py`
 - Node loop order matters: heartbeat -> process RPC commands -> process qBittorrent torrents -> pick new jobs
 - `app/node.py` and `app/scrape.py` use psycopg-based sync DB access; `app/server.py` uses asyncpg
-- `app/sql/schema.sql` is both initial schema and migration source; use additive SQL such as `ALTER ... IF NOT EXISTS`
+- `app/sql/migrations/` contains all SQL migrations; `001_initial_schema.sql` creates all tables and indexes; `schema_version` in the `config` table tracks which migrations have run (absent = 0)
 - The service is designed to run continuously; preserve retry, cooldown, and background-loop behavior when refactoring
 
 ## Skills

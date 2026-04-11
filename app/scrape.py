@@ -1,3 +1,4 @@
+import dataclasses
 import enum
 import os
 import time
@@ -22,6 +23,44 @@ from app.utils import get_info_hash_v1_from_content, parse_obj
 TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class Migration:
+    version: int
+    sql: str
+
+
+def run_migrations(db: Database) -> None:
+    migrations_dir = Path(__file__, "../sql/migrations").resolve()
+
+    # Always ensure the config table exists so KV lookups work
+    db.execute("create table if not exists config (key text primary key, value text not null)")
+
+    row = db.fetch_val("select value from config where key = 'schema_version'")
+
+    migrations: list[Migration] = []
+    if migrations_dir.exists():
+        for f in sorted(migrations_dir.iterdir()):
+            if f.is_file() and f.suffix == ".sql":
+                migrations.append(
+                    Migration(
+                        version=int(f.stem.split("_")[0]),
+                        sql=f.read_text(encoding="utf-8"),
+                    )
+                )
+
+    current = int(row) if row is not None else 0
+    for m in migrations:
+        if m.version <= current:
+            continue
+        print(f"running migration {m.version}")
+        db.execute(cast(LiteralString, m.sql))  # type: ignore[redundant-cast]
+        db.execute(
+            "insert into config (key, value) values ('schema_version', $1)"
+            " on conflict (key) do update set value = excluded.value",
+            [str(m.version)],
+        )
+
+
 class RunResult(enum.Enum):
     ok = "ok"
     rate_limited = "rate_limited"
@@ -34,12 +73,10 @@ class Scrape:
 
     def __init__(self, c: Config):
         self.__db = Database(c.pg_dsn())
-        self.__kv = KVConfig(self.__db)
         self.mteam_client = MTeamAPI(c)
 
-        for sql_file in Path(__file__, "../sql/").resolve().iterdir():
-            print(f"executing {sql_file.name}")
-            self.__db.execute(cast(LiteralString, sql_file.read_text(encoding="utf-8")))  # type: ignore[redundant-cast]
+        run_migrations(self.__db)
+        self.__kv = KVConfig(self.__db)
 
     def scrape_detail(self, limit: int = 0) -> None:
         """Fetch torrent details for threads missing mediainfo, or fill tid gaps."""

@@ -20,15 +20,19 @@ def parse_go_duration_str(s: Any) -> Any:
     return s
 
 
+def default_node_id() -> str:
+    return os.getenv("NODE_ID") or str(uuid.UUID(int=uuid.getnode()))
+
+
 @dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
 class Config:
     debug: Annotated[bool, Field(os.getenv("DEBUG") or False, validate_default=False)]
     node_id: Annotated[
-        uuid.UUID,
+        str,
         Field(
             alias="node-id",
             min_length=1,
-            default_factory=lambda: os.getenv("NODE_ID") or uuid.UUID(int=uuid.getnode()),
+            default_factory=default_node_id,
         ),
     ]
 

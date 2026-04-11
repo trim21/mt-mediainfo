@@ -14,7 +14,7 @@ create table if not exists thread (
 
 create table if not exists job(
     tid int,
-    node_id uuid,
+    node_id text,
     info_hash text not null,
     progress float8 not null default 0,
     failed_reason text not null default '',
@@ -26,7 +26,7 @@ create table if not exists job(
 );
 
 create table if not exists node (
-  id uuid primary key,
+  id text primary key,
   last_seen timestamptz not null
 );
 
@@ -114,7 +114,7 @@ create index if not exists thread_done on thread (category, tid desc)
 -- RPC command queue: server dispatches commands to nodes
 create table if not exists node_command (
     id bigserial primary key,
-    node_id uuid not null,
+    node_id text not null,
     method text not null,
     payload text not null default '{}',
     result text,

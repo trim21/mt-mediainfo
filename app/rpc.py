@@ -7,6 +7,7 @@ from typing import Any, Final
 from sslog import logger
 
 from app.db import Database
+from app.utils import parse_obj
 
 # RPC method names
 RPC_DELETE_TORRENT: Final = "delete-torrent"
@@ -41,7 +42,7 @@ type RpcHandler = Any
 
 def process_commands(
     db: Database,
-    node_id: Any,
+    node_id: str,
     handlers: dict[str, RpcHandler],
 ) -> None:
     """Poll and execute pending RPC commands for this node."""
@@ -65,7 +66,7 @@ def process_commands(
 
         try:
             raw = json.loads(payload_str)
-            payload = payload_cls(**raw)
+            payload = parse_obj(payload_cls, raw)
             ret = handler(payload)
             result = json.dumps(ret)
         except Exception as e:
