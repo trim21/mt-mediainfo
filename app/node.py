@@ -370,9 +370,8 @@ class Node:
             logger.info("reclaimed job for torrent {}", t.hash)
             return
 
-        logger.info("{} not managed", t.hash)
-        if not t.state.is_paused:
-            self.qb.torrents_pause(torrent_hashes=t.hash)
+        logger.info("{} not managed, deleting from qb", t.hash)
+        self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
     def __fix_file_selection(self, t: QbTorrent) -> None:
         """Fix file priorities for torrents that are downloading all files."""
