@@ -57,36 +57,6 @@
     {% endfor %}
     </tbody>
   </table>
-
-  {% if failed_jobs %}
-  <h3 class="mt-4">Failed Jobs <small class="text-muted fs-6">({{ failed_jobs | length }})</small></h3>
-  <table class="table table-bordered table-hover table-sm">
-    <thead class="table-light">
-    <tr>
-      <th>TID</th>
-      <th>Size</th>
-      <th>Selected Size</th>
-      <th>Started</th>
-      <th>Updated</th>
-      <th>Error</th>
-      <th>Link</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for j in failed_jobs %}
-    <tr>
-      <td>{{ j.tid }}</td>
-      <td>{{ j.size_fmt }}</td>
-      <td>{{ j.selected_size_fmt }}</td>
-      <td>{{ j.start_download_time | fmt_dt }}</td>
-      <td>{{ j.updated_at | fmt_dt }}</td>
-      <td><code style="white-space: pre-wrap; font-size: 0.8em;">{{ j.failed_reason }}</code></td>
-      <td><a href="https://kp.m-team.cc/detail/{{ j.tid }}" target="_blank">MT</a></td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
 </div>
 
 </body>

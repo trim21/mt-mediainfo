@@ -315,16 +315,21 @@ class Application:
     def __handle_unmanaged_torrent(self, t: QbTorrent) -> None:
         """Handle a torrent in qB that has no active downloading job.
 
-        Try to reclaim if a job exists (e.g. was prematurely marked
-        removed-by-client due to async qB add), otherwise pause it.
+        Try to reclaim if a job exists with removed-by-client status
+        (e.g. was prematurely marked due to async qB add), otherwise pause it.
         """
         restored = self.db.fetch_val(
             """
             update job set status = $1, failed_reason = '', updated_at = current_timestamp
-            where info_hash = $2 and node_id = $3 and status != $1
+            where info_hash = $2 and node_id = $3 and status = $4
             returning info_hash
             """,
-            [ITEM_STATUS_DOWNLOADING, t.hash, self.config.node_id],
+            [
+                ITEM_STATUS_DOWNLOADING,
+                t.hash,
+                self.config.node_id,
+                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+            ],
         )
         if restored:
             logger.info("reclaimed job for torrent {}", t.hash)
