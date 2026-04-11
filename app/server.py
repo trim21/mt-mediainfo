@@ -1146,7 +1146,7 @@ def create_app() -> fastapi.FastAPI:
             elapsed_since = (now - updated).total_seconds() if updated else 0
             eta_seconds = max(0.0, float(eta) - elapsed_since)
             return {
-                "speed_fmt": human_readable_byte_rate(dlspeed) if dlspeed > 0 else "-",
+                "speed_fmt": human_readable_byte_rate(dlspeed) if dlspeed > 2 else "-",
                 "eta_fmt": _fmt_eta(eta_seconds) if dlspeed > 2 else "-",
                 "eta_seconds": eta_seconds if dlspeed > 2 else float("inf"),
             }
