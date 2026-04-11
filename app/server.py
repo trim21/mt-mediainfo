@@ -1066,7 +1066,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/nodes")
     async def nodes_page(render: Render) -> HTMLResponse:
-        node_rows = await pool.fetch("select id, last_seen from node order by last_seen desc")
+        node_rows = await pool.fetch("select id, last_seen from node order by id asc")
         job_rows = await pool.fetch(
             "select node_id, status, count(1) as cnt from job group by node_id, status"
         )
