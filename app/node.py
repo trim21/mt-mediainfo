@@ -51,7 +51,7 @@ from app.utils import parse_obj, set_torrent_comment
 def format_exc(e: Exception) -> str:
     f = io.StringIO()
     with f:
-        f.write(f"{type(e)}: {e}\n")
+        f.write(f"{e}\n")
         Console(legacy_windows=True, width=1000, file=f, no_color=True).print_exception()
         return f.getvalue()
 
