@@ -14,13 +14,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 ENTRYPOINT ["python", "main.py"]
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y mediainfo ffmpeg
+RUN apt-get update && apt-get install -y mediainfo ffmpeg && \
+    rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev --frozen --no-install-project --no-build
+RUN uv sync --no-dev --frozen --no-install-project --no-build
 
 COPY . .
