@@ -94,6 +94,23 @@ create table if not exists daily_stats (
     node_downloaded jsonb not null default '{}'::jsonb
 );
 
+-- job: filter by status without node_id (server pages: downloading, failed, removed, index stats)
+create index if not exists job_status_updated_at on job (status, updated_at desc);
+
+-- thread: daily stats aggregation by created_at range
+create index if not exists thread_created_at on thread (created_at);
+
+-- torrent: daily stats aggregation by created_at range
+create index if not exists torrent_created_at on torrent (created_at);
+
+-- thread: daily stats aggregation by mediainfo_at range
+create index if not exists thread_mediainfo_at on thread (mediainfo_at)
+  where mediainfo_at is not null;
+
+-- thread: /threads/done listing (filter done + order by tid desc)
+create index if not exists thread_done on thread (category, tid desc)
+  where mediainfo != '' and info_hash != '';
+
 -- RPC command queue: server dispatches commands to nodes
 create table if not exists node_command (
     id bigserial primary key,
