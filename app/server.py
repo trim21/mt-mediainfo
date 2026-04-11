@@ -1106,13 +1106,23 @@ def create_app() -> fastapi.FastAPI:
             ITEM_STATUS_DOWNLOADING,
         )
 
+        now = datetime.now(tz=_tz_shanghai)
+
         def _calc_speed_eta(r: asyncpg.Record) -> dict[str, Any]:
             dlspeed: int = r["dlspeed"]
             eta: int = r["eta"]
-            eta_seconds = float(eta) if eta >= 0 else float("inf")
+            updated: datetime | None = r["updated_at"]
+            if eta < 0:
+                return {
+                    "speed_fmt": "-" if dlspeed <= 0 else human_readable_byte_rate(dlspeed),
+                    "eta_fmt": "-",
+                    "eta_seconds": float("inf"),
+                }
+            elapsed_since = (now - updated).total_seconds() if updated else 0
+            eta_seconds = max(0.0, float(eta) - elapsed_since)
             return {
                 "speed_fmt": human_readable_byte_rate(dlspeed) if dlspeed > 0 else "-",
-                "eta_fmt": _fmt_eta(eta_seconds) if eta >= 0 else "-",
+                "eta_fmt": _fmt_eta(eta_seconds),
                 "eta_seconds": eta_seconds,
             }
 
