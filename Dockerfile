@@ -8,6 +8,7 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
     PATH="/app/.venv/bin:$PATH"
 
 ENTRYPOINT ["python", "main.py"]
