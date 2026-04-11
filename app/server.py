@@ -1043,6 +1043,10 @@ def create_app() -> fastapi.FastAPI:
         result = await pool.execute("delete from daily_stats")
         return ORJSONResponse({"deleted": result})
 
+    @app.get("/admin")
+    async def admin_page(render: Render) -> HTMLResponse:
+        return render("admin.html.j2")
+
     @app.get("/nodes")
     async def nodes_page(render: Render) -> HTMLResponse:
         node_rows = await pool.fetch("select id, last_seen from node order by last_seen desc")

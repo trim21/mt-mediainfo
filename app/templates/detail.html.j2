@@ -29,9 +29,6 @@
     <div class="col-auto">
       <button type="submit" class="btn btn-primary">Apply</button>
     </div>
-    <div class="col-auto">
-      <button type="button" class="btn btn-outline-danger" onclick="clearDailyStats()">Clear Cache</button>
-    </div>
   </form>
 
   <h3>Average Byte Rate per Day</h3>
@@ -206,12 +203,6 @@
     });
   })();
 
-  function clearDailyStats() {
-    if (!confirm('Clear daily stats cache? Charts will recompute on next load.')) return;
-    fetch('/api/daily-stats/clear', {method: 'POST'})
-      .then(r => r.json())
-      .then(() => location.reload());
-  }
 </script>
 </body>
 </html>
