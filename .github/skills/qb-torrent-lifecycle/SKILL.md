@@ -1,6 +1,6 @@
 ---
 name: qb-torrent-lifecycle
-description: 'qBittorrent torrent lifecycle stages and tag transitions. Use when working on torrent download, processing, or tag logic in app/application.py.'
+description: 'qBittorrent torrent lifecycle stages and tag transitions. Use when working on torrent download, processing, or tag logic in app/node.py.'
 user-invocable: false
 ---
 
@@ -14,6 +14,7 @@ Tags are defined in `app/const.py`. They do NOT drive lifecycle logic — they a
 
 | Constant | Value | Description |
 |---|---|---|
+| `QB_TAG_NEED_SELECT` | `need-select` | Newly added torrent, needs file selection |
 | `QB_TAG_SELECTING_FILES` | `selecting-files` | Torrent is in stopped state, waiting for file selection |
 | `QB_TAG_DOWNLOADING` | `downloading` | Torrent has been resumed and is actively downloading |
 | `QB_TAG_PROCESSING` | `processing` | Download complete, extracting mediainfo |
@@ -22,15 +23,12 @@ Tags are defined in `app/const.py`. They do NOT drive lifecycle logic — they a
 ## Lifecycle Stages
 
 ```
-torrents_add (stopped)
-  tag: selecting-files
+torrents_add (with download_limit=1, sequential)
+  tag: downloading, need-select
        │
        ▼
   Select largest video file (set other files priority=0)
-       │
-       ▼
-  torrents_resume
-  tag: -selecting-files +downloading
+  Clear download limit, remove need-select tag
        │
        ▼
   Downloading... (state.is_paused=false, state.is_uploading=false)
@@ -47,36 +45,35 @@ torrents_add (stopped)
 
 ## Stage Determination Logic
 
-The code in `__process_local_torrents()` determines the stage using torrent state, NOT tags:
+The code in `__process_qb_torrents()` determines the stage using torrent state, NOT tags:
 
-1. **Stopped/paused** (`state.is_paused`): Handled by `__resume_stopped_torrents()` — resumes the torrent
-2. **Downloading** (`not state.is_uploading`): Updates progress in DB, fixes file selection if needed
-3. **Uploading/seeding** (`state.is_uploading`): Processes mediainfo extraction
-4. **Has `process-error` tag**: Skipped entirely (the one exception where a tag affects logic)
+1. **Has `process-error` tag**: Skipped entirely (the one exception where a tag affects logic)
+2. **Uploading/seeding** (`state.is_uploading`): Swaps tag to `processing`, runs mediainfo extraction
+3. **Has `need-select` tag**: Selects largest video file, clears download limit, removes tag
+4. **Stopped/paused** (`state.is_paused`): Swaps tag to `downloading`, resumes the torrent
+5. **Downloading** (default): Updates progress/dlspeed/eta in DB
 
 ## Stage Details
 
 ### 1. File Selection (stopped)
 
-- **Detected by**: `state.is_paused` (torrent added with `is_stopped=True`)
-- **Entry**: `__add_to_qb()` adds torrent in stopped state
-- **Action**: Parse torrent files, find largest video file, set all other files to priority 0
-- **Exit**: Call `torrents_resume()` to start downloading
-- **Tags set**: Remove `selecting-files`, add `downloading`
+- **Detected by**: `QB_TAG_NEED_SELECT in t.tags` (torrent added with `tags=[QB_TAG_DOWNLOADING, QB_TAG_NEED_SELECT]`)
+- **Entry**: `__add_to_qb()` adds torrent with download limit of 1 byte/s and sequential download
+- **Action**: `__fix_file_selection()` finds largest video file, sets all other files to priority 0, clears download limit
+- **Exit**: Removes `need-select` tag, torrent continues downloading
 - **Error handling**: If any exception occurs, the torrent is deleted from qb and job is marked failed
 
 ### 2. Downloading (active)
 
 - **Detected by**: `not state.is_paused and not state.is_uploading`
-- **Entry**: After `torrents_resume()` in `__add_to_qb()`
-- **Action**: `__process_local_torrents()` updates job progress in DB each interval
-- **Also**: `__fix_file_selection()` corrects legacy torrents that are downloading all files (`total_size == size`)
+- **Entry**: After file selection in `__fix_file_selection()`
+- **Action**: `__process_qb_torrents()` updates job progress/dlspeed/eta in DB each interval
 - **Exit**: When `state.is_uploading` becomes true (download complete)
 
 ### 3. Processing (upload/seed state)
 
 - **Detected by**: `state.is_uploading` and no `process-error` tag
-- **Entry**: `__process_local_torrents()` detects upload state
+- **Entry**: `__process_qb_torrents()` detects upload state
 - **Action**: `__process_local_torrent()` extracts mediainfo, checks hardcoded subtitles
 - **Tags set**: Remove `downloading`, add `processing`
 - **Success exit**: Updates thread with mediainfo, marks job done, deletes torrent from qb
@@ -90,14 +87,17 @@ The code in `__process_local_torrents()` determines the stage using torrent stat
 
 ## Recovery: Stopped Torrents
 
-`__resume_stopped_torrents()` runs each interval. It finds torrents where `state.is_paused` and resumes them:
-
-- **Legacy torrents** (no tags): Resumes, adds `downloading` tag
-- **Stuck in selecting-files**: Resumes, swaps tag to `downloading`
-- **Has `process-error` tag**: Skipped (not auto-resumed)
+In `__process_qb_torrents()`, paused torrents are detected and resumed with tag swap (`-selecting-files +downloading`).
 
 ## Cleanup
 
-- **Old torrents**: `__cleanup_old_torrents()` deletes torrents where `seen_complete` is older than 10 days
-- **Unselected category**: `__cleanup_unselected_category()` deletes torrents whose thread category is no longer in `SELECTED_CATEGORY`
+- **Old torrents**: Torrents where `seen_complete` is older than 10 days are deleted, job marked failed with "no seeders"
+- **Unselected category**: Torrents whose thread category is no longer in `SELECTED_CATEGORY` are deleted, job marked skipped
 - **Removed from client**: If a torrent disappears from qb (user deleted), job is marked `removed-by-client`
+- **Unmanaged torrents**: Torrents not in any downloading job are paused (or reclaimed if previously marked `removed-by-client`)
+
+## Related
+
+- `app/node.py` — All qBittorrent processing logic (`Node.__process_qb_torrents()`)
+- `app/const.py` — Tag and status constants
+- `thread-lifecycle` skill — Database-side thread state machine
