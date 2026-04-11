@@ -18,9 +18,6 @@
       "matchPackageNames": [
         "python"
       ],
-      "matchUpdateTypes": [
-        "minor"
-      ],
       "enabled": false
     }
   ],
