@@ -42,6 +42,7 @@
 ## Change Guidelines
 
 - Keep statuses, tags, and selected-category definitions in `app/const.py` as the source of truth
+- Treat this project as an application rather than a reusable library: preserve data compatibility during refactors, but backward compatibility of internal code interfaces is not required
 - When changing thread or job state queries, keep `app/node.py`, `app/scrape.py`, and `app/server.py` aligned with `thread-lifecycle`
 - When changing qBittorrent processing, keep `app/node.py` aligned with `qb-torrent-lifecycle`
 - When adding server-to-node actions, update `app/rpc.py`, `app/node.py`, and `app/server.py` together

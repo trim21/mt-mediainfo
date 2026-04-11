@@ -5,12 +5,78 @@ import subprocess
 from collections.abc import Hashable
 from pathlib import Path
 from shutil import which
-from typing import Any
+from typing import IO, Any, Self
 
 import orjson
 from bencode2 import bdecode, bencode
 from pydantic import TypeAdapter
 from sslog import logger
+
+
+def _format_subprocess_command(command: object) -> str:
+    if isinstance(command, bytes):
+        return command.decode("utf-8", errors="replace")
+    if isinstance(command, str):
+        return command
+    if isinstance(command, (list, tuple)):
+        return shlex.join([str(part) for part in command])
+    return str(command)
+
+
+def _format_subprocess_output(output: bytes | str | None) -> str:
+    if output is None:
+        return "<empty>"
+    if isinstance(output, bytes):
+        text = output.decode("utf-8", errors="replace")
+    else:
+        text = output
+    if not text.strip():
+        return "<empty>"
+    return text.rstrip()
+
+
+class CommandExecutionError(RuntimeError):
+    command: str
+    returncode: int
+    stdout: str
+    stderr: str
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        command: str,
+        returncode: int,
+        stdout: str,
+        stderr: str,
+    ) -> None:
+        self.command = command
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+        super().__init__(
+            "\n".join([
+                message,
+                f"command: {command}",
+                f"return code: {returncode}",
+                f"stdout:\n{stdout}",
+                f"stderr:\n{stderr}",
+            ])
+        )
+
+    @classmethod
+    def from_called_process_error(
+        cls,
+        message: str,
+        error: subprocess.CalledProcessError,
+    ) -> Self:
+        return cls(
+            message,
+            command=_format_subprocess_command(error.cmd),
+            returncode=error.returncode,
+            stdout=_format_subprocess_output(error.stdout),
+            stderr=_format_subprocess_output(error.stderr),
+        )
 
 
 def must_find_executable(executable: str) -> str:
@@ -23,11 +89,21 @@ def must_find_executable(executable: str) -> str:
 def must_run_command(
     executable: str,
     command: list[str],
+    *,
     cwd: str | Path | None = None,
-    **kwargs: Any,
-) -> subprocess.CompletedProcess[str]:
+    capture_output: bool = False,
+    stdout: int | IO[bytes] | IO[str] | None = None,
+    stderr: int | IO[bytes] | IO[str] | None = None,
+) -> subprocess.CompletedProcess[bytes]:
     logger.trace("executing command {!r}", shlex.join([executable, *command]))
-    return subprocess.run([executable, *command], **kwargs, cwd=cwd)
+    return subprocess.run(
+        [executable, *command],
+        check=True,
+        cwd=cwd,
+        capture_output=capture_output,
+        stdout=stdout,
+        stderr=stderr,
+    )
 
 
 def human_readable_size(size: float, decimal_places: int = 2) -> str:

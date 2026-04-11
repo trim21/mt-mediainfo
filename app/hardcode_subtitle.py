@@ -11,7 +11,7 @@ import regex
 from rapidocr_onnxruntime import RapidOCR
 from sslog import logger
 
-from app.utils import must_find_executable, must_run_command
+from app.utils import CommandExecutionError, must_find_executable, must_run_command
 
 
 class Point(NamedTuple):
@@ -31,27 +31,28 @@ ocr_engine = RapidOCR()
 
 
 def get_video_duration(video_file: Path) -> int:
-    p = must_run_command(
-        ffprobe,
-        [
-            "-v",
-            "quiet",
-            "-print_format",
-            "json",
-            "-show_format",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=width,height",
-            str(video_file),
-        ],
-        capture_output=True,
-        check=False,
-    )
-    if p.returncode:
-        print(p.stdout)
-        print(p.stderr)
-        raise Exception("failed to get video info")
+    try:
+        p = must_run_command(
+            ffprobe,
+            [
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_format",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height",
+                str(video_file),
+            ],
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise CommandExecutionError.from_called_process_error(
+            f"failed to get video info for {video_file}",
+            e,
+        ) from e
 
     probe = orjson.loads(p.stdout)
 
@@ -101,7 +102,6 @@ def generate_images(
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            check=True,
         )
 
         if image_file.exists():
