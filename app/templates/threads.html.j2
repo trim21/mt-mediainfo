@@ -22,7 +22,15 @@
 
 <div class="container-fluid mt-4 px-4">
   <p><a href="/">&larr; Back to Progress</a></p>
-  <h2>{{ title }} <small class="text-muted fs-6">({{ threads | length }})</small></h2>
+  <h2>{{ title }} <small class="text-muted fs-6">({{ total_count }})</small></h2>
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="text-muted small">Page {{ page }} / {{ total_pages }}{% if total_count %} · Showing {{ threads | length }} of {{ total_count }}{% endif %}</div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
+      <a class="btn btn-outline-secondary{% if not has_prev %} disabled{% endif %}" href="?page={{ prev_page if prev_page else 1 }}">Previous</a>
+      <a class="btn btn-outline-secondary{% if not has_next %} disabled{% endif %}" href="?page={{ next_page if next_page else total_pages }}">Next</a>
+    </div>
+  </div>
 
   <table class="table table-bordered table-hover table-sm">
     <thead class="table-light">

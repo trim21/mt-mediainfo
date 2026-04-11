@@ -69,6 +69,9 @@ async def __render(request: Request) -> _Render:
 type Render = Annotated[_Render, Depends(__render)]
 
 
+PAGE_SIZE = 100
+
+
 def create_app() -> fastapi.FastAPI:
     cfg: Config = load_config()
 
@@ -96,6 +99,63 @@ def create_app() -> fastapi.FastAPI:
         return dt.astimezone(_tz_shanghai).strftime("%Y-%m-%d %H:%M:%S")
 
     templates.env.filters["fmt_dt"] = _fmt_dt
+
+    def _pagination(page: int, total_count: int) -> dict[str, int | bool | None]:
+        total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
+        current_page = min(max(page, 1), total_pages)
+        return {
+            "page": current_page,
+            "page_size": PAGE_SIZE,
+            "total_count": total_count,
+            "total_pages": total_pages,
+            "has_prev": current_page > 1,
+            "has_next": current_page < total_pages,
+            "prev_page": current_page - 1 if current_page > 1 else None,
+            "next_page": current_page + 1 if current_page < total_pages else None,
+            "offset": (current_page - 1) * PAGE_SIZE,
+        }
+
+    def _thread_row(r: asyncpg.Record) -> dict[str, Any]:
+        return dict(r) | {
+            "size_fmt": human_readable_size(r["size"]),
+            "selected_size_fmt": human_readable_size(r["selected_size"])
+            if r["selected_size"] > 0
+            else "-",
+        }
+
+    async def _render_thread_list(
+        render: Render,
+        *,
+        title: str,
+        count_sql: str,
+        rows_sql: str,
+        params: list[Any],
+        page: int,
+        show_progress: bool,
+        show_failed_reason: bool,
+        show_reset: bool = False,
+    ) -> HTMLResponse:
+        total_count = cast(int, await pool.fetchval(count_sql, *params) or 0)
+        pager = _pagination(page, total_count)
+        rows = await pool.fetch(rows_sql, *params, pager["page_size"], pager["offset"])
+        return render(
+            "threads.html.j2",
+            ctx={
+                "title": title,
+                "show_progress": show_progress,
+                "show_failed_reason": show_failed_reason,
+                "show_reset": show_reset,
+                "threads": [_thread_row(r) for r in rows],
+                "page": pager["page"],
+                "page_size": pager["page_size"],
+                "total_count": pager["total_count"],
+                "total_pages": pager["total_pages"],
+                "has_prev": pager["has_prev"],
+                "has_next": pager["has_next"],
+                "prev_page": pager["prev_page"],
+                "next_page": pager["next_page"],
+            },
+        )
 
     def _today_start() -> datetime:
         now = datetime.now(_tz_shanghai)
@@ -600,7 +660,9 @@ def create_app() -> fastapi.FastAPI:
             thread_stats,
             search_cursor,
             pending_download_stats,
-            all_job_rows,
+            job_status_rows,
+            downloading_node_rows,
+            done_node_rows,
         ) = await asyncio.gather(
             pool.fetchrow(
                 """
@@ -635,10 +697,14 @@ def create_app() -> fastapi.FastAPI:
             ),
             pool.fetch(
                 """
-            select job.status, job.node_id, thread.selected_size from job
+            select job.status,
+                   count(1)::int as count,
+                   coalesce(sum(thread.selected_size), 0)::int8 as size
+            from job
             join thread on (thread.tid = job.tid)
             where thread.category = any($1)
               and job.status = any($2)
+            group by job.status
             """,
                 SELECTED_CATEGORY,
                 [
@@ -647,6 +713,36 @@ def create_app() -> fastapi.FastAPI:
                     ITEM_STATUS_FAILED,
                     ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
                 ],
+            ),
+            pool.fetch(
+                """
+            select job.node_id,
+                   count(1)::int as count,
+                   coalesce(sum(thread.selected_size), 0)::int8 as size
+            from job
+            join thread on (thread.tid = job.tid)
+            where thread.category = any($1)
+              and job.status = $2
+            group by job.node_id
+            order by job.node_id
+            """,
+                SELECTED_CATEGORY,
+                ITEM_STATUS_DOWNLOADING,
+            ),
+            pool.fetch(
+                """
+            select job.node_id,
+                   count(1)::int as count,
+                   coalesce(sum(thread.selected_size), 0)::int8 as size
+            from job
+            join thread on (thread.tid = job.tid)
+            where thread.category = any($1)
+              and job.status = $2
+            group by job.node_id
+            order by job.node_id
+            """,
+                SELECTED_CATEGORY,
+                ITEM_STATUS_DONE,
             ),
         )
 
@@ -663,49 +759,38 @@ def create_app() -> fastapi.FastAPI:
         pending_to_download = cast(int, pending_download_stats["count"])
         pending_to_download_size = cast(int, pending_download_stats["size"])
 
-        downloading_rows = [r for r in all_job_rows if r["status"] == ITEM_STATUS_DOWNLOADING]
-        done_job_rows = [r for r in all_job_rows if r["status"] == ITEM_STATUS_DONE]
-        failed = sum(1 for r in all_job_rows if r["status"] == ITEM_STATUS_FAILED)
-        failed_size = sum(
-            r["selected_size"] for r in all_job_rows if r["status"] == ITEM_STATUS_FAILED
-        )
-        removed_by_client = sum(
-            1 for r in all_job_rows if r["status"] == ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT
-        )
-        removed_by_client_size = sum(
-            r["selected_size"]
-            for r in all_job_rows
-            if r["status"] == ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT
-        )
+        status_stats = {
+            str(r["status"]): {"count": int(r["count"]), "size": int(r["size"])}
+            for r in job_status_rows
+        }
 
-        downloading = len(downloading_rows)
-        downloading_size = sum(r["selected_size"] for r in downloading_rows)
-
-        # Per-node downloading stats
-        downloading_per_node: dict[str, dict[str, Any]] = {}
-        for r in downloading_rows:
-            nid = str(r["node_id"])
-            if nid not in downloading_per_node:
-                downloading_per_node[nid] = {"count": 0, "size": 0}
-            downloading_per_node[nid]["count"] += 1
-            downloading_per_node[nid]["size"] += r["selected_size"]
+        downloading = status_stats.get(ITEM_STATUS_DOWNLOADING, {}).get("count", 0)
+        downloading_size = status_stats.get(ITEM_STATUS_DOWNLOADING, {}).get("size", 0)
+        failed = status_stats.get(ITEM_STATUS_FAILED, {}).get("count", 0)
+        failed_size = status_stats.get(ITEM_STATUS_FAILED, {}).get("size", 0)
+        removed_by_client = status_stats.get(ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT, {}).get(
+            "count", 0
+        )
+        removed_by_client_size = status_stats.get(ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT, {}).get(
+            "size", 0
+        )
 
         downloading_nodes = [
-            {"node_id": nid[:8], "count": v["count"], "size_fmt": human_readable_size(v["size"])}
-            for nid, v in sorted(downloading_per_node.items())
+            {
+                "node_id": str(r["node_id"])[:8],
+                "count": int(r["count"]),
+                "size_fmt": human_readable_size(int(r["size"])),
+            }
+            for r in downloading_node_rows
         ]
 
-        done_per_node: dict[str, dict[str, Any]] = {}
-        for r in done_job_rows:
-            nid = str(r["node_id"])
-            if nid not in done_per_node:
-                done_per_node[nid] = {"count": 0, "size": 0}
-            done_per_node[nid]["count"] += 1
-            done_per_node[nid]["size"] += r["selected_size"]
-
         done_nodes = [
-            {"node_id": nid[:8], "count": v["count"], "size_fmt": human_readable_size(v["size"])}
-            for nid, v in sorted(done_per_node.items())
+            {
+                "node_id": str(r["node_id"])[:8],
+                "count": int(r["count"]),
+                "size_fmt": human_readable_size(int(r["size"])),
+            }
+            for r in done_node_rows
         ]
 
         skipped = (
@@ -806,225 +891,179 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/threads/pending-mediainfo")
-    async def threads_pending_mediainfo(render: Render) -> HTMLResponse:
-        rows = await pool.fetch(
-            """
+    async def threads_pending_mediainfo(render: Render, page: int = 1) -> HTMLResponse:
+        return await _render_thread_list(
+            render,
+            title="Pending Fetch Mediainfo",
+            count_sql="""
+            select count(1)::int from thread
+            where deleted = false and mediainfo_at is null
+              and upload_at >= '2024-01-01' and category = any($1)
+            """,
+            rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from thread
             where deleted = false and mediainfo_at is null
               and upload_at >= '2024-01-01' and category = any($1)
             order by tid desc
+            limit $2 offset $3
             """,
-            SELECTED_CATEGORY,
-        )
-        return render(
-            "threads.html.j2",
-            ctx={
-                "title": "Pending Fetch Mediainfo",
-                "show_progress": False,
-                "show_failed_reason": False,
-                "threads": [
-                    dict(r)
-                    | {
-                        "size_fmt": human_readable_size(r["size"]),
-                        "selected_size_fmt": human_readable_size(r["selected_size"])
-                        if r["selected_size"] > 0
-                        else "-",
-                    }
-                    for r in rows
-                ],
-            },
+            params=[SELECTED_CATEGORY],
+            page=page,
+            show_progress=False,
+            show_failed_reason=False,
         )
 
     @app.get("/threads/pending-torrent")
-    async def threads_pending_torrent(render: Render) -> HTMLResponse:
-        rows = await pool.fetch(
-            """
+    async def threads_pending_torrent(render: Render, page: int = 1) -> HTMLResponse:
+        return await _render_thread_list(
+            render,
+            title="Pending Fetch Torrent",
+            count_sql="""
+            select count(1)::int from thread
+            where deleted = false and mediainfo_at is not null
+              and mediainfo = '' and info_hash = '' and category = any($1)
+            """,
+            rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from thread
             where deleted = false and mediainfo_at is not null
               and mediainfo = '' and info_hash = '' and category = any($1)
             order by tid desc
+            limit $2 offset $3
             """,
-            SELECTED_CATEGORY,
-        )
-        return render(
-            "threads.html.j2",
-            ctx={
-                "title": "Pending Fetch Torrent",
-                "show_progress": False,
-                "show_failed_reason": False,
-                "threads": [
-                    dict(r)
-                    | {
-                        "size_fmt": human_readable_size(r["size"]),
-                        "selected_size_fmt": human_readable_size(r["selected_size"])
-                        if r["selected_size"] > 0
-                        else "-",
-                    }
-                    for r in rows
-                ],
-            },
+            params=[SELECTED_CATEGORY],
+            page=page,
+            show_progress=False,
+            show_failed_reason=False,
         )
 
     @app.get("/threads/pending-download")
-    async def threads_pending_download(render: Render) -> HTMLResponse:
-        rows = await pool.fetch(
-            """
+    async def threads_pending_download(render: Render, page: int = 1) -> HTMLResponse:
+        return await _render_thread_list(
+            render,
+            title="Pending to Download",
+            count_sql="""
+            select count(1)::int
+            from thread
+            left join job on (job.tid = thread.tid)
+            where deleted = false and seeders != 0
+              and mediainfo = '' and thread.info_hash != ''
+              and selected_size > 0
+              and category = any($1) and job.tid is null
+            """,
+            rows_sql="""
             select thread.tid, category, size, selected_size, seeders, thread.created_at from thread
             left join job on (job.tid = thread.tid)
             where deleted = false and seeders != 0
               and mediainfo = '' and thread.info_hash != ''
               and selected_size > 0
               and category = any($1) and job.tid is null
-            order by selected_size desc
-            limit 100
+            order by selected_size desc, thread.tid desc
+            limit $2 offset $3
             """,
-            SELECTED_CATEGORY,
-        )
-        return render(
-            "threads.html.j2",
-            ctx={
-                "title": "Pending to Download",
-                "show_progress": False,
-                "show_failed_reason": False,
-                "threads": [
-                    dict(r)
-                    | {
-                        "size_fmt": human_readable_size(r["size"]),
-                        "selected_size_fmt": human_readable_size(r["selected_size"]),
-                    }
-                    for r in rows
-                ],
-            },
+            params=[SELECTED_CATEGORY],
+            page=page,
+            show_progress=False,
+            show_failed_reason=False,
         )
 
     @app.get("/threads/downloading")
-    async def threads_downloading(render: Render) -> HTMLResponse:
-        rows = await pool.fetch(
-            """
+    async def threads_downloading(render: Render, page: int = 1) -> HTMLResponse:
+        return await _render_thread_list(
+            render,
+            title="Downloading",
+            count_sql="""
+            select count(1)::int
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            """,
+            rows_sql="""
             select thread.tid, category, size, selected_size, seeders, thread.created_at,
                    job.progress, job.node_id
             from job
             join thread on (thread.tid = job.tid)
             where job.status = $1 and thread.category = any($2)
             order by job.updated_at desc
+            limit $3 offset $4
             """,
-            ITEM_STATUS_DOWNLOADING,
-            SELECTED_CATEGORY,
-        )
-        return render(
-            "threads.html.j2",
-            ctx={
-                "title": "Downloading",
-                "show_progress": True,
-                "show_failed_reason": False,
-                "threads": [
-                    dict(r)
-                    | {
-                        "size_fmt": human_readable_size(r["size"]),
-                        "selected_size_fmt": human_readable_size(r["selected_size"])
-                        if r["selected_size"] > 0
-                        else "-",
-                    }
-                    for r in rows
-                ],
-            },
+            params=[ITEM_STATUS_DOWNLOADING, SELECTED_CATEGORY],
+            page=page,
+            show_progress=True,
+            show_failed_reason=False,
         )
 
     @app.get("/threads/done")
-    async def threads_done(render: Render) -> HTMLResponse:
-        rows = await pool.fetch(
-            """
+    async def threads_done(render: Render, page: int = 1) -> HTMLResponse:
+        return await _render_thread_list(
+            render,
+            title="Done",
+            count_sql="""
+            select count(1)::int from thread
+            where mediainfo != '' and info_hash != '' and category = any($1)
+            """,
+            rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from thread
             where mediainfo != '' and info_hash != '' and category = any($1)
             order by tid desc
-            limit 100
+            limit $2 offset $3
             """,
-            SELECTED_CATEGORY,
-        )
-        return render(
-            "threads.html.j2",
-            ctx={
-                "title": "Done",
-                "show_progress": False,
-                "show_failed_reason": False,
-                "threads": [
-                    dict(r)
-                    | {
-                        "size_fmt": human_readable_size(r["size"]),
-                        "selected_size_fmt": human_readable_size(r["selected_size"])
-                        if r["selected_size"] > 0
-                        else "-",
-                    }
-                    for r in rows
-                ],
-            },
+            params=[SELECTED_CATEGORY],
+            page=page,
+            show_progress=False,
+            show_failed_reason=False,
         )
 
     @app.get("/threads/failed")
-    async def threads_failed(render: Render) -> HTMLResponse:
-        rows = await pool.fetch(
-            """
+    async def threads_failed(render: Render, page: int = 1) -> HTMLResponse:
+        return await _render_thread_list(
+            render,
+            title="Failed",
+            count_sql="""
+            select count(1)::int
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            """,
+            rows_sql="""
             select thread.tid, category, size, selected_size, seeders, thread.created_at,
                    job.failed_reason
             from job
             join thread on (thread.tid = job.tid)
             where job.status = $1 and thread.category = any($2)
             order by job.updated_at desc
+            limit $3 offset $4
             """,
-            ITEM_STATUS_FAILED,
-            SELECTED_CATEGORY,
-        )
-        return render(
-            "threads.html.j2",
-            ctx={
-                "title": "Failed",
-                "show_progress": False,
-                "show_failed_reason": True,
-                "show_reset": True,
-                "threads": [
-                    dict(r)
-                    | {
-                        "size_fmt": human_readable_size(r["size"]),
-                        "selected_size_fmt": human_readable_size(r["selected_size"])
-                        if r["selected_size"] > 0
-                        else "-",
-                    }
-                    for r in rows
-                ],
-            },
+            params=[ITEM_STATUS_FAILED, SELECTED_CATEGORY],
+            page=page,
+            show_progress=False,
+            show_failed_reason=True,
+            show_reset=True,
         )
 
     @app.get("/threads/removed")
-    async def threads_removed(render: Render) -> HTMLResponse:
-        rows = await pool.fetch(
-            """
+    async def threads_removed(render: Render, page: int = 1) -> HTMLResponse:
+        return await _render_thread_list(
+            render,
+            title="Removed by Client",
+            count_sql="""
+            select count(1)::int
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1 and thread.category = any($2)
+            """,
+            rows_sql="""
             select thread.tid, category, size, selected_size, seeders, thread.created_at
             from job
             join thread on (thread.tid = job.tid)
             where job.status = $1 and thread.category = any($2)
             order by job.updated_at desc
+            limit $3 offset $4
             """,
-            ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-            SELECTED_CATEGORY,
-        )
-        return render(
-            "threads.html.j2",
-            ctx={
-                "title": "Removed by Client",
-                "show_progress": False,
-                "show_failed_reason": False,
-                "show_reset": True,
-                "threads": [
-                    dict(r)
-                    | {
-                        "size_fmt": human_readable_size(r["size"]),
-                        "selected_size_fmt": human_readable_size(r["selected_size"])
-                        if r["selected_size"] > 0
-                        else "-",
-                    }
-                    for r in rows
-                ],
-            },
+            params=[ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT, SELECTED_CATEGORY],
+            page=page,
+            show_progress=False,
+            show_failed_reason=False,
+            show_reset=True,
         )
 
     @app.post("/api/thread/{tid}/reset")

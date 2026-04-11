@@ -27,6 +27,8 @@ logger.info("using ffprobe at {}", ffprobe)
 ffmpeg: str = must_find_executable("ffmpeg")
 logger.info("using ffmpeg at {}", ffmpeg)
 
+ocr_engine = RapidOCR()
+
 
 def get_video_duration(video_file: Path) -> int:
     p = must_run_command(
@@ -107,14 +109,12 @@ def generate_images(
 
 
 def check_hardcode_chinese_subtitle(video_file: Path) -> bool:
-    engine = RapidOCR()
-
     with tempfile.TemporaryDirectory(prefix="mt-") as tempdir:
         for file in generate_images(video_file, Path(tempdir), count=10):
             with PIL.Image.open(file) as img:
                 size = Point(*img.size)
 
-            result, _ = engine(file)
+            result, _ = ocr_engine(file)
             if not result:
                 continue
             for points, s, _ in result:
