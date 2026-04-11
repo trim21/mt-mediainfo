@@ -96,14 +96,20 @@ def must_run_command(
     stderr: int | IO[bytes] | IO[str] | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
     logger.trace("executing command {!r}", shlex.join([executable, *command]))
-    return subprocess.run(
-        [executable, *command],
-        check=True,
-        cwd=cwd,
-        capture_output=capture_output,
-        stdout=stdout,
-        stderr=stderr,
-    )
+    try:
+        return subprocess.run(
+            [executable, *command],
+            check=True,
+            cwd=cwd,
+            capture_output=capture_output,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except subprocess.CalledProcessError as e:
+        raise CommandExecutionError.from_called_process_error(
+            f"{executable} exited with code {e.returncode}",
+            e,
+        ) from e
 
 
 def human_readable_size(size: float, decimal_places: int = 2) -> str:
