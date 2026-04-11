@@ -73,7 +73,7 @@ async function deleteTorrent(nodeId, infoHash) {
     const resp = await fetch('/api/node/' + nodeId + '/rpc', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({method: 'delete_torrent', payload: {info_hash: infoHash}})
+      body: JSON.stringify({method: 'delete-torrent', payload: {info_hash: infoHash}})
     });
     const data = await resp.json();
     if (!resp.ok) {
