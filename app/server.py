@@ -30,6 +30,11 @@ class ORJSONResponse(JSONResponse):
         return orjson.dumps(content, option=orjson.OPT_INDENT_2, default=str)
 
 
+_tz_shanghai = ZoneInfo("Asia/Shanghai")
+
+templates = Jinja2Templates(directory=str(Path(__file__).parent.joinpath("templates").resolve()))
+
+
 class _Render(Protocol):
     def __call__(
         self,
@@ -39,6 +44,29 @@ class _Render(Protocol):
         headers: Mapping[str, str] | None = ...,
         media_type: str | None = ...,
     ) -> HTMLResponse: ...
+
+
+async def __render(request: Request) -> _Render:
+    def render(
+        name: str,
+        ctx: dict[str, Any] | None = None,
+        status_code: int = 200,
+        headers: Mapping[str, str] | None = None,
+        media_type: str | None = None,
+    ) -> HTMLResponse:
+        return templates.TemplateResponse(
+            name=name,
+            request=request,
+            context=ctx,
+            status_code=status_code,
+            headers=headers,
+            media_type=media_type,
+        )
+
+    return render
+
+
+type Render = Annotated[_Render, Depends(__render)]
 
 
 def create_app() -> fastapi.FastAPI:
@@ -54,10 +82,6 @@ def create_app() -> fastapi.FastAPI:
 
     app = fastapi.FastAPI(debug=cfg.debug, lifespan=lifespan)
 
-    templates = Jinja2Templates(
-        directory=str(Path(__file__).parent.joinpath("templates").resolve())
-    )
-
     def _fmt_dt(dt: datetime | None) -> str:
         if dt is None:
             return "-"
@@ -65,104 +89,9 @@ def create_app() -> fastapi.FastAPI:
 
     templates.env.filters["fmt_dt"] = _fmt_dt
 
-    async def __render(request: Request) -> _Render:
-        def render(
-            name: str,
-            ctx: dict[str, Any] | None = None,
-            status_code: int = 200,
-            headers: Mapping[str, str] | None = None,
-            media_type: str | None = None,
-        ) -> HTMLResponse:
-            return templates.TemplateResponse(
-                name=name,
-                request=request,
-                context=ctx,
-                status_code=status_code,
-                headers=headers,
-                media_type=media_type,
-            )
-
-        return render
-
-    @app.get("/threads")
-    async def threads() -> ORJSONResponse:
-        torrents = await pool.fetch(
-            """
-            select thread.* from thread
-            left join job on (job.tid = thread.tid)
-            where
-              deleted = false and
-              seeders != 0 and
-              mediainfo_at is not null and
-              mediainfo = '' and
-              category = any($1) and
-              job.tid is null
-            order by thread.tid desc
-            """,
-            SELECTED_CATEGORY,
-        )
-
-        return ORJSONResponse([
-            dict(x) | {"size": human_readable_size(x["size"])} for x in torrents
-        ])
-
-    @app.get("/overview")
-    async def overview() -> ORJSONResponse:
-        pending_size = await pool.fetchval(
-            """
-            select sum(size) from thread
-            where
-              deleted = false and
-              seeders != 0 and
-              info_hash != '' and
-              mediainfo = '' and
-              category = any($1)
-            """,
-            SELECTED_CATEGORY,
-        )
-
-        pending_count = await pool.fetchval(
-            """
-            select count(1) from thread
-            where
-              deleted = false and
-              seeders != 0 and
-              info_hash != '' and
-              mediainfo = '' and
-              category = any($1)
-            """,
-            SELECTED_CATEGORY,
-        )
-
-        return ORJSONResponse({
-            "pending_size": human_readable_size(pending_size),
-            "pending_count": pending_count,
-        })
-
-    @app.get("/thread/{tid}")
-    async def rss_item(tid: int) -> ORJSONResponse:
-        rows = await pool.fetch(
-            """select * from job where tid = $1""",
-            tid,
-        )
-
-        return ORJSONResponse([dict(t) for t in rows])
-
-        # return render(
-        #     "rss-item.html.j2",
-        #     ctx={"torrent": torrent},
-        # )
-
-    _tz_shanghai = ZoneInfo("Asia/Shanghai")
-
     def _today_start() -> datetime:
         now = datetime.now(_tz_shanghai)
         return datetime(now.year, now.month, now.day, tzinfo=_tz_shanghai)
-
-    def _week_num(ts: datetime, today: datetime) -> int:
-        """Week number relative to today. -1 = current week (today + last 6 days), -2 = 7-13 days ago, etc."""
-        ref = today + timedelta(days=1)
-        return int((ts - ref).total_seconds() // (7 * 86400))
 
     def _week_range() -> tuple[int, int]:
         """Return (min_week_num, max_week_num) for last 52 weeks."""
@@ -556,7 +485,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/")
-    async def progress(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
+    async def progress(render: Render) -> HTMLResponse:
         (
             scraped_total,
             search_cursor,
@@ -816,7 +745,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/detail")
     async def detail(
-        render: Annotated[_Render, Depends(__render)],
+        render: Render,
         start: str | None = None,
     ) -> HTMLResponse:
         today = _today_start()
@@ -870,7 +799,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/threads/pending-mediainfo")
     async def threads_pending_mediainfo(
-        render: Annotated[_Render, Depends(__render)],
+        render: Render,
     ) -> HTMLResponse:
         rows = await pool.fetch(
             """
@@ -902,7 +831,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/threads/pending-torrent")
     async def threads_pending_torrent(
-        render: Annotated[_Render, Depends(__render)],
+        render: Render,
     ) -> HTMLResponse:
         rows = await pool.fetch(
             """
@@ -934,7 +863,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/threads/pending-download")
     async def threads_pending_download(
-        render: Annotated[_Render, Depends(__render)],
+        render: Render,
     ) -> HTMLResponse:
         rows = await pool.fetch(
             """
@@ -968,7 +897,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/threads/downloading")
     async def threads_downloading(
-        render: Annotated[_Render, Depends(__render)],
+        render: Render,
     ) -> HTMLResponse:
         rows = await pool.fetch(
             """
@@ -1003,7 +932,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/threads/done")
     async def threads_done(
-        render: Annotated[_Render, Depends(__render)],
+        render: Render,
     ) -> HTMLResponse:
         rows = await pool.fetch(
             """
@@ -1035,7 +964,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/threads/failed")
     async def threads_failed(
-        render: Annotated[_Render, Depends(__render)],
+        render: Render,
     ) -> HTMLResponse:
         rows = await pool.fetch(
             """
@@ -1071,7 +1000,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/threads/removed")
     async def threads_removed(
-        render: Annotated[_Render, Depends(__render)],
+        render: Render,
     ) -> HTMLResponse:
         rows = await pool.fetch(
             """
@@ -1117,7 +1046,7 @@ def create_app() -> fastapi.FastAPI:
         return ORJSONResponse({"deleted": result})
 
     @app.get("/nodes")
-    async def nodes_page(render: Annotated[_Render, Depends(__render)]) -> HTMLResponse:
+    async def nodes_page(render: Render) -> HTMLResponse:
         node_rows = await pool.fetch("select id, last_seen from node order by last_seen desc")
         job_rows = await pool.fetch(
             "select node_id, status, count(1) as cnt from job group by node_id, status"
@@ -1156,9 +1085,7 @@ def create_app() -> fastapi.FastAPI:
         return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m"
 
     @app.get("/nodes/{node_id}")
-    async def node_jobs_page(
-        node_id: str, render: Annotated[_Render, Depends(__render)]
-    ) -> HTMLResponse:
+    async def node_jobs_page(node_id: str, render: Render) -> HTMLResponse:
         node_row = await pool.fetchrow("select id, last_seen from node where id = $1", node_id)
         if node_row is None:
             return render("nodes.html.j2", ctx={"nodes": []}, status_code=404)
