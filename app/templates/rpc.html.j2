@@ -10,6 +10,33 @@
         rel="stylesheet"
         integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
         crossorigin="anonymous">
+  <style>
+    .mono-cell { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.8rem; max-width: 360px; }
+    .detail-inline { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
+    .detail-summary { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .detail-link { flex: 0 0 auto; border: 0; background: transparent; padding: 0; color: var(--bs-link-color); text-decoration: underline; cursor: pointer; }
+    .detail-dialog {
+      width: min(1000px, calc(100vw - 2rem));
+      max-height: calc(100vh - 2rem);
+      border: 1px solid #ced4da;
+      border-radius: 0.75rem;
+      padding: 0;
+    }
+    .detail-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+    .detail-dialog-header {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid #dee2e6;
+    }
+    .detail-dialog-title { margin: 0; font-size: 1rem; font-weight: 600; word-break: break-word; }
+    .detail-dialog-body {
+      margin: 0; padding: 1rem 1.25rem 1.25rem;
+      max-height: calc(100vh - 10rem); overflow: auto;
+      white-space: pre-wrap; word-break: break-word;
+      font-size: 0.8rem; line-height: 1.45;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: #f8f9fa;
+    }
+  </style>
 </head>
 <body>
 
@@ -36,18 +63,47 @@
       <td>{{ c.id }}</td>
       <td><a href="/nodes/{{ c.node_id }}"><code>{{ c.node_id[:8] }}</code></a></td>
       <td><code>{{ c.method }}</code></td>
-      <td><small>{{ c.payload }}</small></td>
+      <td class="mono-cell">
+        {%- set payload_text = c.payload | string -%}
+        {%- if '\n' in payload_text or payload_text | length > 60 -%}
+        <div class="detail-inline">
+          <span class="detail-summary">{{ payload_text.split('\n')[0] }}</span>
+          <button type="button" class="detail-link" data-preview="Payload" onclick="showDetail(this)">view</button>
+          <template class="detail-source">{{ payload_text }}</template>
+        </div>
+        {%- else -%}
+        {{ payload_text }}
+        {%- endif -%}
+      </td>
       <td>
         {% if c.status == 'pending' %}<span class="badge bg-warning text-dark">pending</span>
         {% elif c.status == 'done' %}<span class="badge bg-success">done</span>
         {% elif c.status == 'error' %}<span class="badge bg-danger">error</span>
         {% endif %}
       </td>
-      <td>
-        {% if c.error %}<small class="text-danger">{{ c.error }}</small>
-        {% elif c.result %}<small>{{ c.result }}</small>
-        {% else %}-
-        {% endif %}
+      <td class="mono-cell">
+        {%- if c.error -%}
+          {%- if '\n' in c.error or c.error | length > 60 -%}
+        <div class="detail-inline">
+          <span class="detail-summary text-danger">{{ c.error.split('\n')[0] }}</span>
+          <button type="button" class="detail-link" data-preview="Error" onclick="showDetail(this)">view</button>
+          <template class="detail-source">{{ c.error }}</template>
+        </div>
+          {%- else -%}
+        <span class="text-danger">{{ c.error }}</span>
+          {%- endif -%}
+        {%- elif c.result -%}
+          {%- set result_text = c.result | string -%}
+          {%- if '\n' in result_text or result_text | length > 60 -%}
+        <div class="detail-inline">
+          <span class="detail-summary">{{ result_text.split('\n')[0] }}</span>
+          <button type="button" class="detail-link" data-preview="Result" onclick="showDetail(this)">view</button>
+          <template class="detail-source">{{ result_text }}</template>
+        </div>
+          {%- else -%}
+        {{ result_text }}
+          {%- endif -%}
+        {%- else %}-{% endif -%}
       </td>
       <td>{{ c.created_at | fmt_dt }}</td>
       <td>{{ c.executed_at | fmt_dt }}</td>
@@ -56,6 +112,26 @@
     </tbody>
   </table>
 </div>
+
+<dialog id="detail-dialog" class="detail-dialog">
+  <div class="detail-dialog-header">
+    <h3 id="detail-dialog-title" class="detail-dialog-title"></h3>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('detail-dialog').close()">Close</button>
+  </div>
+  <pre id="detail-dialog-body" class="detail-dialog-body"></pre>
+</dialog>
+
+<script>
+function showDetail(button) {
+  const dialog = document.getElementById('detail-dialog');
+  const title = document.getElementById('detail-dialog-title');
+  const body = document.getElementById('detail-dialog-body');
+  const source = button.closest('.detail-inline').querySelector('.detail-source');
+  title.textContent = button.dataset.preview || 'Detail';
+  body.textContent = source?.content?.textContent || '';
+  dialog.showModal();
+}
+</script>
 
 </body>
 </html>
