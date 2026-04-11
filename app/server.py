@@ -1147,8 +1147,8 @@ def create_app() -> fastapi.FastAPI:
             eta_seconds = max(0.0, float(eta) - elapsed_since)
             return {
                 "speed_fmt": human_readable_byte_rate(dlspeed) if dlspeed > 0 else "-",
-                "eta_fmt": _fmt_eta(eta_seconds),
-                "eta_seconds": eta_seconds,
+                "eta_fmt": _fmt_eta(eta_seconds) if dlspeed > 0 else "-",
+                "eta_seconds": eta_seconds if dlspeed > 0 else float("inf"),
             }
 
         jobs = sorted(
