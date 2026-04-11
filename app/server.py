@@ -1097,11 +1097,19 @@ def create_app() -> fastapi.FastAPI:
     def _fmt_eta(seconds: float) -> str:
         if seconds <= 0:
             return "∞"
-        if seconds < 60:
-            return f"{int(seconds)}s"
-        if seconds < 3600:
-            return f"{int(seconds // 60)}m {int(seconds % 60)}s"
-        return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m"
+        if seconds > 365 * 24 * 3600:
+            return "∞"
+        s = int(seconds)
+        d, s = divmod(s, 86400)
+        h, s = divmod(s, 3600)
+        m, s = divmod(s, 60)
+        if d:
+            return f"{d}d{h}h{m}m{s}s"
+        if h:
+            return f"{h}h{m}m{s}s"
+        if m:
+            return f"{m}m{s}s"
+        return f"{s}s"
 
     @app.get("/nodes/{node_id}")
     async def node_jobs_page(node_id: str, render: Render) -> HTMLResponse:
