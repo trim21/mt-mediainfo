@@ -71,7 +71,15 @@ type Render = Annotated[_Render, Depends(__render)]
 def create_app() -> fastapi.FastAPI:
     cfg: Config = load_config()
 
-    pool = asyncpg.create_pool(cfg.pg_dsn())
+    async def _init_connection(conn: asyncpg.Connection) -> None:
+        await conn.set_type_codec(
+            "jsonb",
+            encoder=lambda v: orjson.dumps(v).decode(),
+            decoder=orjson.loads,
+            schema="pg_catalog",
+        )
+
+    pool = asyncpg.create_pool(cfg.pg_dsn(), init=_init_connection)
 
     @asynccontextmanager
     async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
