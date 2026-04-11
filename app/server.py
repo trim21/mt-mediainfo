@@ -263,10 +263,10 @@ def create_app() -> fastapi.FastAPI:
                         data["thread_count"],
                         data["torrent_count"],
                         data["mediainfo_count"],
-                        orjson.dumps(data["node_downloaded"]).decode(),
+                        data["node_downloaded"],
                     ))
                 else:
-                    rows_to_insert.append((current, 0, 0, 0, 0, 0, 0, 0, "{}"))
+                    rows_to_insert.append((current, 0, 0, 0, 0, 0, 0, 0, {}))
 
             if rows_to_insert:
                 await pool.executemany(
@@ -378,9 +378,7 @@ def create_app() -> fastapi.FastAPI:
             "thread_count": r["thread_count"],
             "torrent_count": r["torrent_count"],
             "mediainfo_count": r["mediainfo_count"],
-            "node_downloaded": orjson.loads(nd)
-            if isinstance(nd := r["node_downloaded"], str)
-            else (nd or {}),
+            "node_downloaded": r["node_downloaded"] or {},
         }
 
     def _build_weekly_charts(
