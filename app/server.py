@@ -798,9 +798,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/threads/pending-mediainfo")
-    async def threads_pending_mediainfo(
-        render: Render,
-    ) -> HTMLResponse:
+    async def threads_pending_mediainfo(render: Render) -> HTMLResponse:
         rows = await pool.fetch(
             """
             select tid, category, size, selected_size, seeders, created_at from thread
@@ -830,9 +828,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/threads/pending-torrent")
-    async def threads_pending_torrent(
-        render: Render,
-    ) -> HTMLResponse:
+    async def threads_pending_torrent(render: Render) -> HTMLResponse:
         rows = await pool.fetch(
             """
             select tid, category, size, selected_size, seeders, created_at from thread
@@ -862,9 +858,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/threads/pending-download")
-    async def threads_pending_download(
-        render: Render,
-    ) -> HTMLResponse:
+    async def threads_pending_download(render: Render) -> HTMLResponse:
         rows = await pool.fetch(
             """
             select thread.tid, category, size, selected_size, seeders, thread.created_at from thread
@@ -896,9 +890,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/threads/downloading")
-    async def threads_downloading(
-        render: Render,
-    ) -> HTMLResponse:
+    async def threads_downloading(render: Render) -> HTMLResponse:
         rows = await pool.fetch(
             """
             select thread.tid, category, size, selected_size, seeders, thread.created_at,
@@ -931,9 +923,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/threads/done")
-    async def threads_done(
-        render: Render,
-    ) -> HTMLResponse:
+    async def threads_done(render: Render) -> HTMLResponse:
         rows = await pool.fetch(
             """
             select tid, category, size, selected_size, seeders, created_at from thread
@@ -963,9 +953,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/threads/failed")
-    async def threads_failed(
-        render: Render,
-    ) -> HTMLResponse:
+    async def threads_failed(render: Render) -> HTMLResponse:
         rows = await pool.fetch(
             """
             select thread.tid, category, size, selected_size, seeders, thread.created_at,
@@ -999,9 +987,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/threads/removed")
-    async def threads_removed(
-        render: Render,
-    ) -> HTMLResponse:
+    async def threads_removed(render: Render) -> HTMLResponse:
         rows = await pool.fetch(
             """
             select thread.tid, category, size, selected_size, seeders, thread.created_at
