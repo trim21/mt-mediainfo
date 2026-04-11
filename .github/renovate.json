@@ -15,6 +15,9 @@
   },
   "packageRules": [
     {
+      "matchFileNames": [
+        "pyproject.toml"
+      ],
       "matchPackageNames": [
         "python"
       ],
