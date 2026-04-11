@@ -11,11 +11,58 @@
         integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
         crossorigin="anonymous">
   <style>
-    .reason-cell { max-width: 400px; }
-    .reason-short { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
-    .reason-full { display: none; white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; max-height: 300px; overflow-y: auto; }
-    .reason-cell.expanded .reason-short { display: none; }
-    .reason-cell.expanded .reason-full { display: block; }
+    .reason-cell { max-width: 420px; min-width: 260px; }
+    .reason-summary {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+    .reason-link {
+      border: 0;
+      background: transparent;
+      padding: 0;
+      margin-top: 0.25rem;
+      color: var(--bs-link-color);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .reason-dialog {
+      width: min(1000px, calc(100vw - 2rem));
+      max-height: calc(100vh - 2rem);
+      border: 1px solid #ced4da;
+      border-radius: 0.75rem;
+      padding: 0;
+    }
+    .reason-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+    .reason-dialog-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid #dee2e6;
+    }
+    .reason-dialog-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      word-break: break-word;
+    }
+    .reason-dialog-body {
+      margin: 0;
+      padding: 1rem 1.25rem 1.25rem;
+      max-height: calc(100vh - 10rem);
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: #f8f9fa;
+    }
   </style>
 </head>
 <body>
@@ -57,9 +104,12 @@
       <td>{{ t.seeders }}</td>
       {% if show_progress %}<td>{{ "%.1f" | format(t.progress * 100) }}%</td>{% endif %}
       {% if show_failed_reason %}
-      <td class="reason-cell" onclick="this.classList.toggle('expanded')">
-        <div class="reason-short" title="{{ t.failed_reason }}">{{ t.failed_reason.split('\n')[0] }}</div>
-        <div class="reason-full">{{ t.failed_reason }}</div>
+      <td class="reason-cell">
+        <div class="reason-summary" title="{{ t.failed_reason_preview }}">{{ t.failed_reason_preview }}</div>
+        {% if t.failed_reason_has_details %}
+        <button type="button" class="reason-link" data-preview="{{ t.failed_reason_preview }}" onclick="showReasonDialog(this)">Details</button>
+        <template class="reason-detail-source">{{ t.failed_reason }}</template>
+        {% endif %}
       </td>
       {% endif %}
       <td>{{ t.created_at | fmt_dt }}</td>
@@ -71,6 +121,16 @@
   </table>
 </div>
 
+{% if show_failed_reason %}
+<dialog id="reason-dialog" class="reason-dialog">
+  <div class="reason-dialog-header">
+    <h3 id="reason-dialog-title" class="reason-dialog-title"></h3>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closeReasonDialog()">Close</button>
+  </div>
+  <pre id="reason-dialog-body" class="reason-dialog-body"></pre>
+</dialog>
+{% endif %}
+
 {% if show_reset %}
 <script>
 async function resetOne(tid) {
@@ -81,6 +141,26 @@ async function resetOne(tid) {
   } else {
     alert('Failed to reset');
   }
+}
+</script>
+{% endif %}
+
+{% if show_failed_reason %}
+<script>
+function showReasonDialog(button) {
+  const dialog = document.getElementById('reason-dialog');
+  const title = document.getElementById('reason-dialog-title');
+  const body = document.getElementById('reason-dialog-body');
+  const cell = button.closest('.reason-cell');
+  const source = cell.querySelector('.reason-detail-source');
+
+  title.textContent = button.dataset.preview || 'Failure reason';
+  body.textContent = source?.content?.textContent || '';
+  dialog.showModal();
+}
+
+function closeReasonDialog() {
+  document.getElementById('reason-dialog')?.close();
 }
 </script>
 {% endif %}

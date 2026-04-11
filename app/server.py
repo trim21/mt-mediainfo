@@ -115,13 +115,21 @@ def create_app() -> fastapi.FastAPI:
             "offset": (current_page - 1) * PAGE_SIZE,
         }
 
-    def _thread_row(r: asyncpg.Record) -> dict[str, Any]:
-        return dict(r) | {
+    def _thread_row(r: asyncpg.Record, *, show_failed_reason: bool) -> dict[str, Any]:
+        row = dict(r) | {
             "size_fmt": human_readable_size(r["size"]),
             "selected_size_fmt": human_readable_size(r["selected_size"])
             if r["selected_size"] > 0
             else "-",
         }
+        if show_failed_reason:
+            failed_reason: str = r["failed_reason"]
+            has_details = "\n" in failed_reason
+            row["failed_reason_preview"] = (
+                failed_reason.partition("\n")[0] if has_details else failed_reason
+            ) or "-"
+            row["failed_reason_has_details"] = has_details
+        return row
 
     async def _render_thread_list(
         render: Render,
@@ -145,7 +153,7 @@ def create_app() -> fastapi.FastAPI:
                 "show_progress": show_progress,
                 "show_failed_reason": show_failed_reason,
                 "show_reset": show_reset,
-                "threads": [_thread_row(r) for r in rows],
+                "threads": [_thread_row(r, show_failed_reason=show_failed_reason) for r in rows],
                 "page": pager["page"],
                 "page_size": pager["page_size"],
                 "total_count": pager["total_count"],
