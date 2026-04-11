@@ -649,10 +649,6 @@ def create_app() -> fastapi.FastAPI:
             select created_at, mediainfo_at, torrent_fetched_at, selected_size, category
             from thread
             where created_at >= current_timestamp - interval '1 year'
-               or (mediainfo_at is not null
-                   and mediainfo_at >= current_timestamp - interval '1 year')
-               or (torrent_fetched_at is not null
-                   and torrent_fetched_at >= current_timestamp - interval '1 year')
             """,
             ),
             pool.fetch(
@@ -730,8 +726,6 @@ def create_app() -> fastapi.FastAPI:
             select created_at, mediainfo_at, torrent_fetched_at, selected_size, category
             from thread
             where created_at >= $1
-               or (mediainfo_at is not null and mediainfo_at >= $1)
-               or (torrent_fetched_at is not null and torrent_fetched_at >= $1)
             """,
                 start_dt,
             ),
