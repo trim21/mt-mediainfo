@@ -1,0 +1,88 @@
+from __future__ import annotations
+
+import dataclasses
+import json
+from typing import Any, Final
+
+from sslog import logger
+
+from app.db import Database
+
+# RPC method names
+RPC_DELETE_TORRENT: Final = "delete-torrent"
+
+ALLOWED_METHODS: frozenset[str] = frozenset({RPC_DELETE_TORRENT})
+
+
+# --- Payload dataclasses ---
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class DeleteTorrentPayload:
+    info_hash: str
+
+
+# Method name → payload class mapping
+PAYLOAD_TYPES: dict[str, type[Any]] = {
+    RPC_DELETE_TORRENT: DeleteTorrentPayload,
+}
+
+
+# Type alias: handler receives a typed payload, returns any serializable result
+type RpcHandler = Any
+
+
+def process_commands(
+    db: Database,
+    node_id: Any,
+    handlers: dict[str, RpcHandler],
+) -> None:
+    """Poll and execute pending RPC commands for this node."""
+    rows: list[tuple[int, str, str]] = db.fetch_all(
+        """select id, method, payload from node_command
+           where node_id = $1 and executed_at is null
+           order by id""",
+        [node_id],
+    )
+    if not rows:
+        return
+
+    for cmd_id, method, payload_str in rows:
+        result: str | None = None
+        error: str | None = None
+        try:
+            raw = json.loads(payload_str)
+            handler = handlers.get(method)
+            payload_cls = PAYLOAD_TYPES.get(method)
+            if handler is None or payload_cls is None:
+                error = f"unknown method: {method}"
+            else:
+                payload = payload_cls(**raw)
+                ret = handler(payload)
+                result = json.dumps(ret)
+        except Exception as e:
+            error = str(e)
+        db.execute(
+            """update node_command
+               set executed_at = current_timestamp, result = $1, error = $2
+               where id = $3""",
+            [result, error, cmd_id],
+        )
+        logger.info("rpc command {} method={} error={}", cmd_id, method, error)
+
+
+async def enqueue_command(
+    pool: Any,
+    node_id: str,
+    method: str,
+    payload: dict[str, Any],
+) -> int:
+    """Insert a new RPC command into the queue and return its id."""
+    cmd_id: int = await pool.fetchval(
+        """insert into node_command (node_id, method, payload)
+           values ($1, $2, $3) returning id""",
+        node_id,
+        method,
+        json.dumps(payload),
+    )
+    return cmd_id

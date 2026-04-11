@@ -1,7 +1,7 @@
 import click
 
-from app.application import Application
 from app.config import load_config
+from app.node import Node
 from app.scrape import Scrape
 
 
@@ -14,7 +14,7 @@ def cli() -> None:
 def node() -> None:
     cfg = load_config()
 
-    app = Application.new(cfg)
+    app = Node.new(cfg)
 
     app.start()
 

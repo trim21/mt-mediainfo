@@ -93,3 +93,18 @@ create table if not exists daily_stats (
     mediainfo_count int4 not null default 0,
     node_downloaded jsonb not null default '{}'::jsonb
 );
+
+-- RPC command queue: server dispatches commands to nodes
+create table if not exists node_command (
+    id bigserial primary key,
+    node_id uuid not null,
+    method text not null,
+    payload text not null default '{}',
+    result text,
+    error text,
+    created_at timestamptz not null default now(),
+    executed_at timestamptz
+);
+
+create index if not exists idx_node_command_pending
+    on node_command (node_id) where executed_at is null;

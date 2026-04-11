@@ -31,11 +31,12 @@
       <th>Started</th>
       <th>Updated</th>
       <th>Link</th>
+      <th>Actions</th>
     </tr>
     </thead>
     <tbody>
     {% for j in jobs %}
-    <tr>
+    <tr id="job-{{ j.info_hash }}">
       <td>{{ j.tid }}</td>
       <td>
         {% if j.status == 'downloading' %}<span class="badge bg-info text-dark">{{ j.status }}</span>
@@ -53,11 +54,43 @@
       <td>{{ j.start_download_time | fmt_dt }}</td>
       <td>{{ j.updated_at | fmt_dt }}</td>
       <td><a href="https://kp.m-team.cc/detail/{{ j.tid }}" target="_blank">MT</a></td>
+      <td>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteTorrent('{{ node_id }}', '{{ j.info_hash }}')">Delete</button>
+      </td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+
+<script>
+async function deleteTorrent(nodeId, infoHash) {
+  if (!confirm('确定删除该种子？此操作将删除种子及已下载的文件。')) return;
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const resp = await fetch('/api/node/' + nodeId + '/rpc', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({method: 'delete_torrent', payload: {info_hash: infoHash}})
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      alert('Error: ' + (data.error || resp.statusText));
+      btn.disabled = false;
+      btn.textContent = 'Delete';
+      return;
+    }
+    const row = document.getElementById('job-' + infoHash);
+    if (row) row.style.opacity = '0.4';
+    btn.textContent = 'Queued';
+  } catch (e) {
+    alert('Request failed: ' + e);
+    btn.disabled = false;
+    btn.textContent = 'Delete';
+  }
+}
 
 </body>
 </html>
