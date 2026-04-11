@@ -19,6 +19,6 @@ RUN apt-get update && apt-get install -y mediainfo ffmpeg && \
 
 COPY pyproject.toml uv.lock ./
 
-RUN uv sync --no-dev --frozen --no-install-project --no-build
+RUN uv sync --no-dev --frozen --no-install-project --no-build --no-cache
 
 COPY . .
