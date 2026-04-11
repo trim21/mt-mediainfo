@@ -21,8 +21,8 @@ from app.const import (
     ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
     SELECTED_CATEGORY,
 )
-from app.rpc import ALLOWED_METHODS, enqueue_command
-from app.utils import human_readable_byte_rate, human_readable_size
+from app.rpc import PAYLOAD_TYPES, RpcRequest, enqueue_command
+from app.utils import human_readable_byte_rate, human_readable_size, parse_obj
 
 
 class ORJSONResponse(JSONResponse):
@@ -1087,19 +1087,21 @@ def create_app() -> fastapi.FastAPI:
         return ORJSONResponse({"deleted": result})
 
     @app.post("/api/node/{node_id}/rpc")
-    async def node_rpc(node_id: str, request: Request) -> ORJSONResponse:
+    async def node_rpc(node_id: str, body: RpcRequest) -> ORJSONResponse:
+        payload_cls = PAYLOAD_TYPES.get(body.method)
+        if payload_cls is None:
+            return ORJSONResponse({"error": f"unknown method: {body.method}"}, status_code=400)
+
+        try:
+            parse_obj(payload_cls, body.payload)
+        except Exception as e:
+            return ORJSONResponse({"error": f"invalid payload: {e}"}, status_code=400)
+
         node_row = await pool.fetchrow("select id from node where id = $1", node_id)
         if node_row is None:
             return ORJSONResponse({"error": "node not found"}, status_code=404)
 
-        body = await request.json()
-        method = body.get("method", "")
-        payload = body.get("payload", {})
-
-        if method not in ALLOWED_METHODS:
-            return ORJSONResponse({"error": f"unknown method: {method}"}, status_code=400)
-
-        cmd_id = await enqueue_command(pool, node_id, method, payload)
+        cmd_id = await enqueue_command(pool, node_id, body.method, body.payload)
         return ORJSONResponse({"id": cmd_id})
 
     @app.post("/api/daily-stats/clear")
