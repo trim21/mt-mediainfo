@@ -87,6 +87,8 @@ class QbTorrent:
 
     num_seeds: int
     progress: float
+    dlspeed: int  # bytes/s
+    eta: int  # seconds, 8640000 = infinity
     tags: Annotated[frozenset[str], BeforeValidator(_parse_str_tags)]
     seen_complete: int = 0
 
@@ -183,6 +185,7 @@ class Application:
         """Process all torrents in qBittorrent in a single pass."""
         logger.info("__process_qb_torrents")
         torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
+        now = datetime.now(tz=UTC)
         if not torrents:
             logger.info("qb has no torrents")
             return
@@ -193,7 +196,7 @@ class Application:
             """
                 update job set
                   status = $1,
-                  updated_at = current_timestamp
+                  updated_at = $5
                 where (not info_hash = any($2)) and node_id = $3 and status = $4
                 """,
             [
@@ -201,6 +204,7 @@ class Application:
                 qb_hashes,
                 self.config.node_id,
                 ITEM_STATUS_DOWNLOADING,
+                now,
             ],
         )
 
@@ -292,10 +296,20 @@ class Application:
                 """
                 update job set
                   progress = $1,
-                  updated_at = current_timestamp
-                where info_hash = $2 and node_id = $3 and status = $4
+                  dlspeed = $2,
+                  eta = $3,
+                  updated_at = $4
+                where info_hash = $5 and node_id = $6 and status = $7
                 """,
-                [t.progress, t.hash, self.config.node_id, ITEM_STATUS_DOWNLOADING],
+                [
+                    t.progress,
+                    t.dlspeed,
+                    t.eta,
+                    now,
+                    t.hash,
+                    self.config.node_id,
+                    ITEM_STATUS_DOWNLOADING,
+                ],
             )
 
     def __handle_unmanaged_torrent(self, t: QbTorrent) -> None:

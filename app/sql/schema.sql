@@ -79,6 +79,9 @@ create index if not exists thread_torrent_fetched_at on thread (torrent_fetched_
   where torrent_fetched_at is not null and selected_size > 0;
 
 -- pre-aggregated daily stats cache for chart endpoints
+alter table job add column if not exists dlspeed int8 not null default 0;
+alter table job add column if not exists eta int8 not null default -1;
+
 create table if not exists daily_stats (
     day date primary key,
     downloaded_bytes int8 not null default 0,
