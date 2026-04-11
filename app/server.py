@@ -124,29 +124,18 @@ def create_app() -> fastapi.FastAPI:
         start = ref + timedelta(weeks=int(week_num))
         return start.strftime("%Y-%m-%d")
 
-    async def _get_weekly_byte_rate_data() -> dict[str, Any]:
-        rows = await pool.fetch(
-            """
-            select
-                coalesce(job.completed_at, job.updated_at) as ts,
-                thread.selected_size,
-                job.node_id
-            from job
-            join thread on (thread.tid = job.tid)
-            where
-                job.status = $1 and thread.selected_size > 0
-                and coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '1 year'
-            """,
-            ITEM_STATUS_DONE,
-        )
-        if not rows:
+    def _build_weekly_byte_rate_data(
+        rows: list[asyncpg.Record],
+    ) -> dict[str, Any]:
+        filtered = [r for r in rows if r["selected_size"] > 0]
+        if not filtered:
             return {"labels": [], "totals": [], "per_node": {}}
 
         today = _today_start()
         df = pl.DataFrame({
-            "ts": [row["ts"] for row in rows],
-            "selected_size": [row["selected_size"] for row in rows],
-            "node_id": [str(row["node_id"]) for row in rows],
+            "ts": [row["ts"] for row in filtered],
+            "selected_size": [row["selected_size"] for row in filtered],
+            "node_id": [str(row["node_id"]) for row in filtered],
         })
         df = df.with_columns(_compute_week_num_col(today))
 
@@ -193,15 +182,13 @@ def create_app() -> fastapi.FastAPI:
 
         return {"labels": labels, "totals": totals, "per_node": per_node}
 
-    async def _get_weekly_count_data(
-        sql: str,
-        params: list[Any] | None = None,
+    def _build_weekly_count_data(
+        ts_values: list[datetime],
     ) -> list[dict[str, Any]]:
-        rows = await pool.fetch(sql, *(params or []))
-        if not rows:
+        if not ts_values:
             return []
         today = _today_start()
-        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
+        df = pl.DataFrame({"ts": ts_values})
         df = df.with_columns(_compute_week_num_col(today))
         result = _fill_week_gaps_count(df)
         return [
@@ -209,12 +196,9 @@ def create_app() -> fastapi.FastAPI:
             for r in result.iter_rows(named=True)
         ]
 
-    async def _get_weekly_done_count_data() -> dict[str, Any]:
-        rows = await pool.fetch(
-            """select coalesce(completed_at, updated_at) as ts, node_id from job
-            where status = $1 and coalesce(completed_at, updated_at) >= current_timestamp - interval '1 year'""",
-            ITEM_STATUS_DONE,
-        )
+    def _build_weekly_done_count_data(
+        rows: list[asyncpg.Record],
+    ) -> dict[str, Any]:
         if not rows:
             return {"labels": [], "totals": [], "per_node": {}}
 
@@ -255,37 +239,21 @@ def create_app() -> fastapi.FastAPI:
 
         return {"labels": labels, "totals": totals, "per_node": per_node}
 
-    async def _get_daily_byte_rate_data(
-        start: datetime | None = None,
+    def _build_daily_byte_rate_data(
+        rows: list[asyncpg.Record],
+        days_back: int,
     ) -> dict[str, Any]:
-        today = _today_start()
-        if start is None:
-            start = today - timedelta(days=364)
-        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        days_back = (today - start).days
-        rows = await pool.fetch(
-            """
-            select coalesce(job.completed_at, job.updated_at) as ts,
-                   thread.selected_size,
-                   job.node_id
-            from job
-            join thread on (thread.tid = job.tid)
-            where
-                job.status = $1 and thread.selected_size > 0
-                and coalesce(job.completed_at, job.updated_at) >= $2
-            """,
-            ITEM_STATUS_DONE,
-            start,
-        )
-        if not rows:
+        filtered = [r for r in rows if r["selected_size"] > 0]
+        if not filtered:
             return {"labels": [], "totals": [], "per_node": {}}
 
+        today = _today_start()
         elapsed_today = (datetime.now(_tz_shanghai) - today).total_seconds()
 
         df = pl.DataFrame({
-            "ts": [row["ts"] for row in rows],
-            "selected_size": [row["selected_size"] for row in rows],
-            "node_id": [str(row["node_id"]) for row in rows],
+            "ts": [row["ts"] for row in filtered],
+            "selected_size": [row["selected_size"] for row in filtered],
+            "node_id": [str(row["node_id"]) for row in filtered],
         })
         df = df.with_columns(_compute_day_num_col(today))
 
@@ -338,26 +306,13 @@ def create_app() -> fastapi.FastAPI:
 
         return {"labels": labels, "totals": totals, "per_node": per_node}
 
-    async def _get_daily_fetched_size_data(
-        start: datetime | None = None,
+    def _build_daily_fetched_size_data(
+        rows: list[asyncpg.Record],
+        days_back: int,
     ) -> list[dict[str, Any]]:
-        today = _today_start()
-        if start is None:
-            start = today - timedelta(days=364)
-        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        days_back = (today - start).days
-        rows = await pool.fetch(
-            """
-            select torrent_fetched_at as ts, selected_size
-            from thread
-            where torrent_fetched_at >= $1 and selected_size > 0
-              and category = any($2)
-            """,
-            start,
-            SELECTED_CATEGORY,
-        )
         if not rows:
             return []
+        today = _today_start()
         df = pl.DataFrame({
             "ts": [row["ts"] for row in rows],
             "selected_size": [row["selected_size"] for row in rows],
@@ -385,20 +340,14 @@ def create_app() -> fastapi.FastAPI:
             for r in result.iter_rows(named=True)
         ]
 
-    async def _get_daily_count_data(
-        sql: str,
-        params: list[Any] | None = None,
-        start: datetime | None = None,
+    def _build_daily_count_data(
+        ts_values: list[datetime],
+        days_back: int,
     ) -> list[dict[str, Any]]:
-        today = _today_start()
-        if start is None:
-            start = today - timedelta(days=364)
-        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        days_back = (today - start).days
-        rows = await pool.fetch(sql, *(params or []))
-        if not rows:
+        if not ts_values:
             return []
-        df = pl.DataFrame({"ts": [row["ts"] for row in rows]})
+        today = _today_start()
+        df = pl.DataFrame({"ts": ts_values})
         df = df.with_columns(_compute_day_num_col(today))
         result = _fill_day_gaps_count(df, days_back)
         return [
@@ -406,23 +355,14 @@ def create_app() -> fastapi.FastAPI:
             for r in result.iter_rows(named=True)
         ]
 
-    async def _get_daily_done_count_data(
-        start: datetime | None = None,
+    def _build_daily_done_count_data(
+        rows: list[asyncpg.Record],
+        days_back: int,
     ) -> dict[str, Any]:
-        today = _today_start()
-        if start is None:
-            start = today - timedelta(days=364)
-        start = start.replace(tzinfo=_tz_shanghai) if start.tzinfo is None else start
-        days_back = (today - start).days
-        rows = await pool.fetch(
-            """select coalesce(completed_at, updated_at) as ts, node_id from job
-            where status = $1 and coalesce(completed_at, updated_at) >= $2""",
-            ITEM_STATUS_DONE,
-            start,
-        )
         if not rows:
             return {"labels": [], "totals": [], "per_node": {}}
 
+        today = _today_start()
         df = pl.DataFrame({
             "ts": [row["ts"] for row in rows],
             "node_id": [str(row["node_id"]) for row in rows],
@@ -487,68 +427,37 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/")
     async def progress(render: Render) -> HTMLResponse:
         (
-            scraped_total,
+            thread_stats,
             search_cursor,
-            total,
-            total_size,
-            pending_fetch_mediainfo,
-            pending_fetch_torrent,
-            pending_to_download,
-            pending_to_download_size,
-            downloading_rows,
-            failed,
-            failed_size,
-            done,
-            done_size,
-            done_job_rows,
-            removed_by_client,
-            removed_by_client_size,
-            weekly_byte_rate_data,
-            weekly_thread_count_data,
-            weekly_torrent_count_data,
-            weekly_done_count_data,
-            weekly_mediainfo_count_data,
+            pending_download_stats,
+            all_job_rows,
+            weekly_done_job_rows,
+            weekly_thread_rows,
+            weekly_torrent_rows,
         ) = await asyncio.gather(
-            pool.fetchval("select count(1) from thread"),
+            pool.fetchrow(
+                """
+            select
+              count(1) as scraped_total,
+              count(1) filter (where category = any($1)) as total,
+              coalesce(sum(selected_size) filter (where category = any($1)), 0) as total_size,
+              count(1) filter (where deleted = false and mediainfo_at is null
+                and upload_at >= '2024-01-01' and category = any($1)) as pending_fetch_mediainfo,
+              count(1) filter (where deleted = false and mediainfo_at is not null
+                and mediainfo = '' and info_hash = '' and category = any($1)) as pending_fetch_torrent,
+              count(1) filter (where mediainfo != '' and info_hash != ''
+                and category = any($1)) as done,
+              coalesce(sum(selected_size) filter (where mediainfo != '' and info_hash != ''
+                and category = any($1)), 0) as done_size
+            from thread
+            """,
+                SELECTED_CATEGORY,
+            ),
             pool.fetchval("select value from config where key = 'search_cursor'"),
-            pool.fetchval(
-                "select count(1) from thread where category = any($1)",
-                SELECTED_CATEGORY,
-            ),
-            pool.fetchval(
-                "select coalesce(sum(selected_size), 0) from thread where category = any($1)",
-                SELECTED_CATEGORY,
-            ),
-            pool.fetchval(
+            pool.fetchrow(
                 """
-            select count(1) from thread
-            where deleted = false and mediainfo_at is null
-              and upload_at >= '2024-01-01' and category = any($1)
-            """,
-                SELECTED_CATEGORY,
-            ),
-            pool.fetchval(
-                """
-            select count(1) from thread
-            where deleted = false and mediainfo_at is not null
-              and mediainfo = '' and info_hash = '' and category = any($1)
-            """,
-                SELECTED_CATEGORY,
-            ),
-            pool.fetchval(
-                """
-            select count(1) from thread
-            left join job on (job.tid = thread.tid)
-            where deleted = false and seeders != 0
-              and mediainfo = '' and thread.info_hash != ''
-              and selected_size > 0
-              and category = any($1) and job.tid is null
-            """,
-                SELECTED_CATEGORY,
-            ),
-            pool.fetchval(
-                """
-            select coalesce(sum(thread.selected_size), 0) from thread
+            select count(1) as count, coalesce(sum(thread.selected_size), 0) as size
+            from thread
             left join job on (job.tid = thread.tid)
             where deleted = false and seeders != 0
               and mediainfo = '' and thread.info_hash != ''
@@ -559,98 +468,87 @@ def create_app() -> fastapi.FastAPI:
             ),
             pool.fetch(
                 """
-            select job.node_id, thread.selected_size from job
+            select job.status, job.node_id, thread.selected_size from job
             join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
-            """,
-                ITEM_STATUS_DOWNLOADING,
-                SELECTED_CATEGORY,
-            ),
-            pool.fetchval(
-                """
-            select count(1) from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
-            """,
-                ITEM_STATUS_FAILED,
-                SELECTED_CATEGORY,
-            ),
-            pool.fetchval(
-                """
-            select coalesce(sum(thread.selected_size), 0) from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
-            """,
-                ITEM_STATUS_FAILED,
-                SELECTED_CATEGORY,
-            ),
-            pool.fetchval(
-                """
-            select count(1) from thread
-            where mediainfo != '' and info_hash != '' and category = any($1)
+            where thread.category = any($1)
+              and job.status = any($2)
             """,
                 SELECTED_CATEGORY,
-            ),
-            pool.fetchval(
-                """
-            select coalesce(sum(selected_size), 0) from thread
-            where mediainfo != '' and info_hash != '' and category = any($1)
-            """,
-                SELECTED_CATEGORY,
+                [
+                    ITEM_STATUS_DOWNLOADING,
+                    ITEM_STATUS_DONE,
+                    ITEM_STATUS_FAILED,
+                    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+                ],
             ),
             pool.fetch(
                 """
-            select job.node_id, thread.selected_size from job
+            select coalesce(job.completed_at, job.updated_at) as ts,
+                   thread.selected_size, job.node_id
+            from job
             join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
+            where job.status = $1
+              and coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '1 year'
             """,
                 ITEM_STATUS_DONE,
-                SELECTED_CATEGORY,
             ),
-            pool.fetchval(
+            pool.fetch(
                 """
-            select count(1) from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
+            select created_at, mediainfo_at from thread
+            where created_at >= current_timestamp - interval '1 year'
+               or (mediainfo_at is not null
+                   and mediainfo_at >= current_timestamp - interval '1 year')
             """,
-                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-                SELECTED_CATEGORY,
             ),
-            pool.fetchval(
-                """
-            select coalesce(sum(thread.selected_size), 0) from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
-            """,
-                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-                SELECTED_CATEGORY,
-            ),
-            _get_weekly_byte_rate_data(),
-            _get_weekly_count_data(
-                "select created_at as ts from thread where created_at >= current_timestamp - interval '1 year'"
-            ),
-            _get_weekly_count_data(
+            pool.fetch(
                 "select created_at as ts from torrent where created_at >= current_timestamp - interval '1 year'"
-            ),
-            _get_weekly_done_count_data(),
-            _get_weekly_count_data(
-                "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= current_timestamp - interval '1 year'"
             ),
         )
 
-        scraped_total = cast(int, scraped_total)
-        total = cast(int, total)
-        total_size = cast(int, total_size)
-        pending_fetch_mediainfo = cast(int, pending_fetch_mediainfo)
-        pending_fetch_torrent = cast(int, pending_fetch_torrent)
-        pending_to_download = cast(int, pending_to_download)
-        pending_to_download_size = cast(int, pending_to_download_size)
-        failed = cast(int, failed)
-        failed_size = cast(int, failed_size)
-        done = cast(int, done)
-        done_size = cast(int, done_size)
-        removed_by_client = cast(int, removed_by_client)
-        removed_by_client_size = cast(int, removed_by_client_size)
+        weekly_done_job_rows = cast(list[asyncpg.Record], weekly_done_job_rows)
+        weekly_byte_rate_data = _build_weekly_byte_rate_data(weekly_done_job_rows)
+        weekly_done_count_data = _build_weekly_done_count_data(weekly_done_job_rows)
+
+        weekly_thread_rows = cast(list[asyncpg.Record], weekly_thread_rows)
+        weekly_thread_count_data = _build_weekly_count_data([
+            r["created_at"] for r in weekly_thread_rows if r["created_at"] is not None
+        ])
+        weekly_mediainfo_count_data = _build_weekly_count_data([
+            r["mediainfo_at"] for r in weekly_thread_rows if r["mediainfo_at"] is not None
+        ])
+
+        weekly_torrent_rows = cast(list[asyncpg.Record], weekly_torrent_rows)
+        weekly_torrent_count_data = _build_weekly_count_data([r["ts"] for r in weekly_torrent_rows])
+
+        thread_stats = cast(asyncpg.Record, thread_stats)
+        scraped_total = cast(int, thread_stats["scraped_total"])
+        total = cast(int, thread_stats["total"])
+        total_size = cast(int, thread_stats["total_size"])
+        pending_fetch_mediainfo = cast(int, thread_stats["pending_fetch_mediainfo"])
+        pending_fetch_torrent = cast(int, thread_stats["pending_fetch_torrent"])
+        done = cast(int, thread_stats["done"])
+        done_size = cast(int, thread_stats["done_size"])
+
+        pending_download_stats = cast(asyncpg.Record, pending_download_stats)
+        pending_to_download = cast(int, pending_download_stats["count"])
+        pending_to_download_size = cast(int, pending_download_stats["size"])
+
+        all_job_rows = cast(list[asyncpg.Record], all_job_rows)
+        downloading_rows = [r for r in all_job_rows if r["status"] == ITEM_STATUS_DOWNLOADING]
+        done_job_rows = [r for r in all_job_rows if r["status"] == ITEM_STATUS_DONE]
+        failed = sum(1 for r in all_job_rows if r["status"] == ITEM_STATUS_FAILED)
+        failed_size = sum(
+            r["selected_size"] for r in all_job_rows if r["status"] == ITEM_STATUS_FAILED
+        )
+        removed_by_client = sum(
+            1 for r in all_job_rows if r["status"] == ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT
+        )
+        removed_by_client_size = sum(
+            r["selected_size"]
+            for r in all_job_rows
+            if r["status"] == ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT
+        )
+
         downloading_rows = cast(list[asyncpg.Record], downloading_rows)
         done_job_rows = cast(list[asyncpg.Record], done_job_rows)
 
@@ -753,32 +651,74 @@ def create_app() -> fastapi.FastAPI:
         if start_value:
             start_dt = datetime.strptime(start_value, "%Y-%m-%d").replace(tzinfo=_tz_shanghai)
 
+        if start_dt is None:
+            start_dt = today - timedelta(days=364)
+        start_dt = start_dt.replace(tzinfo=_tz_shanghai) if start_dt.tzinfo is None else start_dt
+        days_back = (today - start_dt).days
+
         (
-            daily_byte_rate_data,
-            daily_fetched_size_data,
-            daily_thread_count_data,
-            daily_torrent_count_data,
-            daily_done_count_data,
-            daily_mediainfo_count_data,
+            daily_done_job_rows,
+            daily_fetched_rows,
+            daily_thread_rows,
+            daily_torrent_rows,
         ) = await asyncio.gather(
-            _get_daily_byte_rate_data(start_dt),
-            _get_daily_fetched_size_data(start_dt),
-            _get_daily_count_data(
-                "select created_at as ts from thread where created_at >= $1",
-                [start_dt],
+            pool.fetch(
+                """
+            select coalesce(job.completed_at, job.updated_at) as ts,
+                   thread.selected_size, job.node_id
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1
+              and coalesce(job.completed_at, job.updated_at) >= $2
+            """,
+                ITEM_STATUS_DONE,
                 start_dt,
             ),
-            _get_daily_count_data(
+            pool.fetch(
+                """
+            select torrent_fetched_at as ts, selected_size
+            from thread
+            where torrent_fetched_at >= $1 and selected_size > 0
+              and category = any($2)
+            """,
+                start_dt,
+                SELECTED_CATEGORY,
+            ),
+            pool.fetch(
+                """
+            select created_at, mediainfo_at from thread
+            where created_at >= $1
+               or (mediainfo_at is not null and mediainfo_at >= $1)
+            """,
+                start_dt,
+            ),
+            pool.fetch(
                 "select created_at as ts from torrent where created_at >= $1",
-                [start_dt],
                 start_dt,
             ),
-            _get_daily_done_count_data(start_dt),
-            _get_daily_count_data(
-                "select mediainfo_at as ts from thread where mediainfo_at is not null and mediainfo_at >= $1",
-                [start_dt],
-                start_dt,
-            ),
+        )
+
+        daily_done_job_rows = cast(list[asyncpg.Record], daily_done_job_rows)
+        daily_byte_rate_data = _build_daily_byte_rate_data(daily_done_job_rows, days_back)
+        daily_done_count_data = _build_daily_done_count_data(daily_done_job_rows, days_back)
+
+        daily_fetched_rows = cast(list[asyncpg.Record], daily_fetched_rows)
+        daily_fetched_size_data = _build_daily_fetched_size_data(daily_fetched_rows, days_back)
+
+        daily_thread_rows = cast(list[asyncpg.Record], daily_thread_rows)
+        daily_thread_count_data = _build_daily_count_data(
+            [r["created_at"] for r in daily_thread_rows if r["created_at"] is not None],
+            days_back,
+        )
+        daily_mediainfo_count_data = _build_daily_count_data(
+            [r["mediainfo_at"] for r in daily_thread_rows if r["mediainfo_at"] is not None],
+            days_back,
+        )
+
+        daily_torrent_rows = cast(list[asyncpg.Record], daily_torrent_rows)
+        daily_torrent_count_data = _build_daily_count_data(
+            [r["ts"] for r in daily_torrent_rows],
+            days_back,
         )
 
         return render(
