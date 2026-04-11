@@ -1106,6 +1106,20 @@ def create_app() -> fastapi.FastAPI:
             ITEM_STATUS_DOWNLOADING,
         )
 
+        failed_rows = await pool.fetch(
+            """
+            select job.tid, job.status, job.failed_reason,
+                   job.start_download_time, job.updated_at,
+                   thread.size, thread.selected_size
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.node_id = $1 and job.status = $2
+            order by job.updated_at desc
+            """,
+            node_id,
+            ITEM_STATUS_FAILED,
+        )
+
         now = datetime.now(tz=_tz_shanghai)
 
         def _calc_speed_eta(r: asyncpg.Record) -> dict[str, Any]:
@@ -1142,12 +1156,24 @@ def create_app() -> fastapi.FastAPI:
             key=lambda j: j["eta_seconds"],
         )
 
+        failed_jobs = [
+            dict(r)
+            | {
+                "size_fmt": human_readable_size(r["size"]),
+                "selected_size_fmt": human_readable_size(r["selected_size"])
+                if r["selected_size"] > 0
+                else "-",
+            }
+            for r in failed_rows
+        ]
+
         return render(
             "node_jobs.html.j2",
             ctx={
                 "node_id": str(node_row["id"]),
                 "last_seen": node_row["last_seen"],
                 "jobs": jobs,
+                "failed_jobs": failed_jobs,
             },
         )
 
