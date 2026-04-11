@@ -1111,15 +1111,18 @@ def create_app() -> fastapi.FastAPI:
             selected_size: int = r["selected_size"]
             progress: float = r["progress"]
             start: datetime | None = r["start_download_time"]
-            if not start or selected_size <= 0 or progress <= 0:
+            updated: datetime | None = r["updated_at"]
+            if not start or not updated or selected_size <= 0 or progress <= 0:
                 return {"speed_fmt": "-", "eta_fmt": "-", "eta_seconds": float("inf")}
-            elapsed = (now - start).total_seconds()
-            if elapsed <= 0:
+            active_elapsed = (updated - start).total_seconds()
+            if active_elapsed <= 0:
                 return {"speed_fmt": "-", "eta_fmt": "-", "eta_seconds": float("inf")}
             bytes_done = selected_size * progress
-            speed = bytes_done / elapsed
+            speed = bytes_done / active_elapsed
             remaining = selected_size * (1 - progress)
-            eta_seconds = remaining / speed if speed > 0 else float("inf")
+            wall_elapsed = (now - start).total_seconds()
+            wall_speed = bytes_done / wall_elapsed if wall_elapsed > 0 else speed
+            eta_seconds = remaining / wall_speed if wall_speed > 0 else float("inf")
             return {
                 "speed_fmt": human_readable_byte_rate(speed),
                 "eta_fmt": _fmt_eta(eta_seconds),
