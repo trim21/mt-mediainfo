@@ -114,12 +114,14 @@
 
 <div class="container mt-4">
   <h3>Average Byte Rate per Week (last 1 year)</h3>
-  <canvas id="weeklyByteRateChart" style="max-height: 350px;"></canvas>
+  <div id="weeklyByteRateLoading" class="text-muted">Loading chart data...</div>
+  <canvas id="weeklyByteRateChart" style="max-height: 350px; display: none;"></canvas>
 </div>
 
 <div class="container mt-4">
   <h3>Threads & Torrents Fetched per Week (last 1 year)</h3>
-  <canvas id="weeklyFetchChart" style="max-height: 350px;"></canvas>
+  <div id="weeklyFetchLoading" class="text-muted">Loading chart data...</div>
+  <canvas id="weeklyFetchChart" style="max-height: 350px; display: none;"></canvas>
 </div>
 
 <div class="container mt-4 mb-4">
@@ -146,12 +148,9 @@
     return bps.toFixed(2) + ' ' + units[i];
   }
 
-  // Weekly byte rate chart (inlined data)
-  (() => {
-    const data = {{ weekly_byte_rate | tojson }};
+  function renderByteRateChart(data) {
     const labels = data.labels;
     const nodeIds = Object.keys(data.per_node);
-
     const datasets = [
       {
         label: 'Total',
@@ -172,7 +171,8 @@
         };
       }),
     ];
-
+    document.getElementById('weeklyByteRateLoading').style.display = 'none';
+    document.getElementById('weeklyByteRateChart').style.display = '';
     new Chart(document.getElementById('weeklyByteRateChart'), {
       type: 'line',
       data: { labels, datasets },
@@ -181,9 +181,7 @@
         scales: {
           y: {
             beginAtZero: true,
-            ticks: {
-              callback: value => formatByteRate(value)
-            }
+            ticks: { callback: value => formatByteRate(value) }
           }
         },
         plugins: {
@@ -195,14 +193,13 @@
         }
       }
     });
-  })();
+  }
 
-  // Weekly fetch chart (inlined data)
-  (() => {
-    const threadData = {{ weekly_thread_count | tojson }};
-    const torrentData = {{ weekly_torrent_count | tojson }};
-    const doneData = {{ weekly_done_count | tojson }};
-    const mediainfoData = {{ weekly_mediainfo_count | tojson }};
+  function renderFetchChart(chartData) {
+    const threadData = chartData.weekly_thread_count;
+    const torrentData = chartData.weekly_torrent_count;
+    const doneData = chartData.weekly_done_count;
+    const mediainfoData = chartData.weekly_mediainfo_count;
 
     const threadMap = Object.fromEntries(threadData.map(d => [d.week, d.count]));
     const torrentMap = Object.fromEntries(torrentData.map(d => [d.week, d.count]));
@@ -245,6 +242,8 @@
       }),
     ];
 
+    document.getElementById('weeklyFetchLoading').style.display = 'none';
+    document.getElementById('weeklyFetchChart').style.display = '';
     new Chart(document.getElementById('weeklyFetchChart'), {
       type: 'line',
       data: {
@@ -279,7 +278,18 @@
         scales: { y: { beginAtZero: true } },
       }
     });
-  })();
+  }
+
+  fetch('/api/weekly-charts')
+    .then(r => r.json())
+    .then(data => {
+      renderByteRateChart(data.weekly_byte_rate);
+      renderFetchChart(data);
+    })
+    .catch(err => {
+      document.getElementById('weeklyByteRateLoading').textContent = 'Failed to load chart data';
+      document.getElementById('weeklyFetchLoading').textContent = 'Failed to load chart data';
+    });
 </script>
 </body>
 </html>

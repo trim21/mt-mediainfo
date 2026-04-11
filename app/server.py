@@ -431,9 +431,6 @@ def create_app() -> fastapi.FastAPI:
             search_cursor,
             pending_download_stats,
             all_job_rows,
-            weekly_done_job_rows,
-            weekly_thread_rows,
-            weekly_torrent_rows,
         ) = await asyncio.gather(
             pool.fetchrow(
                 """
@@ -481,44 +478,7 @@ def create_app() -> fastapi.FastAPI:
                     ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
                 ],
             ),
-            pool.fetch(
-                """
-            select coalesce(job.completed_at, job.updated_at) as ts,
-                   thread.selected_size, job.node_id
-            from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1
-              and coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '1 year'
-            """,
-                ITEM_STATUS_DONE,
-            ),
-            pool.fetch(
-                """
-            select created_at, mediainfo_at from thread
-            where created_at >= current_timestamp - interval '1 year'
-               or (mediainfo_at is not null
-                   and mediainfo_at >= current_timestamp - interval '1 year')
-            """,
-            ),
-            pool.fetch(
-                "select created_at as ts from torrent where created_at >= current_timestamp - interval '1 year'"
-            ),
         )
-
-        weekly_done_job_rows = cast(list[asyncpg.Record], weekly_done_job_rows)
-        weekly_byte_rate_data = _build_weekly_byte_rate_data(weekly_done_job_rows)
-        weekly_done_count_data = _build_weekly_done_count_data(weekly_done_job_rows)
-
-        weekly_thread_rows = cast(list[asyncpg.Record], weekly_thread_rows)
-        weekly_thread_count_data = _build_weekly_count_data([
-            r["created_at"] for r in weekly_thread_rows if r["created_at"] is not None
-        ])
-        weekly_mediainfo_count_data = _build_weekly_count_data([
-            r["mediainfo_at"] for r in weekly_thread_rows if r["mediainfo_at"] is not None
-        ])
-
-        weekly_torrent_rows = cast(list[asyncpg.Record], weekly_torrent_rows)
-        weekly_torrent_count_data = _build_weekly_count_data([r["ts"] for r in weekly_torrent_rows])
 
         thread_stats = cast(asyncpg.Record, thread_stats)
         scraped_total = cast(int, thread_stats["scraped_total"])
@@ -633,13 +593,58 @@ def create_app() -> fastapi.FastAPI:
                 "skipped": skipped,
                 "skipped_size": human_readable_size(skipped_size),
                 "skipped_pct": pct(skipped),
-                "weekly_byte_rate": weekly_byte_rate_data,
-                "weekly_thread_count": weekly_thread_count_data,
-                "weekly_torrent_count": weekly_torrent_count_data,
-                "weekly_done_count": weekly_done_count_data,
-                "weekly_mediainfo_count": weekly_mediainfo_count_data,
             },
         )
+
+    @app.get("/api/weekly-charts")
+    async def weekly_charts() -> ORJSONResponse:
+        weekly_done_job_rows, weekly_thread_rows, weekly_torrent_rows = await asyncio.gather(
+            pool.fetch(
+                """
+            select coalesce(job.completed_at, job.updated_at) as ts,
+                   thread.selected_size, job.node_id
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.status = $1
+              and coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '1 year'
+            """,
+                ITEM_STATUS_DONE,
+            ),
+            pool.fetch(
+                """
+            select created_at, mediainfo_at from thread
+            where created_at >= current_timestamp - interval '1 year'
+               or (mediainfo_at is not null
+                   and mediainfo_at >= current_timestamp - interval '1 year')
+            """,
+            ),
+            pool.fetch(
+                "select created_at as ts from torrent where created_at >= current_timestamp - interval '1 year'"
+            ),
+        )
+
+        weekly_done_job_rows = cast(list[asyncpg.Record], weekly_done_job_rows)
+        weekly_byte_rate_data = _build_weekly_byte_rate_data(weekly_done_job_rows)
+        weekly_done_count_data = _build_weekly_done_count_data(weekly_done_job_rows)
+
+        weekly_thread_rows = cast(list[asyncpg.Record], weekly_thread_rows)
+        weekly_thread_count_data = _build_weekly_count_data([
+            r["created_at"] for r in weekly_thread_rows if r["created_at"] is not None
+        ])
+        weekly_mediainfo_count_data = _build_weekly_count_data([
+            r["mediainfo_at"] for r in weekly_thread_rows if r["mediainfo_at"] is not None
+        ])
+
+        weekly_torrent_rows = cast(list[asyncpg.Record], weekly_torrent_rows)
+        weekly_torrent_count_data = _build_weekly_count_data([r["ts"] for r in weekly_torrent_rows])
+
+        return ORJSONResponse({
+            "weekly_byte_rate": weekly_byte_rate_data,
+            "weekly_thread_count": weekly_thread_count_data,
+            "weekly_torrent_count": weekly_torrent_count_data,
+            "weekly_done_count": weekly_done_count_data,
+            "weekly_mediainfo_count": weekly_mediainfo_count_data,
+        })
 
     @app.get("/detail")
     async def detail(render: Render, start: str | None = None) -> HTMLResponse:
