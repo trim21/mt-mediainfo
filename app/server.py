@@ -744,10 +744,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/detail")
-    async def detail(
-        render: Render,
-        start: str | None = None,
-    ) -> HTMLResponse:
+    async def detail(render: Render, start: str | None = None) -> HTMLResponse:
         today = _today_start()
         default_start = (today - timedelta(days=364)).strftime("%Y-%m-%d")
         start_value = start if start is not None else default_start
