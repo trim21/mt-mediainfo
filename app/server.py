@@ -378,7 +378,9 @@ def create_app() -> fastapi.FastAPI:
             "thread_count": r["thread_count"],
             "torrent_count": r["torrent_count"],
             "mediainfo_count": r["mediainfo_count"],
-            "node_downloaded": r["node_downloaded"] or {},
+            "node_downloaded": orjson.loads(nd)
+            if isinstance(nd := r["node_downloaded"], str)
+            else (nd or {}),
         }
 
     def _build_weekly_charts(
