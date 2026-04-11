@@ -18,9 +18,11 @@
 <div class="container mt-4">
   <p><a href="/">&larr; Back to Progress</a></p>
 
-  <form class="row g-2 align-items-end mb-3" method="get" action="/detail">
+  <form class="row g-2 align-items-center mb-3" method="get" action="/detail">
     <div class="col-auto">
       <label for="startInput" class="form-label mb-0">Start date</label>
+    </div>
+    <div class="col-auto">
       <input type="date" id="startInput" name="start" class="form-control" value="{{ start }}">
     </div>
     <div class="col-auto">
