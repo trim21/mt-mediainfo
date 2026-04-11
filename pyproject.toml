@@ -28,6 +28,7 @@ dependencies = [
     "regex==2026.4.4",
     "asyncpg==0.31.0",
     # "polars==1.39.3",
+    "rtorrent-rpc>=0.9.4",
 ]
 
 [dependency-groups]
