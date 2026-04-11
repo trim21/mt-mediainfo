@@ -25,7 +25,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/.github/workflows/lint\\.yaml$/"
+        ".github/workflows/lint.yaml"
       ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\n\\s+version: '(?<currentValue>.*?)'"
