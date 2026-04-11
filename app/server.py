@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Protocol, cast
 from zoneinfo import ZoneInfo
@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 import asyncpg
 import fastapi
 import orjson
-import polars as pl
 from fastapi import Depends, Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, JSONResponse
@@ -97,366 +96,494 @@ def create_app() -> fastapi.FastAPI:
         """Return (min_week_num, max_week_num) for last 52 weeks."""
         return -52, -1
 
-    def _fill_week_gaps_count(df: pl.DataFrame) -> pl.DataFrame:
-        grouped = df.group_by("week_num").len(name="count")
-        min_week, max_week = _week_range()
-        all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
-        return (
-            all_weeks
-            .join(grouped, on="week_num", how="left")
-            .with_columns(pl.col("count").fill_null(0))
-            .sort("week_num")
-        )
-
-    def _compute_week_num_col(today: datetime) -> pl.Expr:
-        ref = today + timedelta(days=1)
-        return (
-            (
-                (pl.col("ts").cast(pl.Datetime("us", "Asia/Shanghai")) - ref).dt.total_seconds()
-                // (7 * 86400)
-            )
-            .cast(pl.Int64)
-            .alias("week_num")
-        )
-
     def _week_label(today: datetime, week_num: int) -> str:
         ref = today + timedelta(days=1)
         start = ref + timedelta(weeks=int(week_num))
         return start.strftime("%Y-%m-%d")
 
-    def _build_weekly_byte_rate_data(
-        rows: list[asyncpg.Record],
-    ) -> dict[str, Any]:
-        if not rows:
-            return {"labels": [], "totals": [], "per_node": {}}
+    _backfill_lock = asyncio.Lock()
 
-        today = _today_start()
-        df = pl.DataFrame({
-            "ts": [row["ts"] for row in rows],
-            "selected_size": [row["selected_size"] for row in rows],
-            "node_id": [str(row["node_id"]) for row in rows],
-        })
-        df = df.with_columns(_compute_week_num_col(today))
+    async def _backfill_daily_stats(since: date) -> None:
+        async with _backfill_lock:
+            today_date = _today_start().date()
+            yesterday = today_date - timedelta(days=1)
+            start_date = since if since < today_date else yesterday
 
-        grouped_total = df.group_by("week_num").agg(
-            pl.col("selected_size").sum().alias("total_size")
-        )
-        min_week, max_week = _week_range()
-        all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
-        result_total = (
-            all_weeks
-            .join(grouped_total, on="week_num", how="left")
-            .with_columns(pl.col("total_size").fill_null(0))
-            .with_columns((pl.col("total_size") / (7.0 * 86400)).alias("byte_rate"))
-            .sort("week_num")
-        )
+            if start_date > yesterday:
+                return
 
-        grouped_node = df.group_by(["week_num", "node_id"]).agg(
-            pl.col("selected_size").sum().alias("total_size")
-        )
-        node_ids = sorted(df["node_id"].unique().to_list())
-
-        per_node: dict[str, list[float]] = {}
-        for nid in node_ids:
-            node_data = grouped_node.filter(pl.col("node_id") == nid)
-            node_result = (
-                all_weeks
-                .join(node_data.select(["week_num", "total_size"]), on="week_num", how="left")
-                .with_columns(pl.col("total_size").fill_null(0))
-                .with_columns((pl.col("total_size") / (7.0 * 86400)).alias("byte_rate"))
-                .sort("week_num")
+            # Find which days in the range are already cached
+            existing = await pool.fetch(
+                "select day from daily_stats where day >= $1 and day <= $2",
+                start_date,
+                yesterday,
             )
-            per_node[nid] = [r["byte_rate"] for r in node_result.iter_rows(named=True)]
+            existing_days = {r["day"] for r in existing}
 
-        labels = [_week_label(today, r["week_num"]) for r in result_total.iter_rows(named=True)]
-        totals = [
-            {
-                "byte_rate": r["byte_rate"],
-                "byte_rate_fmt": human_readable_byte_rate(r["byte_rate"]),
-                "total_size": int(r["total_size"]),
-                "total_size_fmt": human_readable_size(r["total_size"]),
-            }
-            for r in result_total.iter_rows(named=True)
-        ]
-
-        return {"labels": labels, "totals": totals, "per_node": per_node}
-
-    def _build_weekly_fetched_size_data(
-        rows: list[Any],
-    ) -> list[dict[str, Any]]:
-        if not rows:
-            return []
-        today = _today_start()
-        df = pl.DataFrame({
-            "ts": [row["ts"] for row in rows],
-            "selected_size": [row["selected_size"] for row in rows],
-        })
-        df = df.with_columns(_compute_week_num_col(today))
-        grouped = df.group_by("week_num").agg(
-            pl.col("selected_size").sum().alias("total_size"),
-            pl.col("selected_size").len().alias("count"),
-        )
-        min_week, max_week = _week_range()
-        all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
-        result = (
-            all_weeks
-            .join(grouped, on="week_num", how="left")
-            .with_columns(pl.col("total_size").fill_null(0))
-            .with_columns(pl.col("count").fill_null(0))
-            .sort("week_num")
-        )
-        # Current week: extrapolate from avg size × 1200 torrents/day × 7 days
-        max_week_num = max_week
-        return [
-            {
-                "week": _week_label(today, r["week_num"]),
-                "byte_rate": (r["total_size"] / r["count"]) * 1200 * 7 / (7.0 * 86400)
-                if r["week_num"] == max_week_num and r["count"] > 0
-                else r["total_size"] / (7.0 * 86400),
-            }
-            for r in result.iter_rows(named=True)
-        ]
-
-    def _build_weekly_count_data(
-        ts_values: list[datetime],
-    ) -> list[dict[str, Any]]:
-        if not ts_values:
-            return []
-        today = _today_start()
-        df = pl.DataFrame({"ts": ts_values})
-        df = df.with_columns(_compute_week_num_col(today))
-        result = _fill_week_gaps_count(df)
-        return [
-            {"week": _week_label(today, r["week_num"]), "count": int(r["count"])}
-            for r in result.iter_rows(named=True)
-        ]
-
-    def _build_weekly_done_count_data(
-        rows: list[asyncpg.Record],
-    ) -> dict[str, Any]:
-        if not rows:
-            return {"labels": [], "totals": [], "per_node": {}}
-
-        today = _today_start()
-        df = pl.DataFrame({
-            "ts": [row["ts"] for row in rows],
-            "node_id": [str(row["node_id"]) for row in rows],
-        })
-        df = df.with_columns(_compute_week_num_col(today))
-
-        min_week, max_week = _week_range()
-        all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
-
-        grouped_total = df.group_by("week_num").len(name="count")
-        result_total = (
-            all_weeks
-            .join(grouped_total, on="week_num", how="left")
-            .with_columns(pl.col("count").fill_null(0))
-            .sort("week_num")
-        )
-
-        grouped_node = df.group_by(["week_num", "node_id"]).len(name="count")
-        node_ids = sorted(df["node_id"].unique().to_list())
-
-        per_node: dict[str, list[int]] = {}
-        for nid in node_ids:
-            node_data = grouped_node.filter(pl.col("node_id") == nid)
-            node_result = (
-                all_weeks
-                .join(node_data.select(["week_num", "count"]), on="week_num", how="left")
-                .with_columns(pl.col("count").fill_null(0))
-                .sort("week_num")
-            )
-            per_node[nid] = [int(r["count"]) for r in node_result.iter_rows(named=True)]
-
-        labels = [_week_label(today, r["week_num"]) for r in result_total.iter_rows(named=True)]
-        totals = [int(r["count"]) for r in result_total.iter_rows(named=True)]
-
-        return {"labels": labels, "totals": totals, "per_node": per_node}
-
-    def _build_daily_byte_rate_data(
-        rows: list[asyncpg.Record],
-        days_back: int,
-    ) -> dict[str, Any]:
-        if not rows:
-            return {"labels": [], "totals": [], "per_node": {}}
-
-        today = _today_start()
-        elapsed_today = (datetime.now(_tz_shanghai) - today).total_seconds()
-
-        df = pl.DataFrame({
-            "ts": [row["ts"] for row in rows],
-            "selected_size": [row["selected_size"] for row in rows],
-            "node_id": [str(row["node_id"]) for row in rows],
-        })
-        df = df.with_columns(_compute_day_num_col(today))
-
-        grouped_total = df.group_by("day_num").agg(
-            pl.col("selected_size").sum().alias("total_size")
-        )
-        all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
-        result_total = (
-            all_days
-            .join(grouped_total, on="day_num", how="left")
-            .with_columns(pl.col("total_size").fill_null(0))
-            .with_columns((pl.col("total_size") / 86400.0).alias("byte_rate"))
-            .sort("day_num")
-        )
-
-        grouped_node = df.group_by(["day_num", "node_id"]).agg(
-            pl.col("selected_size").sum().alias("total_size")
-        )
-        node_ids = sorted(df["node_id"].unique().to_list())
-
-        per_node: dict[str, list[float]] = {}
-        for nid in node_ids:
-            node_data = grouped_node.filter(pl.col("node_id") == nid)
-            node_result = (
-                all_days
-                .join(node_data.select(["day_num", "total_size"]), on="day_num", how="left")
-                .with_columns(pl.col("total_size").fill_null(0))
-                .with_columns((pl.col("total_size") / 86400.0).alias("byte_rate"))
-                .sort("day_num")
-            )
-            per_node[nid] = [
-                r["total_size"] / elapsed_today if r["day_num"] == 0 else r["byte_rate"]
-                for r in node_result.iter_rows(named=True)
+            missing_days = [
+                start_date + timedelta(days=i)
+                for i in range((yesterday - start_date).days + 1)
+                if (start_date + timedelta(days=i)) not in existing_days
             ]
+            if not missing_days:
+                return
 
-        labels = [_day_label(today, r["day_num"]) for r in result_total.iter_rows(named=True)]
-        totals = [
-            {
-                "byte_rate": r["total_size"] / elapsed_today
-                if r["day_num"] == 0
-                else r["byte_rate"],
-                "byte_rate_fmt": human_readable_byte_rate(
-                    r["total_size"] / elapsed_today if r["day_num"] == 0 else r["byte_rate"]
+            first_missing = missing_days[0]
+            last_missing = missing_days[-1]
+            start_ts = datetime(
+                first_missing.year, first_missing.month, first_missing.day, tzinfo=_tz_shanghai
+            )
+            end_ts = datetime(
+                last_missing.year, last_missing.month, last_missing.day, tzinfo=_tz_shanghai
+            ) + timedelta(days=1)
+
+            (
+                downloaded_rows,
+                fetched_rows,
+                thread_rows,
+                torrent_rows,
+                mediainfo_rows,
+            ) = await asyncio.gather(
+                pool.fetch(
+                    """
+                    select (coalesce(job.completed_at, job.updated_at)
+                            at time zone 'Asia/Shanghai')::date as day,
+                           job.node_id::text as node_id,
+                           count(1)::int as count,
+                           coalesce(sum(thread.selected_size), 0)::int8 as bytes
+                    from job
+                    join thread on (thread.tid = job.tid)
+                    where job.status = $1 and thread.selected_size > 0
+                      and coalesce(job.completed_at, job.updated_at) >= $2
+                      and coalesce(job.completed_at, job.updated_at) < $3
+                    group by day, job.node_id
+                    """,
+                    ITEM_STATUS_DONE,
+                    start_ts,
+                    end_ts,
                 ),
-                "total_size": int(r["total_size"]),
-                "total_size_fmt": human_readable_size(r["total_size"]),
-            }
-            for r in result_total.iter_rows(named=True)
-        ]
+                pool.fetch(
+                    """
+                    select (torrent_fetched_at at time zone 'Asia/Shanghai')::date as day,
+                           count(1)::int as count,
+                           coalesce(sum(selected_size), 0)::int8 as bytes
+                    from thread
+                    where torrent_fetched_at >= $1 and torrent_fetched_at < $2
+                      and selected_size > 0 and category = any($3)
+                    group by day
+                    """,
+                    start_ts,
+                    end_ts,
+                    SELECTED_CATEGORY,
+                ),
+                pool.fetch(
+                    """
+                    select (created_at at time zone 'Asia/Shanghai')::date as day,
+                           count(1)::int as count
+                    from thread
+                    where created_at >= $1 and created_at < $2
+                    group by day
+                    """,
+                    start_ts,
+                    end_ts,
+                ),
+                pool.fetch(
+                    """
+                    select (created_at at time zone 'Asia/Shanghai')::date as day,
+                           count(1)::int as count
+                    from torrent
+                    where created_at >= $1 and created_at < $2
+                    group by day
+                    """,
+                    start_ts,
+                    end_ts,
+                ),
+                pool.fetch(
+                    """
+                    select (mediainfo_at at time zone 'Asia/Shanghai')::date as day,
+                           count(1)::int as count
+                    from thread
+                    where mediainfo_at >= $1 and mediainfo_at < $2
+                    group by day
+                    """,
+                    start_ts,
+                    end_ts,
+                ),
+            )
 
-        return {"labels": labels, "totals": totals, "per_node": per_node}
+            days_data: dict[date, dict[str, Any]] = {}
 
-    def _build_daily_fetched_size_data(
-        rows: list[Any],
-        days_back: int,
-    ) -> list[dict[str, Any]]:
-        if not rows:
-            return []
+            def _ensure_day(d: date) -> dict[str, Any]:
+                if d not in days_data:
+                    days_data[d] = {
+                        "downloaded_bytes": 0,
+                        "downloaded_count": 0,
+                        "fetched_bytes": 0,
+                        "fetched_count": 0,
+                        "thread_count": 0,
+                        "torrent_count": 0,
+                        "mediainfo_count": 0,
+                        "node_downloaded": {},
+                    }
+                return days_data[d]
+
+            for r in downloaded_rows:
+                d = _ensure_day(r["day"])
+                d["downloaded_bytes"] += r["bytes"]
+                d["downloaded_count"] += r["count"]
+                d["node_downloaded"][r["node_id"]] = {
+                    "bytes": int(r["bytes"]),
+                    "count": int(r["count"]),
+                }
+
+            for r in fetched_rows:
+                d = _ensure_day(r["day"])
+                d["fetched_bytes"] = int(r["bytes"])
+                d["fetched_count"] = int(r["count"])
+
+            for r in thread_rows:
+                _ensure_day(r["day"])["thread_count"] = int(r["count"])
+
+            for r in torrent_rows:
+                _ensure_day(r["day"])["torrent_count"] = int(r["count"])
+
+            for r in mediainfo_rows:
+                _ensure_day(r["day"])["mediainfo_count"] = int(r["count"])
+
+            rows_to_insert: list[tuple[Any, ...]] = []
+            for current in missing_days:
+                data = days_data.get(current)
+                if data:
+                    rows_to_insert.append((
+                        current,
+                        data["downloaded_bytes"],
+                        data["downloaded_count"],
+                        data["fetched_bytes"],
+                        data["fetched_count"],
+                        data["thread_count"],
+                        data["torrent_count"],
+                        data["mediainfo_count"],
+                        orjson.dumps(data["node_downloaded"]).decode(),
+                    ))
+                else:
+                    rows_to_insert.append((current, 0, 0, 0, 0, 0, 0, 0, "{}"))
+
+            if rows_to_insert:
+                await pool.executemany(
+                    """
+                    insert into daily_stats
+                        (day, downloaded_bytes, downloaded_count,
+                         fetched_bytes, fetched_count, thread_count,
+                         torrent_count, mediainfo_count, node_downloaded)
+                    values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+                    on conflict (day) do update set
+                        downloaded_bytes = excluded.downloaded_bytes,
+                        downloaded_count = excluded.downloaded_count,
+                        fetched_bytes = excluded.fetched_bytes,
+                        fetched_count = excluded.fetched_count,
+                        thread_count = excluded.thread_count,
+                        torrent_count = excluded.torrent_count,
+                        mediainfo_count = excluded.mediainfo_count,
+                        node_downloaded = excluded.node_downloaded
+                    """,
+                    rows_to_insert,
+                )
+
+    async def _compute_today_stats() -> dict[str, Any]:
         today = _today_start()
-        df = pl.DataFrame({
-            "ts": [row["ts"] for row in rows],
-            "selected_size": [row["selected_size"] for row in rows],
-        })
-        df = df.with_columns(_compute_day_num_col(today))
-        grouped = df.group_by("day_num").agg(
-            pl.col("selected_size").sum().alias("total_size"),
-            pl.col("selected_size").len().alias("count"),
-        )
-        all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
-        result = (
-            all_days
-            .join(grouped, on="day_num", how="left")
-            .with_columns(pl.col("total_size").fill_null(0))
-            .with_columns(pl.col("count").fill_null(0))
-            .sort("day_num")
-        )
-        return [
-            {
-                "day": _day_label(today, r["day_num"]),
-                "byte_rate": (r["total_size"] / r["count"]) * 1200 / 86400.0
-                if r["day_num"] == 0 and r["count"] > 0
-                else r["total_size"] / 86400.0,
-            }
-            for r in result.iter_rows(named=True)
-        ]
+        tomorrow = today + timedelta(days=1)
 
-    def _build_daily_count_data(
-        ts_values: list[datetime],
-        days_back: int,
-    ) -> list[dict[str, Any]]:
-        if not ts_values:
-            return []
+        (
+            downloaded_rows,
+            fetched_row,
+            thread_count,
+            torrent_count,
+            mediainfo_count,
+        ) = await asyncio.gather(
+            pool.fetch(
+                """
+                select job.node_id::text as node_id,
+                       count(1)::int as count,
+                       coalesce(sum(thread.selected_size), 0)::int8 as bytes
+                from job
+                join thread on (thread.tid = job.tid)
+                where job.status = $1 and thread.selected_size > 0
+                  and coalesce(job.completed_at, job.updated_at) >= $2
+                  and coalesce(job.completed_at, job.updated_at) < $3
+                group by job.node_id
+                """,
+                ITEM_STATUS_DONE,
+                today,
+                tomorrow,
+            ),
+            pool.fetchrow(
+                """
+                select count(1)::int as count,
+                       coalesce(sum(selected_size), 0)::int8 as bytes
+                from thread
+                where torrent_fetched_at >= $1 and torrent_fetched_at < $2
+                  and selected_size > 0 and category = any($3)
+                """,
+                today,
+                tomorrow,
+                SELECTED_CATEGORY,
+            ),
+            pool.fetchval(
+                "select count(1)::int from thread where created_at >= $1 and created_at < $2",
+                today,
+                tomorrow,
+            ),
+            pool.fetchval(
+                "select count(1)::int from torrent where created_at >= $1 and created_at < $2",
+                today,
+                tomorrow,
+            ),
+            pool.fetchval(
+                "select count(1)::int from thread where mediainfo_at >= $1 and mediainfo_at < $2",
+                today,
+                tomorrow,
+            ),
+        )
+
+        node_downloaded: dict[str, dict[str, int]] = {}
+        total_downloaded_bytes = 0
+        total_downloaded_count = 0
+        for r in downloaded_rows:
+            b = int(r["bytes"])
+            c = int(r["count"])
+            total_downloaded_bytes += b
+            total_downloaded_count += c
+            node_downloaded[r["node_id"]] = {"bytes": b, "count": c}
+
+        fetched_row = cast(asyncpg.Record, fetched_row)
+
+        return {
+            "day": today.date(),
+            "downloaded_bytes": total_downloaded_bytes,
+            "downloaded_count": total_downloaded_count,
+            "fetched_bytes": int(fetched_row["bytes"]),
+            "fetched_count": int(fetched_row["count"]),
+            "thread_count": int(thread_count),
+            "torrent_count": int(torrent_count),
+            "mediainfo_count": int(mediainfo_count),
+            "node_downloaded": node_downloaded,
+        }
+
+    def _stats_from_record(r: asyncpg.Record) -> dict[str, Any]:
+        return {
+            "downloaded_bytes": r["downloaded_bytes"],
+            "downloaded_count": r["downloaded_count"],
+            "fetched_bytes": r["fetched_bytes"],
+            "fetched_count": r["fetched_count"],
+            "thread_count": r["thread_count"],
+            "torrent_count": r["torrent_count"],
+            "mediainfo_count": r["mediainfo_count"],
+            "node_downloaded": r["node_downloaded"] or {},
+        }
+
+    def _build_weekly_charts(
+        history_rows: list[asyncpg.Record],
+        today_stats: dict[str, Any],
+    ) -> dict[str, Any]:
         today = _today_start()
-        df = pl.DataFrame({"ts": ts_values})
-        df = df.with_columns(_compute_day_num_col(today))
-        result = _fill_day_gaps_count(df, days_back)
-        return [
-            {"day": _day_label(today, r["day_num"]), "count": int(r["count"])}
-            for r in result.iter_rows(named=True)
-        ]
+        today_date = today_stats["day"]
+        ref_date = today_date + timedelta(days=1)
+        min_week, max_week = _week_range()
 
-    def _build_daily_done_count_data(
-        rows: list[asyncpg.Record],
+        by_day: dict[date, dict[str, Any]] = {r["day"]: _stats_from_record(r) for r in history_rows}
+        by_day[today_date] = today_stats
+
+        week_days: dict[int, list[dict[str, Any]]] = {w: [] for w in range(min_week, max_week + 1)}
+        for d, s in by_day.items():
+            wn = (d - ref_date).days // 7
+            if min_week <= wn <= max_week:
+                week_days[wn].append(s)
+
+        all_node_ids: set[str] = set()
+        for s in by_day.values():
+            all_node_ids.update(s.get("node_downloaded", {}).keys())
+        sorted_node_ids = sorted(all_node_ids)
+
+        labels: list[str] = []
+        byte_rate_totals: list[dict[str, Any]] = []
+        done_count_totals: list[int] = []
+        fetched_data: list[dict[str, Any]] = []
+        thread_count_data: list[dict[str, Any]] = []
+        torrent_count_data: list[dict[str, Any]] = []
+        mediainfo_count_data: list[dict[str, Any]] = []
+
+        byte_rate_per_node: dict[str, list[float]] = {nid: [] for nid in sorted_node_ids}
+        done_count_per_node: dict[str, list[int]] = {nid: [] for nid in sorted_node_ids}
+
+        for wn in range(min_week, max_week + 1):
+            label = _week_label(today, wn)
+            labels.append(label)
+            is_current_week = wn == max_week
+            days = week_days[wn]
+
+            total_dl_bytes = sum(s["downloaded_bytes"] for s in days)
+            total_dl_count = sum(s["downloaded_count"] for s in days)
+            total_fetched_bytes = sum(s["fetched_bytes"] for s in days)
+            total_fetched_count = sum(s["fetched_count"] for s in days)
+
+            byte_rate = total_dl_bytes / (7.0 * 86400)
+            byte_rate_totals.append({
+                "byte_rate": byte_rate,
+                "byte_rate_fmt": human_readable_byte_rate(byte_rate),
+                "total_size": int(total_dl_bytes),
+                "total_size_fmt": human_readable_size(total_dl_bytes),
+            })
+            done_count_totals.append(total_dl_count)
+
+            if is_current_week and total_fetched_count > 0:
+                fetched_rate = (
+                    (total_fetched_bytes / total_fetched_count) * 1200 * 7 / (7.0 * 86400)
+                )
+            else:
+                fetched_rate = total_fetched_bytes / (7.0 * 86400)
+            fetched_data.append({"week": label, "byte_rate": fetched_rate})
+
+            thread_count_data.append({
+                "week": label,
+                "count": sum(s["thread_count"] for s in days),
+            })
+            torrent_count_data.append({
+                "week": label,
+                "count": sum(s["torrent_count"] for s in days),
+            })
+            mediainfo_count_data.append({
+                "week": label,
+                "count": sum(s["mediainfo_count"] for s in days),
+            })
+
+            node_totals: dict[str, dict[str, int]] = {}
+            for s in days:
+                for nid, nd in s.get("node_downloaded", {}).items():
+                    if nid not in node_totals:
+                        node_totals[nid] = {"bytes": 0, "count": 0}
+                    node_totals[nid]["bytes"] += nd.get("bytes", 0)
+                    node_totals[nid]["count"] += nd.get("count", 0)
+
+            for nid in sorted_node_ids:
+                nt = node_totals.get(nid, {"bytes": 0, "count": 0})
+                byte_rate_per_node[nid].append(nt["bytes"] / (7.0 * 86400))
+                done_count_per_node[nid].append(nt["count"])
+
+        return {
+            "weekly_byte_rate": {
+                "labels": labels,
+                "totals": byte_rate_totals,
+                "per_node": byte_rate_per_node,
+            },
+            "weekly_fetched_size": fetched_data,
+            "weekly_thread_count": thread_count_data,
+            "weekly_torrent_count": torrent_count_data,
+            "weekly_done_count": {
+                "labels": labels,
+                "totals": done_count_totals,
+                "per_node": done_count_per_node,
+            },
+            "weekly_mediainfo_count": mediainfo_count_data,
+        }
+
+    def _build_daily_charts(
+        history_rows: list[asyncpg.Record],
+        today_stats: dict[str, Any],
         days_back: int,
     ) -> dict[str, Any]:
-        if not rows:
-            return {"labels": [], "totals": [], "per_node": {}}
+        today_date = today_stats["day"]
+        elapsed_today = max((datetime.now(_tz_shanghai) - _today_start()).total_seconds(), 1.0)
 
-        today = _today_start()
-        df = pl.DataFrame({
-            "ts": [row["ts"] for row in rows],
-            "node_id": [str(row["node_id"]) for row in rows],
-        })
-        df = df.with_columns(_compute_day_num_col(today))
+        by_day: dict[date, dict[str, Any]] = {r["day"]: _stats_from_record(r) for r in history_rows}
+        by_day[today_date] = today_stats
 
-        all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
+        all_node_ids: set[str] = set()
+        for v in by_day.values():
+            all_node_ids.update(v.get("node_downloaded", {}).keys())
+        sorted_node_ids = sorted(all_node_ids)
 
-        grouped_total = df.group_by("day_num").len(name="count")
-        result_total = (
-            all_days
-            .join(grouped_total, on="day_num", how="left")
-            .with_columns(pl.col("count").fill_null(0))
-            .sort("day_num")
-        )
+        labels: list[str] = []
+        byte_rate_totals: list[dict[str, Any]] = []
+        done_count_totals: list[int] = []
+        fetched_data: list[dict[str, Any]] = []
+        thread_count_data: list[dict[str, Any]] = []
+        torrent_count_data: list[dict[str, Any]] = []
+        mediainfo_count_data: list[dict[str, Any]] = []
 
-        grouped_node = df.group_by(["day_num", "node_id"]).len(name="count")
-        node_ids = sorted(df["node_id"].unique().to_list())
+        byte_rate_per_node: dict[str, list[float]] = {nid: [] for nid in sorted_node_ids}
+        done_count_per_node: dict[str, list[int]] = {nid: [] for nid in sorted_node_ids}
 
-        per_node: dict[str, list[int]] = {}
-        for nid in node_ids:
-            node_data = grouped_node.filter(pl.col("node_id") == nid)
-            node_result = (
-                all_days
-                .join(node_data.select(["day_num", "count"]), on="day_num", how="left")
-                .with_columns(pl.col("count").fill_null(0))
-                .sort("day_num")
-            )
-            per_node[nid] = [int(r["count"]) for r in node_result.iter_rows(named=True)]
+        for i in range(-days_back, 1):
+            d = today_date + timedelta(days=i)
+            label = d.strftime("%Y-%m-%d")
+            labels.append(label)
+            is_today = d == today_date
+            s = by_day.get(d)
 
-        labels = [_day_label(today, r["day_num"]) for r in result_total.iter_rows(named=True)]
-        totals = [int(r["count"]) for r in result_total.iter_rows(named=True)]
+            if s is None:
+                byte_rate_totals.append({
+                    "byte_rate": 0.0,
+                    "byte_rate_fmt": human_readable_byte_rate(0),
+                    "total_size": 0,
+                    "total_size_fmt": human_readable_size(0),
+                })
+                done_count_totals.append(0)
+                fetched_data.append({"day": label, "byte_rate": 0.0})
+                thread_count_data.append({"day": label, "count": 0})
+                torrent_count_data.append({"day": label, "count": 0})
+                mediainfo_count_data.append({"day": label, "count": 0})
+                for nid in sorted_node_ids:
+                    byte_rate_per_node[nid].append(0.0)
+                    done_count_per_node[nid].append(0)
+                continue
 
-        return {"labels": labels, "totals": totals, "per_node": per_node}
+            dl_bytes = s["downloaded_bytes"]
+            byte_rate = dl_bytes / elapsed_today if is_today else dl_bytes / 86400.0
+            byte_rate_totals.append({
+                "byte_rate": byte_rate,
+                "byte_rate_fmt": human_readable_byte_rate(byte_rate),
+                "total_size": int(dl_bytes),
+                "total_size_fmt": human_readable_size(dl_bytes),
+            })
+            done_count_totals.append(s["downloaded_count"])
 
-    def _day_num(ts: datetime, today: datetime) -> int:
-        return int((ts - today).total_seconds() // 86400)
+            f_bytes = s["fetched_bytes"]
+            f_count = s["fetched_count"]
+            if is_today and f_count > 0:
+                fetched_rate = (f_bytes / f_count) * 1200 / 86400.0
+            else:
+                fetched_rate = f_bytes / 86400.0
+            fetched_data.append({"day": label, "byte_rate": fetched_rate})
 
-    def _compute_day_num_col(today: datetime) -> pl.Expr:
-        return (
-            (
-                (pl.col("ts").cast(pl.Datetime("us", "Asia/Shanghai")) - today).dt.total_seconds()
-                // 86400
-            )
-            .cast(pl.Int64)
-            .alias("day_num")
-        )
+            thread_count_data.append({"day": label, "count": s["thread_count"]})
+            torrent_count_data.append({"day": label, "count": s["torrent_count"]})
+            mediainfo_count_data.append({"day": label, "count": s["mediainfo_count"]})
 
-    def _day_label(today: datetime, day_num: int) -> str:
-        return (today + timedelta(days=int(day_num))).strftime("%Y-%m-%d")
+            nd = s.get("node_downloaded", {})
+            for nid in sorted_node_ids:
+                n = nd.get(nid, {})
+                n_bytes = n.get("bytes", 0)
+                byte_rate_per_node[nid].append(
+                    n_bytes / elapsed_today if is_today else n_bytes / 86400.0
+                )
+                done_count_per_node[nid].append(n.get("count", 0))
 
-    def _fill_day_gaps_count(df: pl.DataFrame, days_back: int = 364) -> pl.DataFrame:
-        grouped = df.group_by("day_num").len(name="count")
-        all_days = pl.DataFrame({"day_num": list(range(-days_back, 1))})
-        return (
-            all_days
-            .join(grouped, on="day_num", how="left")
-            .with_columns(pl.col("count").fill_null(0))
-            .sort("day_num")
-        )
+        return {
+            "daily_byte_rate": {
+                "labels": labels,
+                "totals": byte_rate_totals,
+                "per_node": byte_rate_per_node,
+            },
+            "daily_fetched_size": fetched_data,
+            "daily_thread_count": thread_count_data,
+            "daily_torrent_count": torrent_count_data,
+            "daily_done_count": {
+                "labels": labels,
+                "totals": done_count_totals,
+                "per_node": done_count_per_node,
+            },
+            "daily_mediainfo_count": mediainfo_count_data,
+        }
 
     @app.get("/")
     async def progress(render: Render) -> HTMLResponse:
@@ -527,7 +654,6 @@ def create_app() -> fastapi.FastAPI:
         pending_to_download = cast(int, pending_download_stats["count"])
         pending_to_download_size = cast(int, pending_download_stats["size"])
 
-        all_job_rows = cast(list[asyncpg.Record], all_job_rows)
         downloading_rows = [r for r in all_job_rows if r["status"] == ITEM_STATUS_DOWNLOADING]
         done_job_rows = [r for r in all_job_rows if r["status"] == ITEM_STATUS_DONE]
         failed = sum(1 for r in all_job_rows if r["status"] == ITEM_STATUS_FAILED)
@@ -542,9 +668,6 @@ def create_app() -> fastapi.FastAPI:
             for r in all_job_rows
             if r["status"] == ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT
         )
-
-        downloading_rows = cast(list[asyncpg.Record], downloading_rows)
-        done_job_rows = cast(list[asyncpg.Record], done_job_rows)
 
         downloading = len(downloading_rows)
         downloading_size = sum(r["selected_size"] for r in downloading_rows)
@@ -632,62 +755,16 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/api/weekly-charts")
     async def weekly_charts() -> ORJSONResponse:
-        weekly_done_job_rows, weekly_thread_rows, weekly_torrent_rows = await asyncio.gather(
+        since = _today_start().date() - timedelta(days=365)
+        await _backfill_daily_stats(since)
+        history_rows, today_stats = await asyncio.gather(
             pool.fetch(
-                """
-            select coalesce(job.completed_at, job.updated_at) as ts,
-                   thread.selected_size, job.node_id
-            from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.selected_size > 0
-              and coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '1 year'
-            """,
-                ITEM_STATUS_DONE,
+                "select * from daily_stats where day >= $1 order by day",
+                since,
             ),
-            pool.fetch(
-                """
-            select created_at, mediainfo_at, torrent_fetched_at, selected_size, category
-            from thread
-            where created_at >= current_timestamp - interval '1 year'
-            """,
-            ),
-            pool.fetch(
-                "select created_at as ts from torrent where created_at >= current_timestamp - interval '1 year'"
-            ),
+            _compute_today_stats(),
         )
-
-        weekly_done_job_rows = cast(list[asyncpg.Record], weekly_done_job_rows)
-        weekly_byte_rate_data = _build_weekly_byte_rate_data(weekly_done_job_rows)
-        weekly_done_count_data = _build_weekly_done_count_data(weekly_done_job_rows)
-
-        weekly_thread_rows = cast(list[asyncpg.Record], weekly_thread_rows)
-        weekly_thread_count_data = _build_weekly_count_data([
-            r["created_at"] for r in weekly_thread_rows if r["created_at"] is not None
-        ])
-        weekly_mediainfo_count_data = _build_weekly_count_data([
-            r["mediainfo_at"] for r in weekly_thread_rows if r["mediainfo_at"] is not None
-        ])
-
-        _selected_categories = set(SELECTED_CATEGORY)
-        weekly_fetched_size_data = _build_weekly_fetched_size_data([
-            {"ts": r["torrent_fetched_at"], "selected_size": r["selected_size"]}
-            for r in weekly_thread_rows
-            if r["torrent_fetched_at"] is not None
-            and r["selected_size"] > 0
-            and r["category"] in _selected_categories
-        ])
-
-        weekly_torrent_rows = cast(list[asyncpg.Record], weekly_torrent_rows)
-        weekly_torrent_count_data = _build_weekly_count_data([r["ts"] for r in weekly_torrent_rows])
-
-        return ORJSONResponse({
-            "weekly_byte_rate": weekly_byte_rate_data,
-            "weekly_fetched_size": weekly_fetched_size_data,
-            "weekly_thread_count": weekly_thread_count_data,
-            "weekly_torrent_count": weekly_torrent_count_data,
-            "weekly_done_count": weekly_done_count_data,
-            "weekly_mediainfo_count": weekly_mediainfo_count_data,
-        })
+        return ORJSONResponse(_build_weekly_charts(history_rows, today_stats))
 
     @app.get("/detail")
     async def detail(render: Render, start: str | None = None) -> HTMLResponse:
@@ -704,80 +781,19 @@ def create_app() -> fastapi.FastAPI:
         start_dt = start_dt.replace(tzinfo=_tz_shanghai) if start_dt.tzinfo is None else start_dt
         days_back = (today - start_dt).days
 
-        (
-            daily_done_job_rows,
-            daily_thread_rows,
-            daily_torrent_rows,
-        ) = await asyncio.gather(
+        await _backfill_daily_stats(start_dt.date())
+        history_rows, today_stats = await asyncio.gather(
             pool.fetch(
-                """
-            select coalesce(job.completed_at, job.updated_at) as ts,
-                   thread.selected_size, job.node_id
-            from job
-            join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.selected_size > 0
-              and coalesce(job.completed_at, job.updated_at) >= $2
-            """,
-                ITEM_STATUS_DONE,
-                start_dt,
+                "select * from daily_stats where day >= $1 order by day",
+                start_dt.date(),
             ),
-            pool.fetch(
-                """
-            select created_at, mediainfo_at, torrent_fetched_at, selected_size, category
-            from thread
-            where created_at >= $1
-            """,
-                start_dt,
-            ),
-            pool.fetch(
-                "select created_at as ts from torrent where created_at >= $1",
-                start_dt,
-            ),
+            _compute_today_stats(),
         )
-
-        daily_done_job_rows = cast(list[asyncpg.Record], daily_done_job_rows)
-        daily_byte_rate_data = _build_daily_byte_rate_data(daily_done_job_rows, days_back)
-        daily_done_count_data = _build_daily_done_count_data(daily_done_job_rows, days_back)
-
-        daily_thread_rows = cast(list[asyncpg.Record], daily_thread_rows)
-        daily_thread_count_data = _build_daily_count_data(
-            [r["created_at"] for r in daily_thread_rows if r["created_at"] is not None],
-            days_back,
-        )
-        daily_mediainfo_count_data = _build_daily_count_data(
-            [r["mediainfo_at"] for r in daily_thread_rows if r["mediainfo_at"] is not None],
-            days_back,
-        )
-
-        _selected_categories = set(SELECTED_CATEGORY)
-        daily_fetched_size_data = _build_daily_fetched_size_data(
-            [
-                {"ts": r["torrent_fetched_at"], "selected_size": r["selected_size"]}
-                for r in daily_thread_rows
-                if r["torrent_fetched_at"] is not None
-                and r["selected_size"] > 0
-                and r["category"] in _selected_categories
-            ],
-            days_back,
-        )
-
-        daily_torrent_rows = cast(list[asyncpg.Record], daily_torrent_rows)
-        daily_torrent_count_data = _build_daily_count_data(
-            [r["ts"] for r in daily_torrent_rows],
-            days_back,
-        )
+        charts = _build_daily_charts(history_rows, today_stats, days_back)
 
         return render(
             "detail.html.j2",
-            ctx={
-                "start": start_value,
-                "daily_byte_rate": daily_byte_rate_data,
-                "daily_fetched_size": daily_fetched_size_data,
-                "daily_thread_count": daily_thread_count_data,
-                "daily_torrent_count": daily_torrent_count_data,
-                "daily_done_count": daily_done_count_data,
-                "daily_mediainfo_count": daily_mediainfo_count_data,
-            },
+            ctx={"start": start_value} | charts,
         )
 
     @app.get("/threads/pending-mediainfo")

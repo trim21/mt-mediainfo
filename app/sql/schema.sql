@@ -77,3 +77,16 @@ create index if not exists thread_pending_download on thread (category, selected
 -- thread: daily fetched size chart (torrent_fetched_at range scan)
 create index if not exists thread_torrent_fetched_at on thread (torrent_fetched_at, category)
   where torrent_fetched_at is not null and selected_size > 0;
+
+-- pre-aggregated daily stats cache for chart endpoints
+create table if not exists daily_stats (
+    day date primary key,
+    downloaded_bytes int8 not null default 0,
+    downloaded_count int4 not null default 0,
+    fetched_bytes int8 not null default 0,
+    fetched_count int4 not null default 0,
+    thread_count int4 not null default 0,
+    torrent_count int4 not null default 0,
+    mediainfo_count int4 not null default 0,
+    node_downloaded jsonb not null default '{}'::jsonb
+);

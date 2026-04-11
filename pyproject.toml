@@ -27,7 +27,7 @@ dependencies = [
     "sslog==0.0.0a52",
     "regex==2026.4.4",
     "asyncpg==0.31.0",
-    "polars==1.39.3",
+    # "polars==1.39.3",
 ]
 
 [dependency-groups]
