@@ -127,15 +127,14 @@ def create_app() -> fastapi.FastAPI:
     def _build_weekly_byte_rate_data(
         rows: list[asyncpg.Record],
     ) -> dict[str, Any]:
-        filtered = [r for r in rows if r["selected_size"] > 0]
-        if not filtered:
+        if not rows:
             return {"labels": [], "totals": [], "per_node": {}}
 
         today = _today_start()
         df = pl.DataFrame({
-            "ts": [row["ts"] for row in filtered],
-            "selected_size": [row["selected_size"] for row in filtered],
-            "node_id": [str(row["node_id"]) for row in filtered],
+            "ts": [row["ts"] for row in rows],
+            "selected_size": [row["selected_size"] for row in rows],
+            "node_id": [str(row["node_id"]) for row in rows],
         })
         df = df.with_columns(_compute_week_num_col(today))
 
@@ -181,6 +180,42 @@ def create_app() -> fastapi.FastAPI:
         ]
 
         return {"labels": labels, "totals": totals, "per_node": per_node}
+
+    def _build_weekly_fetched_size_data(
+        rows: list[Any],
+    ) -> list[dict[str, Any]]:
+        if not rows:
+            return []
+        today = _today_start()
+        df = pl.DataFrame({
+            "ts": [row["ts"] for row in rows],
+            "selected_size": [row["selected_size"] for row in rows],
+        })
+        df = df.with_columns(_compute_week_num_col(today))
+        grouped = df.group_by("week_num").agg(
+            pl.col("selected_size").sum().alias("total_size"),
+            pl.col("selected_size").len().alias("count"),
+        )
+        min_week, max_week = _week_range()
+        all_weeks = pl.DataFrame({"week_num": list(range(min_week, max_week + 1))})
+        result = (
+            all_weeks
+            .join(grouped, on="week_num", how="left")
+            .with_columns(pl.col("total_size").fill_null(0))
+            .with_columns(pl.col("count").fill_null(0))
+            .sort("week_num")
+        )
+        # Current week: extrapolate from avg size × 1200 torrents/day × 7 days
+        max_week_num = max_week
+        return [
+            {
+                "week": _week_label(today, r["week_num"]),
+                "byte_rate": (r["total_size"] / r["count"]) * 1200 * 7 / (7.0 * 86400)
+                if r["week_num"] == max_week_num and r["count"] > 0
+                else r["total_size"] / (7.0 * 86400),
+            }
+            for r in result.iter_rows(named=True)
+        ]
 
     def _build_weekly_count_data(
         ts_values: list[datetime],
@@ -243,17 +278,16 @@ def create_app() -> fastapi.FastAPI:
         rows: list[asyncpg.Record],
         days_back: int,
     ) -> dict[str, Any]:
-        filtered = [r for r in rows if r["selected_size"] > 0]
-        if not filtered:
+        if not rows:
             return {"labels": [], "totals": [], "per_node": {}}
 
         today = _today_start()
         elapsed_today = (datetime.now(_tz_shanghai) - today).total_seconds()
 
         df = pl.DataFrame({
-            "ts": [row["ts"] for row in filtered],
-            "selected_size": [row["selected_size"] for row in filtered],
-            "node_id": [str(row["node_id"]) for row in filtered],
+            "ts": [row["ts"] for row in rows],
+            "selected_size": [row["selected_size"] for row in rows],
+            "node_id": [str(row["node_id"]) for row in rows],
         })
         df = df.with_columns(_compute_day_num_col(today))
 
@@ -307,7 +341,7 @@ def create_app() -> fastapi.FastAPI:
         return {"labels": labels, "totals": totals, "per_node": per_node}
 
     def _build_daily_fetched_size_data(
-        rows: list[asyncpg.Record],
+        rows: list[Any],
         days_back: int,
     ) -> list[dict[str, Any]]:
         if not rows:
@@ -605,17 +639,20 @@ def create_app() -> fastapi.FastAPI:
                    thread.selected_size, job.node_id
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = $1
+            where job.status = $1 and thread.selected_size > 0
               and coalesce(job.completed_at, job.updated_at) >= current_timestamp - interval '1 year'
             """,
                 ITEM_STATUS_DONE,
             ),
             pool.fetch(
                 """
-            select created_at, mediainfo_at from thread
+            select created_at, mediainfo_at, torrent_fetched_at, selected_size, category
+            from thread
             where created_at >= current_timestamp - interval '1 year'
                or (mediainfo_at is not null
                    and mediainfo_at >= current_timestamp - interval '1 year')
+               or (torrent_fetched_at is not null
+                   and torrent_fetched_at >= current_timestamp - interval '1 year')
             """,
             ),
             pool.fetch(
@@ -635,11 +672,21 @@ def create_app() -> fastapi.FastAPI:
             r["mediainfo_at"] for r in weekly_thread_rows if r["mediainfo_at"] is not None
         ])
 
+        _selected_categories = set(SELECTED_CATEGORY)
+        weekly_fetched_size_data = _build_weekly_fetched_size_data([
+            {"ts": r["torrent_fetched_at"], "selected_size": r["selected_size"]}
+            for r in weekly_thread_rows
+            if r["torrent_fetched_at"] is not None
+            and r["selected_size"] > 0
+            and r["category"] in _selected_categories
+        ])
+
         weekly_torrent_rows = cast(list[asyncpg.Record], weekly_torrent_rows)
         weekly_torrent_count_data = _build_weekly_count_data([r["ts"] for r in weekly_torrent_rows])
 
         return ORJSONResponse({
             "weekly_byte_rate": weekly_byte_rate_data,
+            "weekly_fetched_size": weekly_fetched_size_data,
             "weekly_thread_count": weekly_thread_count_data,
             "weekly_torrent_count": weekly_torrent_count_data,
             "weekly_done_count": weekly_done_count_data,
@@ -663,7 +710,6 @@ def create_app() -> fastapi.FastAPI:
 
         (
             daily_done_job_rows,
-            daily_fetched_rows,
             daily_thread_rows,
             daily_torrent_rows,
         ) = await asyncio.gather(
@@ -673,7 +719,7 @@ def create_app() -> fastapi.FastAPI:
                    thread.selected_size, job.node_id
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = $1
+            where job.status = $1 and thread.selected_size > 0
               and coalesce(job.completed_at, job.updated_at) >= $2
             """,
                 ITEM_STATUS_DONE,
@@ -681,19 +727,11 @@ def create_app() -> fastapi.FastAPI:
             ),
             pool.fetch(
                 """
-            select torrent_fetched_at as ts, selected_size
+            select created_at, mediainfo_at, torrent_fetched_at, selected_size, category
             from thread
-            where torrent_fetched_at >= $1 and selected_size > 0
-              and category = any($2)
-            """,
-                start_dt,
-                SELECTED_CATEGORY,
-            ),
-            pool.fetch(
-                """
-            select created_at, mediainfo_at from thread
             where created_at >= $1
                or (mediainfo_at is not null and mediainfo_at >= $1)
+               or (torrent_fetched_at is not null and torrent_fetched_at >= $1)
             """,
                 start_dt,
             ),
@@ -707,9 +745,6 @@ def create_app() -> fastapi.FastAPI:
         daily_byte_rate_data = _build_daily_byte_rate_data(daily_done_job_rows, days_back)
         daily_done_count_data = _build_daily_done_count_data(daily_done_job_rows, days_back)
 
-        daily_fetched_rows = cast(list[asyncpg.Record], daily_fetched_rows)
-        daily_fetched_size_data = _build_daily_fetched_size_data(daily_fetched_rows, days_back)
-
         daily_thread_rows = cast(list[asyncpg.Record], daily_thread_rows)
         daily_thread_count_data = _build_daily_count_data(
             [r["created_at"] for r in daily_thread_rows if r["created_at"] is not None],
@@ -717,6 +752,18 @@ def create_app() -> fastapi.FastAPI:
         )
         daily_mediainfo_count_data = _build_daily_count_data(
             [r["mediainfo_at"] for r in daily_thread_rows if r["mediainfo_at"] is not None],
+            days_back,
+        )
+
+        _selected_categories = set(SELECTED_CATEGORY)
+        daily_fetched_size_data = _build_daily_fetched_size_data(
+            [
+                {"ts": r["torrent_fetched_at"], "selected_size": r["selected_size"]}
+                for r in daily_thread_rows
+                if r["torrent_fetched_at"] is not None
+                and r["selected_size"] > 0
+                and r["category"] in _selected_categories
+            ],
             days_back,
         )
 
