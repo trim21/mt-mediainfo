@@ -92,6 +92,7 @@
   }
 
   /* ---- S3 Migration ---- */
+  const MIG_POLL_MS = 2000;
   let migPollTimer = null;
 
   function updateMigUI(data) {
@@ -127,7 +128,7 @@
       startBtn.disabled = false;
       startBtn.textContent = 'Start Migration';
       stopBtn.disabled = true;
-      status.textContent = data.total > 0 && data.migrated >= data.total && data.remaining === 0
+      status.textContent = data.remaining === 0 && data.migrated > 0
         ? 'Migration complete!'
         : '';
       if (migPollTimer) { clearInterval(migPollTimer); migPollTimer = null; }
@@ -147,7 +148,7 @@
       .then(r => r.json())
       .then(data => {
         if (data.error) { alert(data.error); return; }
-        if (!migPollTimer) migPollTimer = setInterval(pollMigration, 2000);
+        if (!migPollTimer) migPollTimer = setInterval(pollMigration, MIG_POLL_MS);
         pollMigration();
       });
   }
@@ -160,7 +161,7 @@
 
   // Auto-poll if migration is already running on page load
   {% if s3_enabled and s3_migration_running %}
-  migPollTimer = setInterval(pollMigration, 2000);
+  migPollTimer = setInterval(pollMigration, MIG_POLL_MS);
   pollMigration();
   {% endif %}
 </script>

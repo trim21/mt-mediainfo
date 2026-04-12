@@ -1,6 +1,6 @@
 import asyncio
 import dataclasses
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -23,7 +23,6 @@ from app.const import (
     SELECTED_CATEGORY,
 )
 from app.rpc import PAYLOAD_TYPES, RpcRequest, enqueue_command
-from app.torrent_store import S3TorrentStore
 from app.utils import human_readable_byte_rate, human_readable_size, parse_obj
 
 
@@ -95,9 +94,12 @@ _s3_migration_lock = asyncio.Lock()
 
 async def _run_s3_migration(
     pool: asyncpg.Pool,  # type: ignore[type-arg]
-    store: S3TorrentStore,
+    upload_fn: Callable[[int, bytes], None],
 ) -> None:
-    """Background coroutine: stream PG rows with non-empty content → S3."""
+    """Background coroutine: stream PG rows with non-empty content → S3.
+
+    *upload_fn* receives ``(tid, content)`` and should upload to S3.
+    """
     state = _s3_migration
     try:
         total: int | None = await pool.fetchval(
@@ -123,7 +125,7 @@ async def _run_s3_migration(
                 tid: int = r["tid"]
                 content: bytes = r["content"]
                 try:
-                    await asyncio.to_thread(store.upload_bytes, tid, content)
+                    await asyncio.to_thread(upload_fn, tid, content)
                     await pool.execute("update torrent set content = ''::bytea where tid = $1", tid)
                     state.migrated += 1
                 except Exception as exc:
@@ -1199,19 +1201,26 @@ def create_app() -> fastapi.FastAPI:
                 return ORJSONResponse({"error": "migration already running"}, status_code=409)
             _s3_migration.running = True
 
-        from app.db import Database
+        import io
 
-        db = Database(cfg.pg_dsn())
-        store = S3TorrentStore(
-            db,
-            endpoint_url=cfg.s3_endpoint,  # type: ignore[arg-type]
-            bucket=cfg.s3_bucket,  # type: ignore[arg-type]
-            access_key=cfg.s3_access_key,  # type: ignore[arg-type]
-            secret_key=cfg.s3_secret_key,  # type: ignore[arg-type]
-            region=cfg.s3_region or "",
-            prefix=cfg.s3_prefix,
-        )
-        asyncio.create_task(_run_s3_migration(pool, store))
+        import boto3
+
+        s3_kwargs: dict[str, str] = {
+            "endpoint_url": cfg.s3_endpoint,  # type: ignore[dict-item]
+            "aws_access_key_id": cfg.s3_access_key,  # type: ignore[dict-item]
+            "aws_secret_access_key": cfg.s3_secret_key,  # type: ignore[dict-item]
+        }
+        if cfg.s3_region:
+            s3_kwargs["region_name"] = cfg.s3_region
+        s3_client = boto3.client("s3", **s3_kwargs)
+        s3_bucket = cfg.s3_bucket
+        s3_prefix = cfg.s3_prefix
+
+        def _upload(tid: int, content: bytes) -> None:
+            key = f"{s3_prefix}{tid}.torrent"
+            s3_client.upload_fileobj(io.BytesIO(content), s3_bucket, key)
+
+        asyncio.create_task(_run_s3_migration(pool, _upload))
         return ORJSONResponse({"started": True})
 
     @app.post("/api/s3-migration/stop")

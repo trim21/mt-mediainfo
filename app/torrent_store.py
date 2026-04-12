@@ -121,19 +121,6 @@ class S3TorrentStore:
             kwargs["region_name"] = region
         self.__s3 = boto3.client("s3", **kwargs)
 
-    @property
-    def s3_client(self) -> object:
-        """Expose the underlying boto3 S3 client (used by the migration task)."""
-        return self.__s3
-
-    @property
-    def bucket(self) -> str:
-        return self.__bucket
-
-    @property
-    def prefix(self) -> str:
-        return self.__prefix
-
     def _key(self, tid: int) -> str:
         return f"{self.__prefix}{tid}.torrent"
 
