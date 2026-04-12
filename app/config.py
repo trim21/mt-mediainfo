@@ -96,6 +96,44 @@ class Config:
         Field(os.environ.get("SINGLE_TORRENT_SIZE_LIMIT", "10GiB"), validate_default=True),
     ]
 
+    # S3-compatible torrent storage (optional – when set, torrent content is
+    # stored in S3 instead of the PostgreSQL ``torrent.content`` column).
+    s3_endpoint: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("S3_ENDPOINT")),
+    ]
+    s3_bucket: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("S3_BUCKET")),
+    ]
+    s3_access_key: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("S3_ACCESS_KEY")),
+    ]
+    s3_secret_key: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("S3_SECRET_KEY")),
+    ]
+    s3_region: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("S3_REGION")),
+    ]
+    s3_prefix: Annotated[
+        str,
+        Field(os.environ.get("S3_PREFIX", "torrents/")),
+    ]
+
+    @property
+    def s3_enabled(self) -> bool:
+        return bool(
+            self.s3_endpoint and self.s3_bucket and self.s3_access_key and self.s3_secret_key
+        )
+
     def pg_dsn(self) -> str:
         url = yarl.URL.build(
             scheme="postgresql",

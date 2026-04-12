@@ -18,6 +18,7 @@ from app.db import Database
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
 from app.torrent import find_largest_video_file, parse_torrent
+from app.torrent_store import TorrentStore, create_torrent_store
 from app.utils import get_info_hash_v1_from_content, parse_obj
 
 TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -70,6 +71,7 @@ class RunResult(enum.Enum):
 class Scrape:
     mteam_client: MTeamAPI
     __db: Database
+    __store: TorrentStore
 
     def __init__(self, c: Config):
         self.__db = Database(c.pg_dsn())
@@ -77,6 +79,7 @@ class Scrape:
 
         run_migrations(self.__db)
         self.__kv = KVConfig(self.__db)
+        self.__store = create_torrent_store(c, self.__db)
 
     def scrape_detail(self, limit: int = 0) -> None:
         """Fetch torrent details for threads missing mediainfo, or fill tid gaps."""
@@ -271,14 +274,7 @@ class Scrape:
                 else -1
             )
 
-            self.__db.execute(
-                """
-                    insert into torrent (tid, info_hash, content)
-                    VALUES ($1, $2, $3)
-                    on conflict (tid) do nothing
-                    """,
-                [tid, info_hash, tc],
-            )
+            self.__store.put(tid, info_hash, tc)
 
             self.__db.execute(
                 """update thread set info_hash = $2, size = $3, selected_size = $4, torrent_fetched_at = current_timestamp where tid = $1""",
@@ -289,9 +285,9 @@ class Scrape:
     def backfill_selected_size(self) -> None:
         """Backfill selected_size for threads that already have a torrent but selected_size=0."""
         while True:
-            rows: list[tuple[int, bytes]] = self.__db.fetch_all(
+            rows: list[tuple[int,]] = self.__db.fetch_all(
                 """
-                select thread.tid, torrent.content from thread
+                select thread.tid from thread
                 join torrent on (torrent.tid = thread.tid)
                 where thread.selected_size = 0 and thread.info_hash != ''
                 limit 200
@@ -301,7 +297,11 @@ class Scrape:
             if not rows:
                 return
 
-            for tid, tc in rows:
+            for (tid,) in rows:
+                tc = self.__store.get(tid)
+                if tc is None:
+                    continue
+
                 try:
                     t = parse_torrent(tc)
                 except (pydantic.ValidationError, BencodeDecodeError):

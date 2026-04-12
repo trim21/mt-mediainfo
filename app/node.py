@@ -45,6 +45,7 @@ from app.rpc import (
     process_commands,
 )
 from app.torrent import find_largest_video_file
+from app.torrent_store import TorrentStore, create_torrent_store
 from app.utils import parse_obj, set_torrent_comment
 
 
@@ -105,12 +106,14 @@ class Node:
     db: Database
     config: Config
     qb: qbittorrentapi.Client
+    store: TorrentStore
 
     @classmethod
     def new(cls, cfg: Config) -> Node:
+        db = Database(cfg.pg_dsn())
         return Node(
             config=cfg,
-            db=Database(cfg.pg_dsn()),
+            db=db,
             qb=qbittorrentapi.Client(
                 host=str(cfg.qb_url),
                 password=cfg.qb_url.password,
@@ -121,6 +124,7 @@ class Node:
                 RAISE_NOTIMPLEMENTEDERROR_FOR_UNIMPLEMENTED_API_ENDPOINTS=True,
                 REQUESTS_ARGS={"timeout": 10},
             ),
+            store=create_torrent_store(cfg, db),
         )
 
     def __post_init__(self) -> None:
@@ -495,10 +499,7 @@ class Node:
         tid: int,
         info_hash: str,
     ) -> None:
-        tc = self.db.fetch_val(
-            "select content from torrent where tid = $1 limit 1",
-            [tid],
-        )
+        tc = self.store.get(tid)
         if not tc:
             self.__update_job_status(
                 status=ITEM_STATUS_FAILED,
