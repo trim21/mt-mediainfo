@@ -285,7 +285,7 @@ class Scrape:
     def backfill_selected_size(self) -> None:
         """Backfill selected_size for threads that already have a torrent but selected_size=0."""
         while True:
-            rows: list[tuple[int,]] = self.__db.fetch_all(
+            rows: list[tuple[int]] = self.__db.fetch_all(
                 """
                 select thread.tid from thread
                 join torrent on (torrent.tid = thread.tid)
