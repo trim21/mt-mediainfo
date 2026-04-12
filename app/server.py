@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -22,6 +23,7 @@ from app.const import (
     SELECTED_CATEGORY,
 )
 from app.rpc import PAYLOAD_TYPES, RpcRequest, enqueue_command
+from app.torrent_store import S3TorrentStore
 from app.utils import human_readable_byte_rate, human_readable_size, parse_obj
 
 
@@ -70,6 +72,67 @@ type Render = Annotated[_Render, Depends(__render)]
 
 
 PAGE_SIZE = 100
+
+# ---------------------------------------------------------------------------
+# S3 migration state (module-level, shared across requests)
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class _S3MigrationState:
+    """Mutable state tracking the PG→S3 torrent migration background task."""
+
+    running: bool = False
+    total: int = 0
+    migrated: int = 0
+    failed: int = 0
+    last_error: str = ""
+
+
+_s3_migration = _S3MigrationState()
+_s3_migration_lock = asyncio.Lock()
+
+
+async def _run_s3_migration(
+    pool: asyncpg.Pool,  # type: ignore[type-arg]
+    store: S3TorrentStore,
+) -> None:
+    """Background coroutine: stream PG rows with non-empty content → S3."""
+    state = _s3_migration
+    try:
+        total: int | None = await pool.fetchval(
+            "select count(1)::int from torrent where length(content) > 0"
+        )
+        state.total = int(total or 0)
+        state.migrated = 0
+        state.failed = 0
+        state.last_error = ""
+
+        batch_size = 50
+        while state.running:
+            rows = await pool.fetch(
+                "select tid, content from torrent where length(content) > 0 order by tid limit $1",
+                batch_size,
+            )
+            if not rows:
+                break
+
+            for r in rows:
+                if not state.running:
+                    break
+                tid: int = r["tid"]
+                content: bytes = r["content"]
+                try:
+                    await asyncio.to_thread(store.upload_bytes, tid, content)
+                    await pool.execute("update torrent set content = ''::bytea where tid = $1", tid)
+                    state.migrated += 1
+                except Exception as exc:
+                    state.failed += 1
+                    state.last_error = f"tid={tid}: {exc}"
+    except Exception as exc:
+        state.last_error = str(exc)
+    finally:
+        state.running = False
 
 
 def create_app() -> fastapi.FastAPI:
@@ -1109,9 +1172,70 @@ def create_app() -> fastapi.FastAPI:
         result = await pool.execute("delete from daily_stats")
         return ORJSONResponse({"deleted": result})
 
+    # ---- S3 migration endpoints ----
+
+    @app.get("/api/s3-migration/progress")
+    async def s3_migration_progress() -> ORJSONResponse:
+        remaining = await pool.fetchval(
+            "select count(1)::int from torrent where length(content) > 0"
+        )
+        return ORJSONResponse({
+            "s3_enabled": cfg.s3_enabled,
+            "running": _s3_migration.running,
+            "total": _s3_migration.total,
+            "migrated": _s3_migration.migrated,
+            "failed": _s3_migration.failed,
+            "remaining": int(remaining or 0),
+            "last_error": _s3_migration.last_error,
+        })
+
+    @app.post("/api/s3-migration/start")
+    async def s3_migration_start() -> ORJSONResponse:
+        if not cfg.s3_enabled:
+            return ORJSONResponse({"error": "S3 is not configured"}, status_code=400)
+
+        async with _s3_migration_lock:
+            if _s3_migration.running:
+                return ORJSONResponse({"error": "migration already running"}, status_code=409)
+            _s3_migration.running = True
+
+        from app.db import Database
+
+        db = Database(cfg.pg_dsn())
+        store = S3TorrentStore(
+            db,
+            endpoint_url=cfg.s3_endpoint,  # type: ignore[arg-type]
+            bucket=cfg.s3_bucket,  # type: ignore[arg-type]
+            access_key=cfg.s3_access_key,  # type: ignore[arg-type]
+            secret_key=cfg.s3_secret_key,  # type: ignore[arg-type]
+            region=cfg.s3_region or "",
+            prefix=cfg.s3_prefix,
+        )
+        asyncio.create_task(_run_s3_migration(pool, store))
+        return ORJSONResponse({"started": True})
+
+    @app.post("/api/s3-migration/stop")
+    async def s3_migration_stop() -> ORJSONResponse:
+        _s3_migration.running = False
+        return ORJSONResponse({"stopped": True})
+
     @app.get("/admin")
     async def admin_page(render: Render) -> HTMLResponse:
-        return render("admin.html.j2")
+        remaining = await pool.fetchval(
+            "select count(1)::int from torrent where length(content) > 0"
+        )
+        return render(
+            "admin.html.j2",
+            ctx={
+                "s3_enabled": cfg.s3_enabled,
+                "s3_migration_running": _s3_migration.running,
+                "s3_migration_total": _s3_migration.total,
+                "s3_migration_migrated": _s3_migration.migrated,
+                "s3_migration_failed": _s3_migration.failed,
+                "s3_migration_remaining": int(remaining or 0),
+                "s3_migration_last_error": _s3_migration.last_error,
+            },
+        )
 
     @app.get("/nodes")
     async def nodes_page(render: Render) -> HTMLResponse:

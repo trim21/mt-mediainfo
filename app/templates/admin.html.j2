@@ -26,6 +26,57 @@
       <span id="clearResult" class="ms-2 text-success" style="display:none;">Cleared!</span>
     </div>
   </div>
+
+  {# ---- S3 Migration ---- #}
+  <div class="card mt-3">
+    <div class="card-body">
+      <h5 class="card-title">S3 Torrent Migration</h5>
+
+      {% if not s3_enabled %}
+      <div class="alert alert-secondary mb-0">
+        S3 storage is not configured. Set <code>S3_ENDPOINT</code>, <code>S3_BUCKET</code>,
+        <code>S3_ACCESS_KEY</code>, and <code>S3_SECRET_KEY</code> environment variables to enable.
+      </div>
+      {% else %}
+      <p class="card-text">
+        Migrate torrent content from the PostgreSQL <code>torrent.content</code> column to S3.
+        Rows that have already been migrated (empty content) are skipped.
+      </p>
+
+      <div class="mb-3">
+        <span class="badge bg-secondary">Remaining in PG</span>
+        <strong id="migRemaining">{{ s3_migration_remaining }}</strong>
+        &nbsp;|&nbsp;
+        <span class="badge bg-primary">Total this run</span>
+        <strong id="migTotal">{{ s3_migration_total }}</strong>
+        &nbsp;|&nbsp;
+        <span class="badge bg-success">Migrated</span>
+        <strong id="migMigrated">{{ s3_migration_migrated }}</strong>
+        &nbsp;|&nbsp;
+        <span class="badge bg-danger">Failed</span>
+        <strong id="migFailed">{{ s3_migration_failed }}</strong>
+      </div>
+
+      <div class="progress mb-3" style="height: 24px;">
+        <div id="migBar" class="progress-bar bg-success" role="progressbar" style="width: 0%;">0%</div>
+      </div>
+
+      <div id="migError" class="alert alert-danger mb-3" style="display:none;"></div>
+
+      <button id="migStartBtn" type="button" class="btn btn-primary"
+              onclick="startMigration()" {% if s3_migration_running %}disabled{% endif %}>
+        {% if s3_migration_running %}Running…{% else %}Start Migration{% endif %}
+      </button>
+      <button id="migStopBtn" type="button" class="btn btn-outline-danger ms-2"
+              onclick="stopMigration()" {% if not s3_migration_running %}disabled{% endif %}>
+        Stop
+      </button>
+      <span id="migStatus" class="ms-2 text-muted">
+        {% if s3_migration_running %}Migration is running…{% endif %}
+      </span>
+      {% endif %}
+    </div>
+  </div>
 </div>
 
 <script>
@@ -39,6 +90,79 @@
         setTimeout(() => el.style.display = 'none', 3000);
       });
   }
+
+  /* ---- S3 Migration ---- */
+  let migPollTimer = null;
+
+  function updateMigUI(data) {
+    document.getElementById('migRemaining').textContent = data.remaining;
+    document.getElementById('migTotal').textContent = data.total;
+    document.getElementById('migMigrated').textContent = data.migrated;
+    document.getElementById('migFailed').textContent = data.failed;
+
+    const pct = data.total > 0
+      ? Math.round(data.migrated / data.total * 100)
+      : 0;
+    const bar = document.getElementById('migBar');
+    bar.style.width = pct + '%';
+    bar.textContent = pct + '%';
+
+    const errEl = document.getElementById('migError');
+    if (data.last_error) {
+      errEl.textContent = data.last_error;
+      errEl.style.display = '';
+    } else {
+      errEl.style.display = 'none';
+    }
+
+    const startBtn = document.getElementById('migStartBtn');
+    const stopBtn = document.getElementById('migStopBtn');
+    const status = document.getElementById('migStatus');
+    if (data.running) {
+      startBtn.disabled = true;
+      startBtn.textContent = 'Running…';
+      stopBtn.disabled = false;
+      status.textContent = 'Migration is running…';
+    } else {
+      startBtn.disabled = false;
+      startBtn.textContent = 'Start Migration';
+      stopBtn.disabled = true;
+      status.textContent = data.total > 0 && data.migrated >= data.total && data.remaining === 0
+        ? 'Migration complete!'
+        : '';
+      if (migPollTimer) { clearInterval(migPollTimer); migPollTimer = null; }
+    }
+  }
+
+  function pollMigration() {
+    fetch('/api/s3-migration/progress')
+      .then(r => r.json())
+      .then(updateMigUI)
+      .catch(() => {});
+  }
+
+  function startMigration() {
+    if (!confirm('Start migrating torrent content from PostgreSQL to S3?')) return;
+    fetch('/api/s3-migration/start', {method: 'POST'})
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) { alert(data.error); return; }
+        if (!migPollTimer) migPollTimer = setInterval(pollMigration, 2000);
+        pollMigration();
+      });
+  }
+
+  function stopMigration() {
+    fetch('/api/s3-migration/stop', {method: 'POST'})
+      .then(r => r.json())
+      .then(() => pollMigration());
+  }
+
+  // Auto-poll if migration is already running on page load
+  {% if s3_enabled and s3_migration_running %}
+  migPollTimer = setInterval(pollMigration, 2000);
+  pollMigration();
+  {% endif %}
 </script>
 </body>
 </html>

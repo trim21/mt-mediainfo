@@ -90,6 +90,11 @@ class S3TorrentStore:
     Objects are stored under ``{prefix}{tid}.torrent`` in the configured
     bucket.  A metadata-only row (without ``content``) is still written to
     the ``torrent`` table so that daily-stats counting queries keep working.
+
+    **Fallback behaviour**: :meth:`get` first tries S3; if the object does
+    not exist it falls back to the PostgreSQL ``torrent.content`` column.
+    When a fallback hit occurs the content is automatically uploaded to S3
+    and the PG row is cleared, effectively migrating the row on-the-fly.
     """
 
     def __init__(
@@ -116,6 +121,19 @@ class S3TorrentStore:
             kwargs["region_name"] = region
         self.__s3 = boto3.client("s3", **kwargs)
 
+    @property
+    def s3_client(self) -> object:
+        """Expose the underlying boto3 S3 client (used by the migration task)."""
+        return self.__s3
+
+    @property
+    def bucket(self) -> str:
+        return self.__bucket
+
+    @property
+    def prefix(self) -> str:
+        return self.__prefix
+
     def _key(self, tid: int) -> str:
         return f"{self.__prefix}{tid}.torrent"
 
@@ -134,11 +152,32 @@ class S3TorrentStore:
             [tid, info_hash],
         )
 
+    def upload_bytes(self, tid: int, content: bytes) -> None:
+        """Upload raw bytes to S3 without touching the database row."""
+        key = self._key(tid)
+        self.__s3.upload_fileobj(io.BytesIO(content), self.__bucket, key)
+
     def get(self, tid: int) -> bytes | None:
         key = self._key(tid)
         try:
             resp = self.__s3.get_object(Bucket=self.__bucket, Key=key)
             return resp["Body"].read()  # type: ignore[no-any-return]
         except self.__s3.exceptions.NoSuchKey:
-            logger.warning("torrent {} not found in S3 at {}", tid, key)
+            pass
+
+        # Fallback: read from PG and lazily migrate to S3
+        content: bytes | None = self.__db.fetch_val(
+            "select content from torrent where tid = $1 and length(content) > 0 limit 1",
+            [tid],
+        )
+        if content is None:
+            logger.warning("torrent {} not found in S3 or PG", tid)
             return None
+
+        logger.info("torrent {} found in PG, migrating to S3", tid)
+        self.__s3.upload_fileobj(io.BytesIO(content), self.__bucket, key)
+        self.__db.execute(
+            "update torrent set content = ''::bytea where tid = $1",
+            [tid],
+        )
+        return content
