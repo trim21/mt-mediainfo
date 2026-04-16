@@ -288,10 +288,9 @@ class Node:
                     logger.error("failed to process local torrent {}", e)
                 continue
 
-            # Newly added torrent → select files, clear limit, remove tag
+            # Newly added torrent → select files, remove tag
             if QB_TAG_NEED_SELECT in t.tags:
                 self.__fix_file_selection(t)
-                self.dl.set_download_limit(t.hash, 0)
                 self.dl.remove_tags(t.hash, [QB_TAG_NEED_SELECT])
                 continue
 
@@ -479,7 +478,6 @@ class Node:
             tc,
             save_path=os.path.join(self.config.download_path, info_hash),
             tags=[QB_TAG_DOWNLOADING, QB_TAG_NEED_SELECT],
-            download_limit=1,
         )
         if not ok:
             self.__update_job_status(

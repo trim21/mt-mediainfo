@@ -214,17 +214,11 @@ class RTorrentClient:
         *,
         save_path: str,
         tags: list[str],
-        download_limit: int = 0,
     ) -> bool:
-        extras: list[str] = []
-        if download_limit > 0:
-            extras.append(f"d.throttle.max={download_limit}")
-
         self._rt.add_torrent_by_file(
             torrent_data,
             directory_base=save_path,
             tags=tags,
-            extras=extras,
         )
         return True
 
@@ -247,10 +241,6 @@ class RTorrentClient:
 
     def resume_torrent(self, info_hash: str) -> None:
         self._rt.start_torrent(info_hash)
-
-    def set_download_limit(self, info_hash: str, limit: int) -> None:
-        # rTorrent uses 0 for unlimited as well
-        self._rt.call("d.throttle.max.set", [info_hash, limit])
 
     def add_tags(self, info_hash: str, tags: list[str]) -> None:
         current = self._get_tags(info_hash)

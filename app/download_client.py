@@ -73,7 +73,6 @@ class DownloadClient(Protocol):
         *,
         save_path: str,
         tags: list[str],
-        download_limit: int = 0,
     ) -> bool:
         """Add a torrent. Return True on success."""
         ...
@@ -85,10 +84,6 @@ class DownloadClient(Protocol):
     def pause_torrent(self, info_hash: str) -> None: ...
 
     def resume_torrent(self, info_hash: str) -> None: ...
-
-    def set_download_limit(self, info_hash: str, limit: int) -> None:
-        """Set per-torrent download speed limit in bytes/s. 0 means unlimited."""
-        ...
 
     def add_tags(self, info_hash: str, tags: list[str]) -> None: ...
 

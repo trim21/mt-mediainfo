@@ -99,14 +99,12 @@ class QBittorrentClient:
         *,
         save_path: str,
         tags: list[str],
-        download_limit: int = 0,
     ) -> bool:
         r = self._qb.torrents_add(
             torrent_files=[torrent_data],
             save_path=save_path,
             use_auto_torrent_management=False,
             tags=tags,
-            download_limit=download_limit,
             is_sequential_download=True,
         )
         return r == "Ok."
@@ -120,9 +118,6 @@ class QBittorrentClient:
 
     def resume_torrent(self, info_hash: str) -> None:
         self._qb.torrents_resume(torrent_hashes=info_hash)
-
-    def set_download_limit(self, info_hash: str, limit: int) -> None:
-        self._qb.torrents_set_download_limit(limit=limit, torrent_hashes=info_hash)
 
     def add_tags(self, info_hash: str, tags: list[str]) -> None:
         self._qb.torrents_add_tags(tags=tags, torrent_hashes=info_hash)
