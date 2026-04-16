@@ -1,5 +1,7 @@
 import dataclasses
 import os
+import stat
+import tempfile
 import uuid
 from typing import Annotated, Any
 
@@ -148,8 +150,7 @@ class Config:
         if self.pg_ssl_cert:
             query["sslcert"] = self.pg_ssl_cert
         if self.pg_ssl_key:
-            os.chmod(self.pg_ssl_key, 0o600)
-            query["sslkey"] = self.pg_ssl_key
+            query["sslkey"] = _copy_key_with_permissions(self.pg_ssl_key)
 
         if query:
             url = url.with_query(query)
@@ -159,3 +160,23 @@ class Config:
 
 def load_config() -> Config:
     return parse_obj(Config, {})
+
+
+def _copy_key_with_permissions(src: str) -> str:
+    """Copy a private key file to a temp file with 0600 permissions.
+
+    Docker volume mounts may not allow chmod on the original file,
+    so we copy it to a temp location where we control permissions.
+    """
+    fd = os.open(
+        os.path.join(tempfile.gettempdir(), "pg-client.key"),
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+        stat.S_IRUSR | stat.S_IWUSR,
+    )
+    try:
+        with open(src, "rb") as src_f:
+            os.write(fd, src_f.read())
+    finally:
+        os.close(fd)
+
+    return os.path.join(tempfile.gettempdir(), "pg-client.key")
