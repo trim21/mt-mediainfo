@@ -26,7 +26,7 @@ def default_node_id() -> str:
     return os.getenv("NODE_ID") or str(uuid.UUID(int=uuid.getnode()))
 
 
-@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class BaseConfig:
     debug: Annotated[bool, Field(os.getenv("DEBUG") or False, validate_default=False)]
 
@@ -87,7 +87,7 @@ class BaseConfig:
         return str(url)
 
 
-@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+@dataclasses.dataclass(kw_only=True, frozen=True)
 class S3Mixin:
     s3_bucket: Annotated[
         str,
@@ -116,7 +116,7 @@ class S3Mixin:
     ]
 
 
-@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class NodeConfig(BaseConfig, S3Mixin):
     node_id: Annotated[
         str,
@@ -152,7 +152,7 @@ class NodeConfig(BaseConfig, S3Mixin):
     ]
 
 
-@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class ScrapeConfig(BaseConfig, S3Mixin):
     mt_token: Annotated[
         str, Field(min_length=1, default_factory=lambda: os.environ["MT_API_TOKEN"])
@@ -162,7 +162,7 @@ class ScrapeConfig(BaseConfig, S3Mixin):
     http_proxy: Annotated[str | None, BeforeValidator(lambda x: x or None)] = None
 
 
-@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class ServerConfig(BaseConfig):
     pass
 
