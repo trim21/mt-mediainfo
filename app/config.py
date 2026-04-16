@@ -75,7 +75,15 @@ class Config:
     ]
 
     qb_url: Annotated[
-        HttpUrl, Field(os.environ.get("QB_URL", "http://127.0.0.1:8084"), validate_default=True)
+        HttpUrl | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("QB_URL"), validate_default=True),
+    ]
+
+    rt_url: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("RT_URL")),
     ]
 
     download_path: Annotated[
