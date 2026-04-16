@@ -783,7 +783,7 @@ def create_app() -> fastapi.FastAPI:
 
         status_stats = {
             str(r["status"]): {"count": int(r["count"]), "size": int(r["size"])}
-            for r in job_status_rows
+            for r in cast(list[asyncpg.Record], job_status_rows)
         }
 
         downloading = status_stats.get(ITEM_STATUS_DOWNLOADING, {}).get("count", 0)
@@ -803,7 +803,7 @@ def create_app() -> fastapi.FastAPI:
                 "count": int(r["count"]),
                 "size_fmt": human_readable_size(int(r["size"])),
             }
-            for r in downloading_node_rows
+            for r in cast(list[asyncpg.Record], downloading_node_rows)
         ]
 
         done_nodes = [
@@ -812,7 +812,7 @@ def create_app() -> fastapi.FastAPI:
                 "count": int(r["count"]),
                 "size_fmt": human_readable_size(int(r["size"])),
             }
-            for r in done_node_rows
+            for r in cast(list[asyncpg.Record], done_node_rows)
         ]
 
         skipped = (
