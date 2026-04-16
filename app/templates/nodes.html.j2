@@ -38,7 +38,7 @@
           <code class="text-muted">{{ n.id }}</code>
         </a>
       </td>
-      <td>{{ n.last_seen | fmt_dt }}</td>
+      <td title="{{ n.last_seen | fmt_dt }}">{{ n.last_seen | timeago }}</td>
       <td>{{ n.downloading }}</td>
       <td>{{ n.done }}</td>
       <td>{{ n.failed }}</td>

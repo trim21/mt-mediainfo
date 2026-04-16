@@ -101,6 +101,17 @@ def create_app() -> fastapi.FastAPI:
 
     templates.env.filters["fmt_dt"] = _fmt_dt
 
+    def _timeago(dt: datetime | None) -> str:
+        if dt is None:
+            return "-"
+        delta = datetime.now(tz=_tz_shanghai) - dt.astimezone(_tz_shanghai)
+        seconds = delta.total_seconds()
+        if seconds < 0:
+            return "-"
+        return _fmt_eta(seconds) + " ago"
+
+    templates.env.filters["timeago"] = _timeago
+
     def _pagination(page: int, total_count: int) -> dict[str, int | bool | None]:
         total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
         current_page = min(max(page, 1), total_pages)
