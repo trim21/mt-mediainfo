@@ -78,9 +78,14 @@
 
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div class="text-muted small">Page {{ page }} / {{ total_pages }}{% if total_count %} · Showing {{ threads | length }} of {{ total_count }}{% endif %}</div>
-    <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
-      <a class="btn btn-outline-secondary{% if not has_prev %} disabled{% endif %}" href="?page={{ prev_page if prev_page else 1 }}">Previous</a>
-      <a class="btn btn-outline-secondary{% if not has_next %} disabled{% endif %}" href="?page={{ next_page if next_page else total_pages }}">Next</a>
+    <div class="d-flex align-items-center gap-2">
+      {% if show_reset_all %}
+      <button type="button" class="btn btn-outline-danger btn-sm" onclick="resetAllRemoved()">Reset All</button>
+      {% endif %}
+      <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
+        <a class="btn btn-outline-secondary{% if not has_prev %} disabled{% endif %}" href="?page={{ prev_page if prev_page else 1 }}">Previous</a>
+        <a class="btn btn-outline-secondary{% if not has_next %} disabled{% endif %}" href="?page={{ next_page if next_page else total_pages }}">Next</a>
+      </div>
     </div>
   </div>
 
@@ -149,6 +154,18 @@ async function resetOne(tid) {
     alert('Failed to reset');
   }
 }
+
+{% if show_reset_all %}
+async function resetAllRemoved() {
+  if (!confirm('Reset all removed jobs? This affects every job with removed-by-client status.')) return;
+  const resp = await fetch('/api/threads/removed/reset-all', {method: 'POST'});
+  if (resp.ok) {
+    location.reload();
+  } else {
+    alert('Failed to reset all removed jobs');
+  }
+}
+{% endif %}
 </script>
 {% endif %}
 

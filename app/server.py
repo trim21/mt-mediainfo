@@ -154,6 +154,7 @@ def create_app() -> fastapi.FastAPI:
         show_progress: bool,
         show_failed_reason: bool,
         show_reset: bool = False,
+        show_reset_all: bool = False,
     ) -> HTMLResponse:
         total_count = cast(int, await pool.fetchval(count_sql, *params) or 0)
         pager = _pagination(page, total_count)
@@ -165,6 +166,7 @@ def create_app() -> fastapi.FastAPI:
                 "show_progress": show_progress,
                 "show_failed_reason": show_failed_reason,
                 "show_reset": show_reset,
+                "show_reset_all": show_reset_all,
                 "threads": [_thread_row(r, show_failed_reason=show_failed_reason) for r in rows],
                 "page": pager["page"],
                 "page_size": pager["page_size"],
@@ -1098,6 +1100,7 @@ def create_app() -> fastapi.FastAPI:
             show_progress=False,
             show_failed_reason=False,
             show_reset=True,
+            show_reset_all=True,
         )
 
     @app.post("/api/thread/{tid}/reset")
@@ -1109,6 +1112,17 @@ def create_app() -> fastapi.FastAPI:
             """,
             tid,
             [ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT, ITEM_STATUS_FAILED],
+        )
+        return ORJSONResponse({"deleted": result})
+
+    @app.post("/api/threads/removed/reset-all")
+    async def reset_all_removed_threads() -> ORJSONResponse:
+        result = await pool.execute(
+            """
+            delete from job
+            where status = $1
+            """,
+            ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
         )
         return ORJSONResponse({"deleted": result})
 
