@@ -683,6 +683,7 @@ def create_app() -> fastapi.FastAPI:
             job_status_rows,
             downloading_node_rows,
             done_node_rows,
+            pending_migrate,
         ) = await asyncio.gather(
             pool.fetchrow(
                 """
@@ -764,6 +765,7 @@ def create_app() -> fastapi.FastAPI:
                 SELECTED_CATEGORY,
                 ITEM_STATUS_DONE,
             ),
+            pool.fetchval("select count(1) from torrent"),
         )
 
         thread_stats = cast(asyncpg.Record, thread_stats)
@@ -864,6 +866,7 @@ def create_app() -> fastapi.FastAPI:
                 "skipped": skipped,
                 "skipped_size": human_readable_size(skipped_size),
                 "skipped_pct": pct(skipped),
+                "pending_migrate": pending_migrate or 0,
             },
         )
 

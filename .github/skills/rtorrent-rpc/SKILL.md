@@ -58,40 +58,56 @@ Getter methods end with `=` in multicall context (e.g., `"d.name="`). Setter met
 ### d.multicall2 — Batch-query all torrents
 
 ```python
-raw = rt.call("d.multicall2", [
-    "",           # first arg is always empty string
-    "default",    # view name ("default" = all, "main", "started", "stopped", etc.)
-    "d.name=",
-    "d.hash=",
-    "d.directory_base=",
-    "d.custom1=",       # tags (ruTorrent compat)
-    "d.size_bytes=",
-    "d.completed_bytes=",
-    "d.up.total=",
-    "d.is_open=",
-    "d.state=",
-    "d.complete=",
-    "d.down.rate=",
-])
+raw = rt.call(
+    "d.multicall2",
+    [
+        "",  # first arg is always empty string
+        "default",  # view name ("default" = all, "main", "started", "stopped", etc.)
+        "d.name=",
+        "d.hash=",
+        "d.directory_base=",
+        "d.custom1=",  # tags (ruTorrent compat)
+        "d.size_bytes=",
+        "d.completed_bytes=",
+        "d.up.total=",
+        "d.is_open=",
+        "d.state=",
+        "d.complete=",
+        "d.down.rate=",
+    ],
+)
 # Returns: list[list[Any]] — each inner list has values in the order of the commands
 for row in raw:
-    name, hash_, directory, tags_raw, size, completed, uploaded, is_open, state, complete, dlrate = (
-        row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10]
-    )
+    (
+        name,
+        hash_,
+        directory,
+        tags_raw,
+        size,
+        completed,
+        uploaded,
+        is_open,
+        state,
+        complete,
+        dlrate,
+    ) = (row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10])
 ```
 
 ### f.multicall — List files of a torrent
 
 ```python
-raw = rt.call("f.multicall", [
-    info_hash,
-    "",           # second arg is always empty string
-    "f.path=",
-    "f.size_bytes=",
-    "f.priority=",
-    "f.completed_chunks=",
-    "f.size_chunks=",
-])
+raw = rt.call(
+    "f.multicall",
+    [
+        info_hash,
+        "",  # second arg is always empty string
+        "f.path=",
+        "f.size_bytes=",
+        "f.priority=",
+        "f.completed_chunks=",
+        "f.size_chunks=",
+    ],
+)
 # Returns: list[list[Any]] — one entry per file
 ```
 
@@ -134,9 +150,9 @@ otherwise               →  TorrentState.downloading
 rt.add_torrent_by_file(
     content=torrent_bytes,
     directory_base="/data/downloads",
-    tags=["tag1", "tag2"],              # stored in d.custom1 (ruTorrent format)
-    extras=["d.throttle.max=1024"],     # extra commands run on add
-    custom={"mykey": "myvalue"},        # stored via d.custom.set
+    tags=["tag1", "tag2"],  # stored in d.custom1 (ruTorrent format)
+    extras=["d.throttle.max=1024"],  # extra commands run on add
+    custom={"mykey": "myvalue"},  # stored via d.custom.set
 )
 ```
 

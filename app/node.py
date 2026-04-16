@@ -43,6 +43,7 @@ from app.rpc import (
 )
 from app.rt import RTorrentClient
 from app.torrent import find_largest_video_file
+from app.torrent_store import TorrentStore
 from app.utils import set_torrent_comment
 
 
@@ -73,13 +74,16 @@ class Node:
     db: Database
     config: Config
     dl: DownloadClient
+    store: TorrentStore
 
     @classmethod
     def new(cls, cfg: Config) -> Node:
+        db = Database(cfg.pg_dsn())
         return Node(
             config=cfg,
-            db=Database(cfg.pg_dsn()),
+            db=db,
             dl=_create_download_client(cfg),
+            store=TorrentStore(cfg, db),
         )
 
     def __post_init__(self) -> None:
@@ -447,10 +451,7 @@ class Node:
         tid: int,
         info_hash: str,
     ) -> None:
-        tc = self.db.fetch_val(
-            "select content from torrent where tid = $1 limit 1",
-            [tid],
-        )
+        tc = self.store.read(tid)
         if not tc:
             self.__update_job_status(
                 status=ITEM_STATUS_FAILED,

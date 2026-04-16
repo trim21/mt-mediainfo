@@ -104,6 +104,32 @@ class Config:
         Field(os.environ.get("SINGLE_TORRENT_SIZE_LIMIT", "10GiB"), validate_default=True),
     ]
 
+    s3_bucket: Annotated[
+        str,
+        Field(min_length=1, default_factory=lambda: os.environ["S3_BUCKET"]),
+    ]
+    s3_region: Annotated[
+        str,
+        Field(min_length=1, default_factory=lambda: os.environ["S3_REGION"]),
+    ]
+    s3_endpoint: Annotated[
+        str,
+        Field(min_length=1, default_factory=lambda: os.environ["S3_ENDPOINT"]),
+    ]
+    s3_access_key_id: Annotated[
+        str,
+        Field(min_length=1, default_factory=lambda: os.environ["S3_ACCESS_KEY_ID"]),
+    ]
+    s3_secret_access_key: Annotated[
+        str,
+        Field(min_length=1, default_factory=lambda: os.environ["S3_SECRET_ACCESS_KEY"]),
+    ]
+    s3_root: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(os.environ.get("S3_ROOT")),
+    ]
+
     def pg_dsn(self) -> str:
         url = yarl.URL.build(
             scheme="postgresql",

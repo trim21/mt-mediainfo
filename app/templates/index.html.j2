@@ -124,6 +124,18 @@
   <canvas id="weeklyFetchChart" style="max-height: 350px; display: none;"></canvas>
 </div>
 
+<div class="container mt-4">
+  <h3>S3 Migration</h3>
+  <table class="table table-bordered" style="max-width: 400px;">
+    <tbody>
+    <tr>
+      <th>Pending migration (PG &rarr; S3)</th>
+      <td>{{ pending_migrate }}</td>
+    </tr>
+    </tbody>
+  </table>
+</div>
+
 <div class="container mt-4 mb-4">
   <a href="/detail">View daily detail (last 365 days) &rarr;</a>
   &nbsp;&nbsp;|&nbsp;&nbsp;
