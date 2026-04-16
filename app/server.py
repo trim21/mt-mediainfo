@@ -7,6 +7,7 @@ from typing import Annotated, Any, Protocol, cast
 from zoneinfo import ZoneInfo
 
 import asyncpg
+import durationpy
 import fastapi
 import orjson
 from fastapi import Depends, Request
@@ -1144,21 +1145,9 @@ def create_app() -> fastapi.FastAPI:
         return render("nodes.html.j2", ctx={"nodes": nodes_data})
 
     def _fmt_eta(seconds: float) -> str:
-        if seconds <= 0:
+        if seconds <= 0 or seconds > 365 * 24 * 3600:
             return "∞"
-        if seconds > 365 * 24 * 3600:
-            return "∞"
-        s = int(seconds)
-        d, s = divmod(s, 86400)
-        h, s = divmod(s, 3600)
-        m, s = divmod(s, 60)
-        if d:
-            return f"{d}d{h}h{m}m{s}s"
-        if h:
-            return f"{h}h{m}m{s}s"
-        if m:
-            return f"{m}m{s}s"
-        return f"{s}s"
+        return durationpy.to_str(timedelta(seconds=int(seconds)))
 
     @app.get("/nodes/{node_id}")
     async def node_jobs_page(node_id: str, render: Render) -> HTMLResponse:
