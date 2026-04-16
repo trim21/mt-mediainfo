@@ -631,7 +631,7 @@ requires-dist = [
     { name = "fastapi", specifier = "==0.136.0" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "jinja2", specifier = "==3.1.6" },
-    { name = "opendal", specifier = ">=0.46.0" },
+    { name = "opendal", specifier = "==0.46.0" },
     { name = "orjson", specifier = "==3.11.8" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.3" },
     { name = "pydantic", specifier = "==2.13.1" },
@@ -654,7 +654,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "asyncpg-stubs", specifier = "==0.31.2" },
-    { name = "mypy", specifier = ">=1.20.1" },
+    { name = "mypy", specifier = "==1.20.1" },
     { name = "ty", specifier = "==0.0.31" },
     { name = "types-regex", specifier = "==2026.4.4.20260408" },
     { name = "types-six", specifier = "==1.17.0.20260408" },
