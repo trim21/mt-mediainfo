@@ -797,9 +797,17 @@ def create_app() -> fastapi.FastAPI:
             "size", 0
         )
 
+        node_aliases = {
+            str(r["id"]): str(r["alias"])
+            for r in await pool.fetch("select id, alias from node where alias != ''")
+        }
+
+        def _node_name(nid: str) -> str:
+            return node_aliases.get(nid, nid[:8])
+
         downloading_nodes = [
             {
-                "node_id": str(r["node_id"])[:8],
+                "node_name": _node_name(str(r["node_id"])),
                 "count": int(r["count"]),
                 "size_fmt": human_readable_size(int(r["size"])),
             }
@@ -808,7 +816,7 @@ def create_app() -> fastapi.FastAPI:
 
         done_nodes = [
             {
-                "node_id": str(r["node_id"])[:8],
+                "node_name": _node_name(str(r["node_id"])),
                 "count": int(r["count"]),
                 "size_fmt": human_readable_size(int(r["size"])),
             }
@@ -867,6 +875,7 @@ def create_app() -> fastapi.FastAPI:
                 "skipped_size": human_readable_size(skipped_size),
                 "skipped_pct": pct(skipped),
                 "pending_migrate": pending_migrate or 0,
+                "node_aliases": node_aliases,
             },
         )
 
@@ -899,18 +908,20 @@ def create_app() -> fastapi.FastAPI:
         days_back = (today - start_dt).days
 
         await _backfill_daily_stats(start_dt.date())
-        history_rows, today_stats = await asyncio.gather(
+        history_rows, today_stats, alias_rows = await asyncio.gather(
             pool.fetch(
                 "select * from daily_stats where day >= $1 order by day",
                 start_dt.date(),
             ),
             _compute_today_stats(),
+            pool.fetch("select id, alias from node where alias != ''"),
         )
         charts = _build_daily_charts(history_rows, today_stats, days_back)
+        node_aliases = {str(r["id"]): str(r["alias"]) for r in alias_rows}
 
         return render(
             "detail.html.j2",
-            ctx={"start": start_value} | charts,
+            ctx={"start": start_value, "node_aliases": node_aliases} | charts,
         )
 
     @app.get("/threads/pending-mediainfo")
@@ -1119,6 +1130,20 @@ def create_app() -> fastapi.FastAPI:
         cmd_id = await enqueue_command(pool, node_id, body.method, body.payload)
         return ORJSONResponse({"id": cmd_id})
 
+    @app.post("/api/node/{node_id}/alias")
+    async def set_node_alias(node_id: str, request: Request) -> ORJSONResponse:
+        body = await request.json()
+        alias = (body.get("alias") or "").strip()
+        node_row = await pool.fetchrow("select id from node where id = $1", node_id)
+        if node_row is None:
+            return ORJSONResponse({"error": "node not found"}, status_code=404)
+        await pool.execute(
+            "update node set alias = $1 where id = $2",
+            alias,
+            node_id,
+        )
+        return ORJSONResponse({"ok": True})
+
     @app.post("/api/daily-stats/clear")
     async def clear_daily_stats() -> ORJSONResponse:
         result = await pool.execute("delete from daily_stats")
@@ -1130,7 +1155,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/nodes")
     async def nodes_page(render: Render) -> HTMLResponse:
-        node_rows = await pool.fetch("select id, last_seen from node order by id asc")
+        node_rows = await pool.fetch("select id, last_seen, alias from node order by id asc")
         job_rows = await pool.fetch(
             "select node_id, status, count(1) as cnt from job group by node_id, status"
         )
@@ -1144,6 +1169,7 @@ def create_app() -> fastapi.FastAPI:
         nodes_data = [
             {
                 "id": str(n["id"]),
+                "alias": n["alias"],
                 "last_seen": n["last_seen"],
                 "downloading": counts.get(str(n["id"]), {}).get(ITEM_STATUS_DOWNLOADING, 0),
                 "done": counts.get(str(n["id"]), {}).get(ITEM_STATUS_DONE, 0),
@@ -1165,7 +1191,9 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/nodes/{node_id}")
     async def node_jobs_page(node_id: str, render: Render) -> HTMLResponse:
-        node_row = await pool.fetchrow("select id, last_seen from node where id = $1", node_id)
+        node_row = await pool.fetchrow(
+            "select id, last_seen, alias from node where id = $1", node_id
+        )
         if node_row is None:
             return render("nodes.html.j2", ctx={"nodes": []}, status_code=404)
 
@@ -1223,6 +1251,7 @@ def create_app() -> fastapi.FastAPI:
             "node_jobs.html.j2",
             ctx={
                 "node_id": str(node_row["id"]),
+                "node_name": node_row["alias"] or str(node_row["id"])[:8],
                 "last_seen": node_row["last_seen"],
                 "jobs": jobs,
             },
@@ -1230,16 +1259,21 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/rpc")
     async def rpc_history_page(render: Render) -> HTMLResponse:
-        rows = await pool.fetch(
-            """select id, node_id, method, payload, result, error, created_at, executed_at
-               from node_command
-               order by id desc
-               limit 200"""
+        rows, alias_rows = await asyncio.gather(
+            pool.fetch(
+                """select id, node_id, method, payload, result, error, created_at, executed_at
+                   from node_command
+                   order by id desc
+                   limit 200"""
+            ),
+            pool.fetch("select id, alias from node where alias != ''"),
         )
+        node_aliases = {str(r["id"]): str(r["alias"]) for r in alias_rows}
         commands = [
             {
                 "id": r["id"],
                 "node_id": str(r["node_id"]),
+                "node_name": node_aliases.get(str(r["node_id"]), str(r["node_id"])[:8]),
                 "method": r["method"],
                 "payload": r["payload"],
                 "result": r["result"],

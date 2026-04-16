@@ -61,7 +61,7 @@
     {% for c in commands %}
     <tr>
       <td>{{ c.id }}</td>
-      <td><a href="/nodes/{{ c.node_id }}"><code>{{ c.node_id[:8] }}</code></a></td>
+      <td><a href="/nodes/{{ c.node_id }}"><code>{{ c.node_name }}</code></a></td>
       <td><code>{{ c.method }}</code></td>
       <td class="mono-cell">
         {%- set payload_text = c.payload | string -%}

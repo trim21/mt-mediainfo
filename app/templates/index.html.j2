@@ -78,7 +78,7 @@
         </tr>
         {% for n in downloading_nodes %}
         <tr class="table-info">
-          <td class="ps-4 text-muted">{{ n.node_id }}</td>
+          <td class="ps-4 text-muted">{{ n.node_name }}</td>
           <td>{{ n.count }}</td>
           <td>{{ n.size_fmt }}</td>
         </tr>
@@ -90,7 +90,7 @@
         </tr>
         {% for n in done_nodes %}
         <tr class="table-success">
-          <td class="ps-4 text-muted">{{ n.node_id }}</td>
+          <td class="ps-4 text-muted">{{ n.node_name }}</td>
           <td>{{ n.count }}</td>
           <td>{{ n.size_fmt }}</td>
         </tr>
@@ -143,6 +143,8 @@
 </div>
 
 <script>
+  const NODE_ALIASES = {{ node_aliases | tojson }};
+  function nodeLabel(nid) { return NODE_ALIASES[nid] || nid.slice(0, 8); }
   const NODE_COLORS = [
     {bg: 'rgba(13, 110, 253, 0.5)', border: 'rgba(13, 110, 253, 1)'},
     {bg: 'rgba(220, 53, 69, 0.5)', border: 'rgba(220, 53, 69, 1)'},
@@ -182,7 +184,7 @@
       ...nodeIds.map((nid, i) => {
         const c = NODE_COLORS[i % NODE_COLORS.length];
         return {
-          label: nid.slice(0, 8),
+          label: nodeLabel(nid),
           data: data.per_node[nid],
           backgroundColor: c.bg,
           borderColor: c.border,
@@ -252,7 +254,7 @@
       ...doneNodeIds.map((nid, i) => {
         const c = NODE_COLORS[i % NODE_COLORS.length];
         return {
-          label: 'Done ' + nid.slice(0, 8),
+          label: 'Done ' + nodeLabel(nid),
           data: allWeeks.map(d => doneNodeMaps[nid][d] ?? 0),
           backgroundColor: c.bg,
           borderColor: c.border,
