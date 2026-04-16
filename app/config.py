@@ -168,15 +168,18 @@ def _copy_key_with_permissions(src: str) -> str:
     Docker volume mounts may not allow chmod on the original file,
     so we copy it to a temp location where we control permissions.
     """
-    fd = os.open(
-        os.path.join(tempfile.gettempdir(), "pg-client.key"),
-        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-        stat.S_IRUSR | stat.S_IWUSR,
-    )
+    dst = os.path.join(tempfile.gettempdir(), "pg-client.key")
+    # Remove first so os.open O_CREAT applies the mode to a fresh inode
+    try:
+        os.unlink(dst)
+    except FileNotFoundError:
+        pass
+
+    fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
     try:
         with open(src, "rb") as src_f:
             os.write(fd, src_f.read())
     finally:
         os.close(fd)
 
-    return os.path.join(tempfile.gettempdir(), "pg-client.key")
+    return dst
