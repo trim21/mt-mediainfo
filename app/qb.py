@@ -77,11 +77,11 @@ class QBittorrentClient:
     # -- queries -------------------------------------------------------------
 
     def list_torrents(self) -> list[ClientTorrent]:
-        raw: list[dict[str, object]] = self._qb.torrents_info()  # type: ignore[assignment]
+        raw: list[dict[str, object]] = self._qb.torrents_info()  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
         return [_to_client_torrent(t) for t in raw]
 
     def list_files(self, info_hash: str) -> list[ClientFile]:
-        raw: list[dict[str, object]] = self._qb.torrents_files(torrent_hash=info_hash)  # type: ignore[assignment]
+        raw: list[dict[str, object]] = self._qb.torrents_files(torrent_hash=info_hash)  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
         return [_to_client_file(f) for f in raw]
 
     # -- mutations -----------------------------------------------------------
