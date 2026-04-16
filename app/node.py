@@ -104,10 +104,7 @@ class Node:
             self.__heart_beat()
             time.sleep(interval)
             interval = 60
-            try:
-                self.dl.tick()
-            except Exception as e:
-                print("failed to tick download client", format_exc(e))
+            self.dl.tick()
             try:
                 self.__process_commands()
             except Exception as e:
@@ -189,9 +186,10 @@ class Node:
         torrents = self.dl.list_torrents()
         now = datetime.now(tz=UTC)
         if not torrents:
-            logger.info("qb has no torrents")
+            logger.info("downloader has no torrents")
             return
 
+        logger.info("load {} torrents from downloader", len(torrents))
         # Mark jobs as removed-from-client if their torrent is no longer in qb
         qb_hashes = [x.hash for x in torrents]
         self.db.execute(

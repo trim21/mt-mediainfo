@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import contextlib
 import json
+import shutil
 import time
+from pathlib import Path
 from typing import Any
 
 from rtorrent_rpc import RTorrent
@@ -113,7 +115,7 @@ class RTorrentClient:
                 "default",
                 "d.name=",  # 0
                 "d.hash=",  # 1
-                "d.directory_base=",  # 2
+                "d.directory=",  # 2  full content path (includes torrent subfolder for multi-file)
                 "d.custom1=",  # 3  tags (ruTorrent compat)
                 "d.size_bytes=",  # 4
                 "d.completed_bytes=",  # 5
@@ -215,10 +217,18 @@ class RTorrentClient:
         return True
 
     def delete_torrent(self, info_hash: str, *, delete_files: bool = True) -> None:
+        save_path: str | None = None
+        if delete_files:
+            with contextlib.suppress(Exception):
+                save_path = str(self._rt.call("d.directory_base", [info_hash]))
+
         with contextlib.suppress(Exception):
             self._rt.stop_torrent(info_hash)
         with contextlib.suppress(Exception):
             self._rt.call("d.erase", [info_hash])
+
+        if delete_files and save_path:
+            shutil.rmtree(Path(save_path), ignore_errors=True)
 
     def pause_torrent(self, info_hash: str) -> None:
         self._rt.stop_torrent(info_hash)
