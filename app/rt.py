@@ -41,7 +41,7 @@ class _RTorrent(RTorrent):
         self,
         address: str,
         rutorrent_compatibility: bool = True,
-        timeout: float | None = 180,
+        timeout: float | None = 300,
     ):
         super().__init__(address, rutorrent_compatibility=rutorrent_compatibility, timeout=timeout)
         self._support_json: None | bool = None
@@ -70,7 +70,7 @@ class RTorrentClient:
     """DownloadClient implementation backed by rTorrent (XMLRPC/JSONRPC via scgi)."""
 
     def __init__(self, address: str) -> None:
-        self._rt = _RTorrent(address, rutorrent_compatibility=True, timeout=30)
+        self._rt = _RTorrent(address, rutorrent_compatibility=True, timeout=300)
 
     # -- connection ----------------------------------------------------------
 

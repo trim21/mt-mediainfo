@@ -68,7 +68,7 @@ class MTeamAPI:
 
     def __init__(self, c: Config) -> None:
         self._httpx = httpx.Client(
-            timeout=10,
+            timeout=60,
             proxy=c.http_proxy or None,
             headers={"x-api-key": c.mt_token},
         )
