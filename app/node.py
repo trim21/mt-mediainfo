@@ -17,7 +17,7 @@ from qbittorrentapi import NotFound404Error, TorrentState
 from rich.console import Console
 from sslog import logger
 
-from app.config import Config
+from app.config import NodeConfig
 from app.const import (
     ITEM_STATUS_DONE,
     ITEM_STATUS_DOWNLOADING,
@@ -104,12 +104,12 @@ class QbTorrent:
 @dataclasses.dataclass(kw_only=True, frozen=True)
 class Node:
     db: Database
-    config: Config
+    config: NodeConfig
     qb: qbittorrentapi.Client
     store: TorrentStore
 
     @classmethod
-    def new(cls, cfg: Config) -> Node:
+    def new(cls, cfg: NodeConfig) -> Node:
         db = Database(cfg.pg_dsn())
         if not cfg.qb_url:
             raise ValueError("no download client configured: set QB_URL")

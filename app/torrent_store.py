@@ -4,7 +4,7 @@ import opendal
 import xxhash
 from sslog import logger
 
-from app.config import Config
+from app.config import S3Mixin
 from app.db import Database
 
 
@@ -13,7 +13,7 @@ def _s3_key(tid: int) -> str:
     return f"torrents/{h[:2]}/{h[2:4]}/{tid}.torrent"
 
 
-def _create_operator(c: Config) -> opendal.Operator:
+def _create_operator(c: S3Mixin) -> opendal.Operator:
     kwargs: dict[str, str] = {
         "bucket": c.s3_bucket,
         "region": c.s3_region,
@@ -28,7 +28,7 @@ def _create_operator(c: Config) -> opendal.Operator:
 
 
 class TorrentStore:
-    def __init__(self, config: Config, db: Database):
+    def __init__(self, config: S3Mixin, db: Database):
         self.__db = db
         self.__op = _create_operator(config)
 

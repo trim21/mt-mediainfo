@@ -8,7 +8,7 @@ import httpcore
 import httpx
 from pydantic import TypeAdapter
 
-from app.config import Config
+from app.config import ScrapeConfig
 from app.utils import parse_obj
 
 MTeamDomain: Final[str] = "kp.m-team.cc"
@@ -66,7 +66,7 @@ class MTeamAPI:
 
     __slots__ = ("_httpx",)
 
-    def __init__(self, c: Config) -> None:
+    def __init__(self, c: ScrapeConfig) -> None:
         self._httpx = httpx.Client(
             timeout=60,
             proxy=c.http_proxy or None,

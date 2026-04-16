@@ -14,7 +14,7 @@ from fastapi import Depends, Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, JSONResponse
 
-from app.config import Config, load_config
+from app.config import ServerConfig, load_server_config
 from app.const import (
     ITEM_STATUS_DONE,
     ITEM_STATUS_DOWNLOADING,
@@ -74,7 +74,7 @@ PAGE_SIZE = 100
 
 
 def create_app() -> fastapi.FastAPI:
-    cfg: Config = load_config()
+    cfg: ServerConfig = load_server_config()
 
     async def _init_connection(conn: asyncpg.Connection) -> None:
         await conn.set_type_codec(

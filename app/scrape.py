@@ -13,7 +13,7 @@ import pydantic
 from bencode2 import BencodeDecodeError
 from sslog import logger
 
-from app.config import Config
+from app.config import ScrapeConfig
 from app.const import PRIORITY_CATEGORY, SELECTED_CATEGORY
 from app.db import Database
 from app.kv import KVConfig
@@ -73,7 +73,7 @@ class Scrape:
     mteam_client: MTeamAPI
     __db: Database
 
-    def __init__(self, c: Config):
+    def __init__(self, c: ScrapeConfig):
         self.__db = Database(c.pg_dsn())
         self.mteam_client = MTeamAPI(c)
         self.__store = TorrentStore(c, self.__db)
