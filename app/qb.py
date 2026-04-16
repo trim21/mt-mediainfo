@@ -74,6 +74,11 @@ class QBittorrentClient:
     def connect(self) -> str:
         return self._qb.app_version()  # type: ignore[return-value]
 
+    # -- tick ----------------------------------------------------------------
+
+    def tick(self) -> None:
+        pass  # qBittorrent natively tracks seen_complete
+
     # -- queries -------------------------------------------------------------
 
     def list_torrents(self) -> list[ClientTorrent]:
@@ -93,7 +98,6 @@ class QBittorrentClient:
         save_path: str,
         tags: list[str],
         download_limit: int = 0,
-        sequential: bool = False,
     ) -> bool:
         r = self._qb.torrents_add(
             torrent_files=[torrent_data],
@@ -101,7 +105,7 @@ class QBittorrentClient:
             use_auto_torrent_management=False,
             tags=tags,
             download_limit=download_limit,
-            is_sequential_download=sequential,
+            is_sequential_download=True,
         )
         return r == "Ok."
 

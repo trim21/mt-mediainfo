@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import time
 from typing import Any
 
 from rtorrent_rpc import RTorrent
@@ -71,6 +72,37 @@ class RTorrentClient:
         methods = self._rt.system_list_methods()
         return f"rTorrent ({len(methods)} methods)"
 
+    # -- tick ----------------------------------------------------------------
+
+    _SEEN_COMPLETE_KEY = "pt_repost_seen_complete"
+
+    def tick(self) -> None:
+        """Maintain ``seen_complete`` timestamps for torrents with active seeders.
+
+        rTorrent has no native ``seen_complete`` field.  We synthesise it by
+        recording the current unix timestamp into a per-torrent custom key
+        whenever ``peers_complete > 0``.
+        """
+        rows: list[list[Any]] = self._rt.call(
+            "d.multicall2",
+            [
+                "",
+                "default",
+                "d.hash=",
+                "d.peers_complete=",
+                f"d.custom={self._SEEN_COMPLETE_KEY}",
+            ],
+        )
+        now_str = str(int(time.time()))
+        for row in rows:
+            peers_complete = int(row[1])
+            if peers_complete > 0:
+                info_hash = str(row[0])
+                self._rt.call(
+                    "d.custom.set",
+                    [info_hash, self._SEEN_COMPLETE_KEY, now_str],
+                )
+
     # -- queries -------------------------------------------------------------
 
     def list_torrents(self) -> list[ClientTorrent]:
@@ -93,6 +125,7 @@ class RTorrentClient:
                 "d.state=",  # 11
                 "d.complete=",  # 12
                 "d.down.rate=",  # 13  bytes/s
+                f"d.custom={self._SEEN_COMPLETE_KEY}",  # 14  synthesised seen_complete
             ],
         )
 
@@ -125,7 +158,7 @@ class RTorrentClient:
                     dlspeed=dlspeed,
                     eta=eta,
                     tags=frozenset(parse_tags(str(x[3]))),
-                    seen_complete=0,
+                    seen_complete=int(x[14] or 0),
                 )
             )
         return result
@@ -168,7 +201,6 @@ class RTorrentClient:
         save_path: str,
         tags: list[str],
         download_limit: int = 0,
-        sequential: bool = False,
     ) -> bool:
         extras: list[str] = []
         if download_limit > 0:

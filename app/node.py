@@ -105,6 +105,10 @@ class Node:
             time.sleep(interval)
             interval = 60
             try:
+                self.dl.tick()
+            except Exception as e:
+                print("failed to tick download client", format_exc(e))
+            try:
                 self.__process_commands()
             except Exception as e:
                 print("failed to process commands", format_exc(e))
@@ -467,7 +471,6 @@ class Node:
             save_path=os.path.join(self.config.download_path, info_hash),
             tags=[QB_TAG_DOWNLOADING, QB_TAG_NEED_SELECT],
             download_limit=1,
-            sequential=True,
         )
         if not ok:
             self.__update_job_status(
