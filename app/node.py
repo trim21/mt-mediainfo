@@ -104,11 +104,16 @@ class Node:
             self.__heart_beat()
             time.sleep(interval)
             interval = 60
-            self.dl.tick()
             try:
                 self.__process_commands()
             except Exception as e:
                 print("failed to process commands", format_exc(e))
+
+            try:
+                self.dl.tick()
+            except Exception as e:
+                print("failed to run dl.tick()", format_exc(e))
+
             try:
                 self.__run_at_interval()
             except Exception as e:
