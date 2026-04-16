@@ -15,6 +15,9 @@
   },
   "packageRules": [
     {
+      "matchFileNames": [
+        "pyproject.toml"
+      ],
       "matchPackageNames": [
         "python"
       ],
@@ -24,8 +27,8 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": [
-        ".github/workflows/lint\\.yaml$"
+      "managerFilePatterns": [
+        ".github/workflows/lint.yaml"
       ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\n\\s+version: '(?<currentValue>.*?)'"

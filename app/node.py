@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import enum
 import io
@@ -9,6 +10,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from qbittorrentapi import NotFound404Error
 from rich.console import Console
 from sslog import logger
 
@@ -49,7 +51,7 @@ from app.utils import set_torrent_comment
 def format_exc(e: Exception) -> str:
     f = io.StringIO()
     with f:
-        f.write(f"{type(e)}: {e}\n")
+        f.write(f"{e}\n")
         Console(legacy_windows=True, width=1000, file=f, no_color=True).print_exception()
         return f.getvalue()
 
@@ -329,9 +331,8 @@ class Node:
             logger.info("reclaimed job for torrent {}", t.hash)
             return
 
-        logger.info("{} not managed", t.hash)
-        if t.state is not TorrentState.paused:
-            self.dl.pause_torrent(t.hash)
+        logger.info("{} not managed, deleting", t.hash)
+        self.dl.delete_torrent(t.hash, delete_files=True)
 
     def __fix_file_selection(self, t: ClientTorrent) -> None:
         """Fix file priorities for torrents that are downloading all files."""
@@ -473,6 +474,8 @@ class Node:
             self.__update_job_status(
                 status=ITEM_STATUS_FAILED, tid=tid, failed_reason="failed to add"
             )
+            with contextlib.suppress(NotFound404Error):
+                self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
 
 
 @dataclasses.dataclass(kw_only=True, slots=True)

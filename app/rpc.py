@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 from typing import Any, Final
 
+import orjson
 from sslog import logger
 
 from app.db import Database
@@ -65,10 +65,10 @@ def process_commands(
             continue
 
         try:
-            raw = json.loads(payload_str)
+            raw = orjson.loads(payload_str)
             payload = parse_obj(payload_cls, raw)
             ret = handler(payload)
-            result = json.dumps(ret)
+            result = orjson.dumps(ret).decode()
         except Exception as e:
             error = str(e)
         db.execute(
@@ -80,11 +80,17 @@ def process_commands(
         logger.info("rpc command {} method={} error={}", cmd_id, method, error)
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class RpcRequest:
+    method: str
+    payload: dict[str, Any] = dataclasses.field(default_factory=dict)
+
+
 async def enqueue_command(
     pool: Any,
     node_id: str,
     method: str,
-    payload: dict[str, Any],
+    payload: Any,
 ) -> int:
     """Insert a new RPC command into the queue and return its id."""
     cmd_id: int = await pool.fetchval(
@@ -92,6 +98,6 @@ async def enqueue_command(
            values ($1, $2, $3) returning id""",
         node_id,
         method,
-        json.dumps(payload),
+        orjson.dumps(payload).decode(),
     )
     return cmd_id
