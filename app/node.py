@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import enum
 import io
@@ -8,7 +9,11 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Annotated
 
+import qbittorrentapi
+from pydantic import BeforeValidator
+from qbittorrentapi import NotFound404Error, TorrentState
 from rich.console import Console
 from sslog import logger
 
@@ -29,11 +34,9 @@ from app.const import (
     SELECTED_CATEGORY,
 )
 from app.db import Database
-from app.download_client import ClientTorrent, DownloadClient, TorrentState
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
 from app.mt import MTeamDomain
-from app.qb import QBittorrentClient
 from app.rpc import (
     RPC_DELETE_TORRENT,
     RPC_PING,
@@ -43,7 +46,7 @@ from app.rpc import (
 )
 from app.torrent import find_largest_video_file
 from app.torrent_store import TorrentStore
-from app.utils import set_torrent_comment
+from app.utils import parse_obj, set_torrent_comment
 
 
 def format_exc(e: Exception) -> str:
@@ -60,26 +63,69 @@ class Status(enum.IntEnum):
     done = 3
 
 
-def _create_download_client(cfg: Config) -> DownloadClient:
-    if cfg.qb_url:
-        return QBittorrentClient(cfg.qb_url)
-    raise ValueError("no download client configured: set QB_URL")
+def _parse_str_tags(v: str) -> frozenset[str]:
+    if not v:
+        return frozenset()
+    return frozenset({x.strip() for x in v.split(",")})
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class QbFile:
+    index: int
+    name: str
+    size: int
+    priority: int
+    progress: float
+
+
+@dataclasses.dataclass(kw_only=True, frozen=True)
+class QbTorrent:
+    name: str
+    hash: str
+    state: TorrentState
+
+    save_path: str  # final download path
+    completed: int
+
+    uploaded: int
+
+    total_size: int  # total file size
+    size: int  # select file size
+    amount_left: int
+
+    num_seeds: int
+    progress: float
+    dlspeed: int  # bytes/s
+    eta: int  # seconds, 8640000 = infinity
+    tags: Annotated[frozenset[str], BeforeValidator(_parse_str_tags)]
+    seen_complete: int = 0
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
 class Node:
     db: Database
     config: Config
-    dl: DownloadClient
+    qb: qbittorrentapi.Client
     store: TorrentStore
 
     @classmethod
     def new(cls, cfg: Config) -> Node:
         db = Database(cfg.pg_dsn())
+        if not cfg.qb_url:
+            raise ValueError("no download client configured: set QB_URL")
         return Node(
             config=cfg,
             db=db,
-            dl=_create_download_client(cfg),
+            qb=qbittorrentapi.Client(
+                host=str(cfg.qb_url),
+                password=cfg.qb_url.password,
+                username=cfg.qb_url.username,
+                SIMPLE_RESPONSES=True,
+                FORCE_SCHEME_FROM_HOST=True,
+                VERBOSE_RESPONSE_LOGGING=False,
+                RAISE_NOTIMPLEMENTEDERROR_FOR_UNIMPLEMENTED_API_ENDPOINTS=True,
+                REQUESTS_ARGS={"timeout": 10},
+            ),
             store=TorrentStore(cfg, db),
         )
 
@@ -92,8 +138,8 @@ class Node:
 
         logger.info("successfully connect to database")
 
-        version = self.dl.connect()
-        logger.info("successfully connect to download client {}", version)
+        version = self.qb.app_version()
+        logger.info("successfully connect to qBittorrent {}", version)
 
     def start(self) -> None:
         interval = 1
@@ -127,7 +173,7 @@ class Node:
         return {"pong": "ok"}
 
     def __handle_cmd_delete_torrent(self, payload: DeleteTorrentPayload) -> dict[str, str]:
-        self.dl.delete_torrent(payload.info_hash, delete_files=True)
+        self.qb.torrents_delete(torrent_hashes=payload.info_hash, delete_files=True)
         self.__update_job_status(
             status=ITEM_STATUS_FAILED,
             info_hash=payload.info_hash,
@@ -150,8 +196,8 @@ class Node:
 
     def __set_tags(self, info_hash: str, *, remove: str, add: str) -> None:
         """Swap informational tags on a torrent."""
-        self.dl.remove_tags(info_hash, [remove])
-        self.dl.add_tags(info_hash, [add])
+        self.qb.torrents_remove_tags(tags=remove, torrent_hashes=info_hash)
+        self.qb.torrents_add_tags(tags=add, torrent_hashes=info_hash)
 
     def __update_job_status(
         self,
@@ -178,15 +224,13 @@ class Node:
             )
 
     def __process_qb_torrents(self) -> None:
-        """Process all torrents in the download client in a single pass."""
+        """Process all torrents in qBittorrent in a single pass."""
         logger.info("__process_qb_torrents")
-        torrents = self.dl.list_torrents()
+        torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
         now = datetime.now(tz=UTC)
         if not torrents:
-            logger.info("downloader has no torrents")
+            logger.info("qb has no torrents")
             return
-
-        logger.info("load {} torrents from downloader", len(torrents))
         # Mark jobs as removed-from-client if their torrent is no longer in qb
         qb_hashes = [x.hash for x in torrents]
         self.db.execute(
@@ -241,18 +285,18 @@ class Node:
                     info_hash=t.hash,
                     failed_reason="no seeders",
                 )
-                self.dl.delete_torrent(t.hash)
+                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
 
             # Torrent in error state → mark failed and delete
-            if t.state is TorrentState.error:
-                logger.info("torrent {} in error state: {}", t.name, t.message)
+            if t.state.is_errored:
+                logger.info("torrent {} in error state", t.name)
                 self.__update_job_status(
                     status=ITEM_STATUS_FAILED,
                     info_hash=t.hash,
-                    failed_reason=t.message or "torrent error",
+                    failed_reason="torrent error",
                 )
-                self.dl.delete_torrent(t.hash)
+                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
 
             # Skip torrents that failed processing
@@ -267,11 +311,11 @@ class Node:
                     info_hash=t.hash,
                     failed_reason="category no longer selected",
                 )
-                self.dl.delete_torrent(t.hash)
+                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
 
             # Upload complete → process mediainfo
-            if t.state is TorrentState.seeding:
+            if t.state.is_uploading:
                 self.__set_tags(t.hash, remove=QB_TAG_DOWNLOADING, add=QB_TAG_PROCESSING)
                 try:
                     self.__process_local_torrent(t)
@@ -281,21 +325,22 @@ class Node:
                         info_hash=t.hash,
                         failed_reason=format_exc(e),
                     )
-                    self.dl.add_tags(t.hash, [QB_TAG_PROCESS_ERROR])
+                    self.qb.torrents_add_tags(tags=QB_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
                     logger.error("failed to process local torrent {}", e)
                 continue
 
-            # Newly added torrent → select files, remove tag
+            # Newly added torrent → select files, clear limit, remove tag
             if QB_TAG_NEED_SELECT in t.tags:
                 self.__fix_file_selection(t)
-                self.dl.remove_tags(t.hash, [QB_TAG_NEED_SELECT])
+                self.qb.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
+                self.qb.torrents_remove_tags(tags=QB_TAG_NEED_SELECT, torrent_hashes=t.hash)
                 continue
 
             # Paused → resume
-            if t.state is TorrentState.paused:
+            if t.state.is_paused:
                 logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
                 self.__set_tags(t.hash, remove=QB_TAG_SELECTING_FILES, add=QB_TAG_DOWNLOADING)
-                self.dl.resume_torrent(t.hash)
+                self.qb.torrents_resume(torrent_hashes=t.hash)
                 continue
 
             # Downloading — update progress
@@ -319,11 +364,11 @@ class Node:
                 ],
             )
 
-    def __handle_unmanaged_torrent(self, t: ClientTorrent) -> None:
-        """Handle a torrent that has no active downloading job.
+    def __handle_unmanaged_torrent(self, t: QbTorrent) -> None:
+        """Handle a torrent in qB that has no active downloading job.
 
         Try to reclaim if a job exists with removed-by-client status
-        (e.g. was prematurely marked due to async add), otherwise pause it.
+        (e.g. was prematurely marked due to async qB add), otherwise delete it.
         """
         restored = self.db.fetch_val(
             """
@@ -342,12 +387,12 @@ class Node:
             logger.info("reclaimed job for torrent {}", t.hash)
             return
 
-        logger.info("{} not managed, deleting", t.hash)
-        self.dl.delete_torrent(t.hash, delete_files=True)
+        logger.info("{} not managed, deleting from qb", t.hash)
+        self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
-    def __fix_file_selection(self, t: ClientTorrent) -> None:
+    def __fix_file_selection(self, t: QbTorrent) -> None:
         """Fix file priorities for torrents that are downloading all files."""
-        files = self.dl.list_files(t.hash)
+        files = parse_obj(list[QbFile], self.qb.torrents_files(torrent_hash=t.hash))
         if len(files) <= 1:
             return
         files_data = [(f.index, f.name, f.size) for f in files]
@@ -357,15 +402,19 @@ class Node:
         file_ids = [f.index for f in files if f.index != keep_idx and f.priority != 0]
         if file_ids:
             logger.info("fixing file selection for torrent {}", t.name)
-            self.dl.set_file_priority(t.hash, file_ids, 0)
+            self.qb.torrents_file_priority(
+                torrent_hash=t.hash,
+                file_ids=file_ids,
+                priority=0,
+            )
 
-    def __process_local_torrent(self, t: ClientTorrent) -> None:
-        files = self.dl.list_files(t.hash)
+    def __process_local_torrent(self, t: QbTorrent) -> None:
+        files = parse_obj(list[QbFile], self.qb.torrents_files(torrent_hash=t.hash))
         active_files = [(f.index, f.name, f.size) for f in files if f.priority != 0]
         selected_idx = find_largest_video_file(active_files)
 
         if selected_idx is None:
-            self.dl.delete_torrent(t.hash)
+            self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
             return
 
         selected_file = next(f for f in files if f.index == selected_idx)
@@ -382,12 +431,14 @@ class Node:
             [media_info, hard_code_subtitle, t.hash],
         )
         self.__update_job_status(status=ITEM_STATUS_DONE, info_hash=t.hash)
-        self.dl.delete_torrent(t.hash)
+        self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
     def __pick_and_add_jobs(self) -> None:
         logger.info("__pick_and_add_jobs")
 
-        current_total_size = sum(t.size for t in self.dl.list_torrents())
+        current_total_size = sum(
+            t.size for t in parse_obj(list[QbTorrent], self.qb.torrents_info())
+        )
         left_size = int(self.config.total_process_size) - current_total_size
         if left_size <= 0:
             logger.info("no left size, skipping")
@@ -415,7 +466,6 @@ class Node:
                     job.tid is null and
                     seeders != 0
                 order by (category = any($3)) desc, tid asc
-                limit 6
                 """,
                 [
                     min(int(self.config.single_torrent_size_limit), left_size),
@@ -453,7 +503,8 @@ class Node:
                 self.__update_job_status(
                     status=ITEM_STATUS_FAILED, tid=tid, failed_reason=format_exc(e)
                 )
-                self.dl.delete_torrent(info_hash)
+                with contextlib.suppress(NotFound404Error):
+                    self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
 
     def __add_torrent(
         self,
@@ -471,16 +522,20 @@ class Node:
 
         tc = set_torrent_comment(tc, f"https://{MTeamDomain}/detail/{tid}")
 
-        ok = self.dl.add_torrent(
-            tc,
+        r = self.qb.torrents_add(
+            torrent_files=[tc],
             save_path=os.path.join(self.config.download_path, info_hash),
+            use_auto_torrent_management=False,
             tags=[QB_TAG_DOWNLOADING, QB_TAG_NEED_SELECT],
+            download_limit=1,
+            is_sequential_download=True,
         )
-        if not ok:
+        if r != "Ok.":
             self.__update_job_status(
                 status=ITEM_STATUS_FAILED, tid=tid, failed_reason="failed to add"
             )
-            self.dl.delete_torrent(info_hash, delete_files=True)
+            with contextlib.suppress(NotFound404Error):
+                self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
 
 
 @dataclasses.dataclass(kw_only=True, slots=True)
