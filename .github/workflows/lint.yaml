@@ -19,6 +19,8 @@ jobs:
           python-version: "3.12"
 
       - uses: astral-sh/setup-uv@v7.6.0
+        with:
+          activate-environment: "true"
 
       - run: uv sync
 
@@ -28,7 +30,8 @@ jobs:
           linters: mypy
 
       - name: mypy
-        run: uv run mypy --show-column-numbers app
+        run: mypy --show-column-numbers app
+      - run: ty check . --output-format=github
 
   pre-commit:
     runs-on: ubuntu-24.04
@@ -57,4 +60,4 @@ jobs:
       - uses: jakebailey/pyright-action@v3.0.2
         with:
           # renovate: datasource=github-releases depName=microsoft/pyright
-          version: '1.1.408'
+          version: "1.1.408"
