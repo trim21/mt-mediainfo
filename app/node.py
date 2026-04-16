@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import enum
 import io
@@ -10,7 +9,6 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from qbittorrentapi import NotFound404Error
 from rich.console import Console
 from sslog import logger
 
@@ -474,8 +472,7 @@ class Node:
             self.__update_job_status(
                 status=ITEM_STATUS_FAILED, tid=tid, failed_reason="failed to add"
             )
-            with contextlib.suppress(NotFound404Error):
-                self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+            self.dl.delete_torrent(info_hash, delete_files=True)
 
 
 @dataclasses.dataclass(kw_only=True, slots=True)
