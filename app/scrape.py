@@ -1,6 +1,7 @@
 import dataclasses
 import enum
 import os
+import threading
 import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -79,6 +80,10 @@ class Scrape:
 
         run_migrations(self.__db)
         self.__kv = KVConfig(self.__db)
+
+        threading.Thread(
+            target=self.__migrate_all_torrents, name="torrent-migration", daemon=True
+        ).start()
 
     def scrape_detail(self, limit: int = 0) -> None:
         """Fetch torrent details for threads missing mediainfo, or fill tid gaps."""
@@ -410,6 +415,21 @@ class Scrape:
             return RunResult.error
         return RunResult.ok
 
+    def __migrate_all_torrents(self) -> None:
+        """Background thread: migrate all torrents from PG to S3, then exit."""
+        logger.info("starting background torrent migration (PG \u2192 S3)")
+        while True:
+            try:
+                count = self.__store.migrate_batch(500)
+            except Exception:
+                logger.exception("torrent migration batch failed, retrying in 30s")
+                time.sleep(30)
+                continue
+            if count == 0:
+                logger.info("torrent migration complete, no more rows in pg")
+                return
+            time.sleep(1)
+
     def __run_migrate(self) -> RunResult:
         try:
             count = self.__store.migrate_batch(100)
@@ -432,7 +452,6 @@ class Scrape:
             "search": epoch,
             "mediainfo": epoch,
             "scrape": epoch,
-            "migrate": epoch,
         }
 
         runners: dict[str, Callable[[], RunResult]] = {
@@ -440,7 +459,6 @@ class Scrape:
             "search": lambda: self.__run_search(),
             "mediainfo": lambda: self.__run_mediainfo(limit),
             "scrape": lambda: self.__run_scrape(limit),
-            "migrate": lambda: self.__run_migrate(),
         }
 
         while True:

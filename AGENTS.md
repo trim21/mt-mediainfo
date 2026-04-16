@@ -9,7 +9,6 @@
 - `app/node.py` - Node loop, download client integration, local mediainfo extraction, hardcoded-subtitle detection, RPC polling
 - `app/download_client.py` - Abstract `DownloadClient` protocol and shared data types (`ClientTorrent`, `ClientFile`, `TorrentState`); all BT client access in `app/node.py` goes through this interface
 - `app/qb.py` - `QBittorrentClient` — `DownloadClient` implementation backed by qBittorrent Web API
-- `app/rt.py` - `RTorrentClient` — `DownloadClient` implementation backed by rTorrent SCGI/XML-RPC/JSON-RPC via `rtorrent-rpc`
 - `app/scrape.py` - Thread discovery, API mediainfo fetch, torrent download, and `selected_size` backfill
 - `app/server.py` - FastAPI dashboard, JSON endpoints, daily stats cache, node and RPC views
 - `app/rpc.py` - RPC method definitions, payload validation, queue polling, and enqueue helpers
@@ -21,7 +20,7 @@
 ## Runtime Invariants
 
 - Python 3.12.12 project with environment-driven config in `app/config.py`
-- `app/node.py` accesses BT clients exclusively through the `DownloadClient` protocol; never use client-specific APIs (qBittorrent or rTorrent) directly in node code
+- `app/node.py` accesses BT clients exclusively through the `DownloadClient` protocol; never use client-specific APIs directly in node code
 - Node loop order matters: heartbeat -> process RPC commands -> process qBittorrent torrents -> pick new jobs
 - `app/node.py` and `app/scrape.py` use psycopg-based sync DB access; `app/server.py` uses asyncpg
 - `app/sql/migrations/` contains all SQL migrations; `001_initial_schema.sql` creates all tables and indexes; `schema_version` in the `config` table tracks which migrations have run (absent = 0)
@@ -34,7 +33,6 @@
 - `rpc-system` - `node_command` queue, payload types, handler registration, and RPC history behavior
 - `scrape-mteam` - Search cursor, scrape scheduling, rate limits, detail and mediainfo fetch, torrent download flow
 - `server-dashboard` - Dashboard queries, `daily_stats` caching and backfill, thread pages, node pages, and admin APIs
-- `rtorrent-rpc` - rtorrent-rpc library usage patterns, rTorrent RPC API, and RTorrentClient wrapper in `app/rt.py`
 
 ## Development Workflow
 

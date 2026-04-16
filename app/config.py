@@ -82,12 +82,6 @@ class Config:
         Field(os.environ.get("QB_URL"), validate_default=True),
     ]
 
-    rt_url: Annotated[
-        str | None,
-        BeforeValidator(lambda x: x or None),
-        Field(os.environ.get("RT_URL")),
-    ]
-
     download_path: Annotated[
         str,
         Field(

@@ -51,14 +51,6 @@ class DownloadClient(Protocol):
         """Verify connection and return the client version string."""
         ...
 
-    def tick(self) -> None:
-        """Called once per node loop iteration before processing.
-
-        Implementations may use this to maintain internal or remote state
-        (e.g. synthesising ``seen_complete`` on clients that lack native support).
-        """
-        ...
-
     def list_torrents(self) -> list[ClientTorrent]:
         """Return all torrents managed by the client."""
         ...

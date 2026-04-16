@@ -41,7 +41,6 @@ from app.rpc import (
     PingPayload,
     process_commands,
 )
-from app.rt import RTorrentClient
 from app.torrent import find_largest_video_file
 from app.torrent_store import TorrentStore
 from app.utils import set_torrent_comment
@@ -64,9 +63,7 @@ class Status(enum.IntEnum):
 def _create_download_client(cfg: Config) -> DownloadClient:
     if cfg.qb_url:
         return QBittorrentClient(cfg.qb_url)
-    if cfg.rt_url:
-        return RTorrentClient(cfg.rt_url)
-    raise ValueError("no download client configured: set QB_URL or RT_URL")
+    raise ValueError("no download client configured: set QB_URL")
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
@@ -108,11 +105,6 @@ class Node:
                 self.__process_commands()
             except Exception as e:
                 print("failed to process commands", format_exc(e))
-
-            try:
-                self.dl.tick()
-            except Exception as e:
-                print("failed to run dl.tick()", format_exc(e))
 
             try:
                 self.__run_at_interval()

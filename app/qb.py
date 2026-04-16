@@ -76,11 +76,6 @@ class QBittorrentClient:
     def connect(self) -> str:
         return self._qb.app_version()  # type: ignore[return-value]
 
-    # -- tick ----------------------------------------------------------------
-
-    def tick(self) -> None:
-        pass  # qBittorrent natively tracks seen_complete
-
     # -- queries -------------------------------------------------------------
 
     def list_torrents(self) -> list[ClientTorrent]:

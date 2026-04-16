@@ -601,7 +601,6 @@ dependencies = [
     { name = "rapidocr-onnxruntime" },
     { name = "regex" },
     { name = "rich" },
-    { name = "rtorrent-rpc" },
     { name = "six" },
     { name = "sslog" },
     { name = "tenacity" },
@@ -639,7 +638,6 @@ requires-dist = [
     { name = "rapidocr-onnxruntime", specifier = "==1.4.4" },
     { name = "regex", specifier = "==2026.4.4" },
     { name = "rich", specifier = "==15.0.0" },
-    { name = "rtorrent-rpc", specifier = "==0.9.4" },
     { name = "six", specifier = "==1.17.0" },
     { name = "sslog", specifier = "==0.0.0a52" },
     { name = "tenacity", specifier = "==9.1.4" },
@@ -829,21 +827,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c0/8f/0722ca900cc807c13a6a0c696dacf35430f72e0ec571c4275d2371fca3e9/rich-15.0.0.tar.gz", hash = "sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36", size = 230680, upload-time = "2026-04-12T08:24:00.75Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl", hash = "sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb", size = 310654, upload-time = "2026-04-12T08:24:02.83Z" },
-]
-
-[[package]]
-name = "rtorrent-rpc"
-version = "0.9.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "bencode2" },
-    { name = "certifi" },
-    { name = "typing-extensions" },
-    { name = "urllib3" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ff/07/b50c48e33b985c087981d0e85f29a97cc7f0af86dc53c4330297054bd5ac/rtorrent_rpc-0.9.4.tar.gz", hash = "sha256:04bd85c30549ec6d888956741a7035009053d8d3766d99a4ffa35a4a11bdb715", size = 398629, upload-time = "2024-10-12T17:16:47.06Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ba/bc/bc2fc9a30ee95fde6c7bfb3533f7cae0aba506ca4136cd3978614ca547d2/rtorrent_rpc-0.9.4-py3-none-any.whl", hash = "sha256:db8eca182fc9f131cc82cb00ec517d50ccec1aa193b395a709e6c4da2969f94f", size = 15563, upload-time = "2024-10-12T17:16:45.937Z" },
 ]
 
 [[package]]
