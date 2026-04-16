@@ -13,18 +13,22 @@ from rtorrent_rpc.helper import parse_tags
 from app.download_client import ClientFile, ClientTorrent, TorrentState
 
 
-def _map_state(*, is_complete: bool, is_open: bool, state: int) -> TorrentState:
+def _map_state(*, is_complete: bool, is_open: bool, state: int, message: str) -> TorrentState:
     """Map rTorrent state fields to our generic TorrentState.
 
     rTorrent semantics:
       - ``d.complete`` = 1  → all selected data downloaded
       - ``d.is_open``  = 1  → torrent handle is open (active)
       - ``d.state``    = 1  → started (leeching or seeding)
+      - ``d.message``  ≠ "" → torrent has an error
 
+    A torrent with a non-empty message is in error state.
     A torrent that is complete **and** started is seeding.
     A torrent that is **not** started (state=0) or not open is paused/stopped.
     Otherwise it is downloading.
     """
+    if message:
+        return TorrentState.error
     if is_complete and state == 1:
         return TorrentState.seeding
     if not is_open or state == 0:
@@ -128,6 +132,7 @@ class RTorrentClient:
                 "d.complete=",  # 12
                 "d.down.rate=",  # 13  bytes/s
                 f"d.custom={self._SEEN_COMPLETE_KEY}",  # 14  synthesised seen_complete
+                "d.message=",  # 15  error message (empty = no error)
             ],
         )
 
@@ -139,6 +144,7 @@ class RTorrentClient:
             is_open = bool(x[10])
             state_int = int(x[11])
             is_complete = bool(x[12])
+            message = str(x[15])
 
             progress = completed_bytes / total_size if total_size > 0 else 0.0
             dlspeed = int(x[13])
@@ -148,7 +154,12 @@ class RTorrentClient:
                 ClientTorrent(
                     name=str(x[0]),
                     hash=str(x[1]).lower(),
-                    state=_map_state(is_complete=is_complete, is_open=is_open, state=state_int),
+                    state=_map_state(
+                        is_complete=is_complete,
+                        is_open=is_open,
+                        state=state_int,
+                        message=message,
+                    ),
                     save_path=str(x[2]),
                     completed=completed_bytes,
                     uploaded=int(x[6]),
@@ -161,6 +172,7 @@ class RTorrentClient:
                     eta=eta,
                     tags=frozenset(parse_tags(str(x[3]))),
                     seen_complete=int(x[14] or 0),
+                    message=message,
                 )
             )
         return result

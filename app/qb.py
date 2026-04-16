@@ -11,6 +11,8 @@ from app.download_client import ClientFile, ClientTorrent, TorrentState
 
 
 def _map_state(state: qbittorrentapi.TorrentState) -> TorrentState:
+    if state.is_errored:
+        return TorrentState.error
     if state.is_uploading:
         return TorrentState.seeding
     if state.is_paused:

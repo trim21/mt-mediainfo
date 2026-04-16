@@ -9,6 +9,7 @@ class TorrentState(enum.Enum):
     downloading = "downloading"
     seeding = "seeding"
     paused = "paused"
+    error = "error"
     other = "other"
 
 
@@ -33,6 +34,7 @@ class ClientTorrent:
     eta: int  # seconds, 8640000 = infinity
     tags: frozenset[str]
     seen_complete: int = 0
+    message: str = ""
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

@@ -247,6 +247,17 @@ class Node:
                 self.dl.delete_torrent(t.hash)
                 continue
 
+            # Torrent in error state → mark failed and delete
+            if t.state is TorrentState.error:
+                logger.info("torrent {} in error state: {}", t.name, t.message)
+                self.__update_job_status(
+                    status=ITEM_STATUS_FAILED,
+                    info_hash=t.hash,
+                    failed_reason=t.message or "torrent error",
+                )
+                self.dl.delete_torrent(t.hash)
+                continue
+
             # Skip torrents that failed processing
             if QB_TAG_PROCESS_ERROR in t.tags:
                 continue
