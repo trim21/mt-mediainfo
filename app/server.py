@@ -100,14 +100,10 @@ class DailyStat:
         snapshot: DailyStatsSnapshot,
         *,
         period_seconds: float = 86400.0,
-        project_fetched_rate: bool = False,
+        fetched_byte_rate: float | None = None,
     ) -> DailyStat:
-        if snapshot.fetched_count == 0:
-            fetched_byte_rate = 0.0
-        elif project_fetched_rate:
-            fetched_byte_rate = (snapshot.fetched_bytes / snapshot.fetched_count) * 900 / 86400.0
-        else:
-            fetched_byte_rate = snapshot.fetched_bytes / 86400.0
+        if fetched_byte_rate is None:
+            fetched_byte_rate = snapshot.fetched_bytes / 86400.0 if snapshot.fetched_bytes else 0.0
 
         return cls(
             day=snapshot.day,
@@ -126,6 +122,16 @@ class DailyStat:
                 for node_id, node_stats in snapshot.node_downloaded.items()
             },
         )
+
+
+def _project_today_fetched_byte_rate(
+    snapshot: DailyStatsSnapshot,
+    *,
+    projected_fetches_per_day: int = 900,
+) -> float:
+    if snapshot.fetched_count == 0:
+        return 0.0
+    return (snapshot.fetched_bytes / snapshot.fetched_count) * projected_fetches_per_day / 86400.0
 
 
 @dataclass(slots=True, frozen=True)
@@ -640,20 +646,23 @@ def create_app() -> fastapi.FastAPI:
             node_downloaded=node_downloaded,
         )
 
-    def _build_chart_daily_stats(
-        history_stats: list[DailyStatsSnapshot],
-        today_stats: DailyStatsSnapshot,
-    ) -> list[DailyStat]:
-        daily_stats = {stats.day: DailyStat.from_snapshot(stats) for stats in history_stats}
+    def _build_history_daily_stats(history_stats: list[DailyStatsSnapshot]) -> list[DailyStat]:
+        return [DailyStat.from_snapshot(stats) for stats in history_stats]
 
+    def _build_today_daily_stat(today_stats: DailyStatsSnapshot) -> DailyStat:
         elapsed_today = max((datetime.now(_tz_shanghai) - _today_start()).total_seconds(), 1.0)
-        today_date = today_stats.day
-        daily_stats[today_date] = DailyStat.from_snapshot(
+        return DailyStat.from_snapshot(
             today_stats,
             period_seconds=elapsed_today,
-            project_fetched_rate=True,
+            fetched_byte_rate=_project_today_fetched_byte_rate(today_stats),
         )
 
+    def _combine_daily_stats(
+        history_daily_stats: list[DailyStat],
+        today_daily_stat: DailyStat,
+    ) -> list[DailyStat]:
+        daily_stats = {stats.day: stats for stats in history_daily_stats}
+        daily_stats[today_daily_stat.day] = today_daily_stat
         return [daily_stats[day] for day in sorted(daily_stats)]
 
     def _build_weekly_charts(
@@ -690,13 +699,11 @@ def create_app() -> fastapi.FastAPI:
         for wn in range(min_week, max_week + 1):
             label = _week_label(today, wn)
             labels.append(label)
-            is_current_week = wn == max_week
             days = week_days[wn]
 
             total_dl_bytes = sum(s.downloaded_bytes for s in days)
             total_dl_count = sum(s.downloaded_count for s in days)
             total_fetched_bytes = sum(s.fetched_bytes for s in days)
-            total_fetched_count = sum(s.fetched_count for s in days)
 
             byte_rate = total_dl_bytes / (7.0 * 86400)
             byte_rate_totals.append(
@@ -709,10 +716,7 @@ def create_app() -> fastapi.FastAPI:
             )
             done_count_totals.append(total_dl_count)
 
-            if is_current_week and total_fetched_count > 0:
-                fetched_rate = (total_fetched_bytes / total_fetched_count) * 900 * 7 / (7.0 * 86400)
-            else:
-                fetched_rate = total_fetched_bytes / (7.0 * 86400)
+            fetched_rate = total_fetched_bytes / (7.0 * 86400)
             fetched_data.append(LabeledByteRate(label=label, byte_rate=fetched_rate))
 
             thread_count_data.append(
@@ -1058,7 +1062,9 @@ def create_app() -> fastapi.FastAPI:
             _compute_today_stats(),
         )
         history_stats = [DailyStatsSnapshot.from_record(row) for row in history_rows]
-        daily_stats = _build_chart_daily_stats(history_stats, today_stats)
+        history_daily_stats = _build_history_daily_stats(history_stats)
+        today_daily_stat = _build_today_daily_stat(today_stats)
+        daily_stats = _combine_daily_stats(history_daily_stats, today_daily_stat)
         return ORJSONResponse(_build_weekly_charts(daily_stats).to_payload())
 
     @app.get("/detail")
@@ -1085,7 +1091,9 @@ def create_app() -> fastapi.FastAPI:
             pool.fetch("select id, alias from node where alias != ''"),
         )
         history_stats = [DailyStatsSnapshot.from_record(row) for row in history_rows]
-        daily_stats = _build_chart_daily_stats(history_stats, today_stats)
+        history_daily_stats = _build_history_daily_stats(history_stats)
+        today_daily_stat = _build_today_daily_stat(today_stats)
+        daily_stats = _combine_daily_stats(history_daily_stats, today_daily_stat)
         charts = _build_daily_charts(daily_stats, start_dt.date(), today.date()).to_context()
         node_aliases = {str(r["id"]): str(r["alias"]) for r in alias_rows}
 
