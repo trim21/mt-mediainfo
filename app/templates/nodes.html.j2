@@ -20,7 +20,8 @@
   <table class="table table-bordered table-hover">
     <thead class="table-light">
     <tr>
-      <th>Node ID</th>
+      <th>Node</th>
+      <th>Alias</th>
       <th>Last Seen</th>
       <th>Downloading</th>
       <th>Done</th>
@@ -35,10 +36,18 @@
     <tr>
       <td>
         <a href="/nodes/{{ n.id }}">
-          <code class="text-muted">{{ n.id }}</code>
+          {% if n.alias %}<strong>{{ n.alias }}</strong>{% else %}<code class="text-muted">{{ n.id[:8] }}</code>{% endif %}
         </a>
       </td>
-      <td>{{ n.last_seen | fmt_dt }}</td>
+      <td>
+        <div class="d-flex align-items-center gap-1">
+          <input type="text" class="form-control form-control-sm" style="width: 120px;"
+                 id="alias-{{ loop.index }}" value="{{ n.alias }}" placeholder="{{ n.id[:8] }}">
+          <button class="btn btn-sm btn-outline-secondary"
+                  onclick="saveAlias('{{ n.id }}', document.getElementById('alias-{{ loop.index }}').value, this)">Save</button>
+        </div>
+      </td>
+      <td title="{{ n.last_seen | fmt_dt }}">{{ n.last_seen | timeago }}</td>
       <td>{{ n.downloading }}</td>
       <td>{{ n.done }}</td>
       <td>{{ n.failed }}</td>
@@ -54,6 +63,33 @@
 </div>
 
 <script>
+async function saveAlias(nodeId, alias, btn) {
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const resp = await fetch('/api/node/' + nodeId + '/alias', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alias: alias.trim()})
+    });
+    if (!resp.ok) {
+      btn.textContent = 'Error';
+      btn.classList.replace('btn-outline-secondary', 'btn-outline-danger');
+      return;
+    }
+    btn.textContent = 'Saved';
+    btn.classList.replace('btn-outline-secondary', 'btn-outline-success');
+  } catch (e) {
+    btn.textContent = 'Error';
+    btn.classList.replace('btn-outline-secondary', 'btn-outline-danger');
+  }
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+    btn.className = 'btn btn-sm btn-outline-secondary';
+  }, 2000);
+}
+
 async function pingNode(nodeId, btn) {
   btn.disabled = true;
   btn.textContent = '...';

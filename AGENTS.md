@@ -18,6 +18,7 @@
 ## Runtime Invariants
 
 - Python 3.12.12 project with environment-driven config in `app/config.py`
+- `app/node.py` uses `qbittorrentapi` directly to interact with qBittorrent
 - Node loop order matters: heartbeat -> process RPC commands -> process qBittorrent torrents -> pick new jobs
 - `app/node.py` and `app/scrape.py` use psycopg-based sync DB access; `app/server.py` uses asyncpg
 - `app/sql/migrations/` contains all SQL migrations; `001_initial_schema.sql` creates all tables and indexes; `schema_version` in the `config` table tracks which migrations have run (absent = 0)

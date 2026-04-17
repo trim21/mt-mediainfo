@@ -6,18 +6,18 @@ description = ''
 dependencies = [
     'orjson==3.11.8',
     "uuid-utils==0.14.1",
-    'rich==14.3.4',
+    'rich==15.0.0',
     'xxhash==3.6.0',
     'qbittorrent-api==2025.11.1',
     'click==8.3.2',
-    'pydantic==2.12.5',
+    'pydantic==2.13.1',
     'httpx==0.28.1',
     'bencode2==0.3.30',
     'tomli==2.4.1',
     'yarl==1.23.0',
     'psycopg[binary,pool]==3.3.3',
     'durationpy==0.10',
-    'fastapi==0.135.3',
+    'fastapi==0.136.0',
     'uvicorn==0.44.0',
     'rapidocr-onnxruntime==1.4.4',
     'jinja2==3.1.6',
@@ -28,13 +28,14 @@ dependencies = [
     "regex==2026.4.4",
     "asyncpg==0.31.0",
     # "polars==1.39.3",
+    "opendal==0.46.0",
 ]
 
 [dependency-groups]
 dev = [
     "asyncpg-stubs==0.31.2",
-    'mypy',
-    "ty==0.0.29",
+    "mypy==1.20.1",
+    "ty==0.0.31",
     "types-regex==2026.4.4.20260408",
     "types-six==1.17.0.20260408",
 ]

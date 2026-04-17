@@ -78,7 +78,7 @@
         </tr>
         {% for n in downloading_nodes %}
         <tr class="table-info">
-          <td class="ps-4 text-muted">{{ n.node_id }}</td>
+          <td class="ps-4 text-muted">{{ n.node_name }}</td>
           <td>{{ n.count }}</td>
           <td>{{ n.size_fmt }}</td>
         </tr>
@@ -90,7 +90,7 @@
         </tr>
         {% for n in done_nodes %}
         <tr class="table-success">
-          <td class="ps-4 text-muted">{{ n.node_id }}</td>
+          <td class="ps-4 text-muted">{{ n.node_name }}</td>
           <td>{{ n.count }}</td>
           <td>{{ n.size_fmt }}</td>
         </tr>
@@ -131,14 +131,27 @@
 </div>
 
 <script>
-  const NODE_COLORS = [
-    {bg: 'rgba(13, 110, 253, 0.5)', border: 'rgba(13, 110, 253, 1)'},
-    {bg: 'rgba(220, 53, 69, 0.5)', border: 'rgba(220, 53, 69, 1)'},
-    {bg: 'rgba(25, 135, 84, 0.5)', border: 'rgba(25, 135, 84, 1)'},
-    {bg: 'rgba(255, 193, 7, 0.5)', border: 'rgba(255, 193, 7, 1)'},
-    {bg: 'rgba(111, 66, 193, 0.5)', border: 'rgba(111, 66, 193, 1)'},
-    {bg: 'rgba(32, 201, 151, 0.5)', border: 'rgba(32, 201, 151, 1)'},
+  const NODE_ALIASES = {{ node_aliases | tojson }};
+  function nodeLabel(nid) { return NODE_ALIASES[nid] || nid.slice(0, 8); }
+  const DONE_TOTAL_BG = 'rgba(13, 110, 253, 0.18)';
+  const DONE_TOTAL_BORDER = 'rgba(13, 110, 253, 1)';
+  const NODE_DASH_PATTERNS = [
+    [6, 4],
+    [10, 4],
+    [2, 4],
+    [12, 3, 3, 3],
+    [8, 2, 2, 2],
+    [14, 5],
   ];
+
+  function nodeDatasetStyle(index) {
+    return {
+      backgroundColor: DONE_TOTAL_BG,
+      borderColor: DONE_TOTAL_BORDER,
+      borderWidth: 1,
+      borderDash: NODE_DASH_PATTERNS[index % NODE_DASH_PATTERNS.length],
+    };
+  }
 
   function formatByteRate(bps) {
     if (bps === 0) return '0 B/s';
@@ -168,14 +181,10 @@
         borderWidth: 2,
       },
       ...nodeIds.map((nid, i) => {
-        const c = NODE_COLORS[i % NODE_COLORS.length];
         return {
-          label: nid.slice(0, 8),
+          label: nodeLabel(nid),
           data: data.per_node[nid],
-          backgroundColor: c.bg,
-          borderColor: c.border,
-          borderWidth: 1,
-          borderDash: [5, 5],
+          ...nodeDatasetStyle(i),
         };
       }),
     ];
@@ -233,19 +242,15 @@
       {
         label: 'Done (total)',
         data: allWeeks.map(d => doneTotalMap[d] ?? 0),
-        backgroundColor: 'rgba(13, 110, 253, 0.3)',
-        borderColor: 'rgba(13, 110, 253, 1)',
+        backgroundColor: DONE_TOTAL_BG,
+        borderColor: DONE_TOTAL_BORDER,
         borderWidth: 2,
       },
       ...doneNodeIds.map((nid, i) => {
-        const c = NODE_COLORS[i % NODE_COLORS.length];
         return {
-          label: 'Done ' + nid.slice(0, 8),
+          label: 'Done ' + nodeLabel(nid),
           data: allWeeks.map(d => doneNodeMaps[nid][d] ?? 0),
-          backgroundColor: c.bg,
-          borderColor: c.border,
-          borderWidth: 1,
-          borderDash: [5, 5],
+          ...nodeDatasetStyle(i),
         };
       }),
     ];

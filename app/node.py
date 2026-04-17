@@ -17,7 +17,7 @@ from qbittorrentapi import NotFound404Error, TorrentState
 from rich.console import Console
 from sslog import logger
 
-from app.config import Config
+from app.config import NodeConfig
 from app.const import (
     ITEM_STATUS_DONE,
     ITEM_STATUS_DOWNLOADING,
@@ -45,6 +45,7 @@ from app.rpc import (
     process_commands,
 )
 from app.torrent import find_largest_video_file
+from app.torrent_store import TorrentStore
 from app.utils import parse_obj, set_torrent_comment
 
 
@@ -62,6 +63,12 @@ class Status(enum.IntEnum):
     done = 3
 
 
+def _parse_str_tags(v: str) -> frozenset[str]:
+    if not v:
+        return frozenset()
+    return frozenset({x.strip() for x in v.split(",")})
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class QbFile:
     index: int
@@ -69,12 +76,6 @@ class QbFile:
     size: int
     priority: int
     progress: float
-
-
-def _parse_str_tags(v: str) -> frozenset[str]:
-    if not v:
-        return frozenset()
-    return frozenset({x.strip() for x in v.split(",")})
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
@@ -103,14 +104,18 @@ class QbTorrent:
 @dataclasses.dataclass(kw_only=True, frozen=True)
 class Node:
     db: Database
-    config: Config
+    config: NodeConfig
     qb: qbittorrentapi.Client
+    store: TorrentStore
 
     @classmethod
-    def new(cls, cfg: Config) -> Node:
+    def new(cls, cfg: NodeConfig) -> Node:
+        db = Database(cfg.pg_dsn())
+        if not cfg.qb_url:
+            raise ValueError("no download client configured: set QB_URL")
         return Node(
             config=cfg,
-            db=Database(cfg.pg_dsn()),
+            db=db,
             qb=qbittorrentapi.Client(
                 host=str(cfg.qb_url),
                 password=cfg.qb_url.password,
@@ -121,6 +126,7 @@ class Node:
                 RAISE_NOTIMPLEMENTEDERROR_FOR_UNIMPLEMENTED_API_ENDPOINTS=True,
                 REQUESTS_ARGS={"timeout": 10},
             ),
+            store=TorrentStore(cfg),
         )
 
     def __post_init__(self) -> None:
@@ -145,6 +151,7 @@ class Node:
                 self.__process_commands()
             except Exception as e:
                 print("failed to process commands", format_exc(e))
+
             try:
                 self.__run_at_interval()
             except Exception as e:
@@ -224,7 +231,6 @@ class Node:
         if not torrents:
             logger.info("qb has no torrents")
             return
-
         # Mark jobs as removed-from-client if their torrent is no longer in qb
         qb_hashes = [x.hash for x in torrents]
         self.db.execute(
@@ -278,6 +284,17 @@ class Node:
                     status=ITEM_STATUS_FAILED,
                     info_hash=t.hash,
                     failed_reason="no seeders",
+                )
+                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+                continue
+
+            # Torrent in error state → mark failed and delete
+            if t.state.is_errored:
+                logger.info("torrent {} in error state", t.name)
+                self.__update_job_status(
+                    status=ITEM_STATUS_FAILED,
+                    info_hash=t.hash,
+                    failed_reason="torrent error",
                 )
                 self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
@@ -351,7 +368,7 @@ class Node:
         """Handle a torrent in qB that has no active downloading job.
 
         Try to reclaim if a job exists with removed-by-client status
-        (e.g. was prematurely marked due to async qB add), otherwise pause it.
+        (e.g. was prematurely marked due to async qB add), otherwise delete it.
         """
         restored = self.db.fetch_val(
             """
@@ -449,7 +466,6 @@ class Node:
                     job.tid is null and
                     seeders != 0
                 order by (category = any($3)) desc, tid asc
-                limit 6
                 """,
                 [
                     min(int(self.config.single_torrent_size_limit), left_size),
@@ -478,27 +494,24 @@ class Node:
 
         logger.info("pick {} items", len(picked))
 
-        # add to qBittorrent outside the lock to avoid blocking other nodes
+        # add to download client outside the lock to avoid blocking other nodes
         for tid, info_hash in picked:
             try:
-                self.__add_to_qb(tid, info_hash)
+                self.__add_torrent(tid, info_hash)
             except Exception as e:
-                logger.error("failed to add torrent tid={} to qb: {}", tid, e)
+                logger.error("failed to add torrent tid={}: {}", tid, e)
                 self.__update_job_status(
                     status=ITEM_STATUS_FAILED, tid=tid, failed_reason=format_exc(e)
                 )
                 with contextlib.suppress(NotFound404Error):
                     self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
 
-    def __add_to_qb(
+    def __add_torrent(
         self,
         tid: int,
         info_hash: str,
     ) -> None:
-        tc = self.db.fetch_val(
-            "select content from torrent where tid = $1 limit 1",
-            [tid],
-        )
+        tc = self.store.read(tid)
         if not tc:
             self.__update_job_status(
                 status=ITEM_STATUS_FAILED,
