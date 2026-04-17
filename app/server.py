@@ -668,6 +668,7 @@ def create_app() -> fastapi.FastAPI:
     def _build_weekly_charts(
         daily_stats: list[DailyStat],
     ) -> WeeklyCharts:
+        days_per_week = 7.0
         today_date = max((s.day for s in daily_stats), default=_today_start().date())
         today = datetime(today_date.year, today_date.month, today_date.day, tzinfo=_tz_shanghai)
         ref_date = today_date + timedelta(days=1)
@@ -703,9 +704,9 @@ def create_app() -> fastapi.FastAPI:
 
             total_dl_bytes = sum(s.downloaded_bytes for s in days)
             total_dl_count = sum(s.downloaded_count for s in days)
-            total_fetched_bytes = sum(s.fetched_bytes for s in days)
+            byte_rate = sum(s.downloaded_byte_rate for s in days) / days_per_week
+            fetched_rate = sum(s.fetched_byte_rate for s in days) / days_per_week
 
-            byte_rate = total_dl_bytes / (7.0 * 86400)
             byte_rate_totals.append(
                 ByteRateTotal(
                     byte_rate=byte_rate,
@@ -716,7 +717,6 @@ def create_app() -> fastapi.FastAPI:
             )
             done_count_totals.append(total_dl_count)
 
-            fetched_rate = total_fetched_bytes / (7.0 * 86400)
             fetched_data.append(LabeledByteRate(label=label, byte_rate=fetched_rate))
 
             thread_count_data.append(
@@ -739,7 +739,9 @@ def create_app() -> fastapi.FastAPI:
 
             for nid in sorted_node_ids:
                 nt = node_totals.get(nid, {"bytes": 0, "count": 0})
-                byte_rate_per_node[nid].append(nt["bytes"] / (7.0 * 86400))
+                byte_rate_per_node[nid].append(
+                    sum(s.node_downloaded_byte_rate.get(nid, 0.0) for s in days) / days_per_week
+                )
                 done_count_per_node[nid].append(nt["count"])
 
         return WeeklyCharts(
