@@ -9,7 +9,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, LiteralString
 
 import qbittorrentapi
 from pydantic import BeforeValidator
@@ -32,6 +32,7 @@ from app.const import (
     QB_TAG_PROCESSING,
     QB_TAG_SELECTING_FILES,
     SELECTED_CATEGORY,
+    PickStrategy,
 )
 from app.db import Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
@@ -99,6 +100,41 @@ class QbTorrent:
     eta: int  # seconds, 8640000 = infinity
     tags: Annotated[frozenset[str], BeforeValidator(_parse_str_tags)]
     seen_complete: int = 0
+
+
+_PICK_QUERY_DEFAULT = """
+    select thread.tid, thread.info_hash, thread.selected_size from thread
+    left join job on (job.tid = thread.tid)
+    where
+        mediainfo = '' and
+        thread.info_hash != '' and
+        thread.selected_size > 0 and
+        thread.selected_size < $1 and
+        category = any ($2) and
+        job.tid is null and
+        seeders != 0
+    order by (category = any($3)) desc, tid asc
+"""
+
+_PICK_QUERY_SEEDERS = """
+    select thread.tid, thread.info_hash, thread.selected_size from thread
+    left join job on (job.tid = thread.tid)
+    where
+        mediainfo = '' and
+        thread.info_hash != '' and
+        thread.selected_size > 0 and
+        thread.selected_size < $1 and
+        category = any ($2) and
+        job.tid is null and
+        seeders != 0
+    order by seeders desc, (category = any($3)) desc, tid asc
+"""
+
+
+def _pick_query(strategy: PickStrategy) -> LiteralString:
+    if strategy == PickStrategy.seeders:
+        return _PICK_QUERY_SEEDERS
+    return _PICK_QUERY_DEFAULT
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
@@ -454,19 +490,7 @@ class Node:
         ):
             logger.info("get lock")
             rows: list[tuple[int, str, int]] = conn.fetch_all(
-                """
-                select thread.tid, thread.info_hash, thread.selected_size from thread
-                left join job on (job.tid = thread.tid)
-                where
-                    mediainfo = '' and
-                    thread.info_hash != '' and
-                    thread.selected_size > 0 and
-                    thread.selected_size < $1 and
-                    category = any ($2) and
-                    job.tid is null and
-                    seeders != 0
-                order by (category = any($3)) desc, tid asc
-                """,
+                _pick_query(self.config.pick_strategy),
                 [
                     min(int(self.config.single_torrent_size_limit), left_size),
                     SELECTED_CATEGORY,

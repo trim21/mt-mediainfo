@@ -9,6 +9,7 @@ import durationpy
 import yarl
 from pydantic import BeforeValidator, ByteSize, Field, HttpUrl
 
+from app.const import PickStrategy
 from app.utils import parse_obj
 
 
@@ -149,6 +150,11 @@ class NodeConfig(BaseConfig, S3Mixin):
     single_torrent_size_limit: Annotated[
         ByteSize,
         Field(os.environ.get("SINGLE_TORRENT_SIZE_LIMIT", "10GiB"), validate_default=True),
+    ]
+
+    pick_strategy: Annotated[
+        PickStrategy,
+        Field(os.environ.get("PICK_STRATEGY", PickStrategy.seeders), validate_default=True),
     ]
 
 

@@ -1,3 +1,4 @@
+import enum
 from typing import Final
 
 LOCK_KEY_SCHEDULE_RSS: Final = "schedule"
@@ -33,6 +34,11 @@ QB_TAG_PROCESSING: Final = "processing"
 QB_TAG_NEED_SELECT: Final = "need-select"
 
 MOVIE_CATEGORY = {401, 419, 420, 421, 439}
+
+
+class PickStrategy(str, enum.Enum):
+    default = "default"  # priority category first, then tid asc
+    seeders = "seeders"  # seeders desc, then priority category, then tid asc
 
 
 SELECTED_CATEGORY = [
