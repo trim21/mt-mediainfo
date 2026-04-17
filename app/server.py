@@ -685,7 +685,6 @@ def create_app() -> fastapi.FastAPI:
             job_status_rows,
             downloading_node_rows,
             done_node_rows,
-            pending_migrate,
         ) = await asyncio.gather(
             pool.fetchrow(
                 """
@@ -767,7 +766,6 @@ def create_app() -> fastapi.FastAPI:
                 SELECTED_CATEGORY,
                 ITEM_STATUS_DONE,
             ),
-            pool.fetchval("select count(1) from torrent"),
         )
 
         thread_stats = cast(asyncpg.Record, thread_stats)
@@ -785,7 +783,7 @@ def create_app() -> fastapi.FastAPI:
 
         status_stats = {
             str(r["status"]): {"count": int(r["count"]), "size": int(r["size"])}
-            for r in cast(list[asyncpg.Record], job_status_rows)
+            for r in job_status_rows
         }
 
         downloading = status_stats.get(ITEM_STATUS_DOWNLOADING, {}).get("count", 0)
@@ -813,7 +811,7 @@ def create_app() -> fastapi.FastAPI:
                 "count": int(r["count"]),
                 "size_fmt": human_readable_size(int(r["size"])),
             }
-            for r in cast(list[asyncpg.Record], downloading_node_rows)
+            for r in downloading_node_rows
         ]
 
         done_nodes = [
@@ -822,7 +820,7 @@ def create_app() -> fastapi.FastAPI:
                 "count": int(r["count"]),
                 "size_fmt": human_readable_size(int(r["size"])),
             }
-            for r in cast(list[asyncpg.Record], done_node_rows)
+            for r in done_node_rows
         ]
 
         skipped = (
@@ -876,7 +874,6 @@ def create_app() -> fastapi.FastAPI:
                 "skipped": skipped,
                 "skipped_size": human_readable_size(skipped_size),
                 "skipped_pct": pct(skipped),
-                "pending_migrate": pending_migrate or 0,
                 "node_aliases": node_aliases,
             },
         )

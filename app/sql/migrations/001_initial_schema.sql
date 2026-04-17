@@ -30,15 +30,6 @@ create table if not exists node (
   last_seen timestamptz not null
 );
 
-create table if not exists torrent (
-    tid int8 primary key,
-    info_hash text not null,
-    content bytea not null,
-    created_at timestamptz not null default current_timestamp
-);
-
-create index if not exists torrent_info_hash on torrent (info_hash);
-
 create table if not exists config (
     key text primary key,
     value text not null
@@ -47,11 +38,6 @@ create table if not exists config (
 alter table thread add column if not exists selected_size int8 not null default 0;
 alter table thread add column if not exists torrent_fetched_at timestamptz default null;
 alter table job drop column if exists download_size;
-
--- backfill torrent_fetched_at for threads that already have a torrent record
-update thread set torrent_fetched_at = torrent.created_at
-from torrent
-where torrent.tid = thread.tid and thread.torrent_fetched_at is null;
 
 -- job: lookup by info_hash (hot path: update status/progress every minute)
 create index if not exists job_info_hash on job (info_hash);
@@ -99,9 +85,6 @@ create index if not exists job_status_updated_at on job (status, updated_at desc
 
 -- thread: daily stats aggregation by created_at range
 create index if not exists thread_created_at on thread (created_at);
-
--- torrent: daily stats aggregation by created_at range
-create index if not exists torrent_created_at on torrent (created_at);
 
 -- thread: daily stats aggregation by mediainfo_at range
 create index if not exists thread_mediainfo_at on thread (mediainfo_at)
