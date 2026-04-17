@@ -24,6 +24,7 @@
       <th>Alias</th>
       <th>Last Seen</th>
       <th>Downloading</th>
+      <th>Speed</th>
       <th>Done</th>
       <th>Failed</th>
       <th>Removed</th>
@@ -49,6 +50,7 @@
       </td>
       <td title="{{ n.last_seen | fmt_dt }}">{{ n.last_seen | timeago }}</td>
       <td>{{ n.downloading }}</td>
+      <td>{{ n.dlspeed_fmt }}</td>
       <td>{{ n.done }}</td>
       <td>{{ n.failed }}</td>
       <td>{{ n.removed }}</td>
