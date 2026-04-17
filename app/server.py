@@ -1258,7 +1258,7 @@ def create_app() -> fastapi.FastAPI:
     async def threads_removed(render: Render, page: int = 1) -> HTMLResponse:
         return await _render_thread_list(
             render,
-            title="Removed by Client",
+            title="Removed",
             count_sql="""
             select count(1)::int
             from job

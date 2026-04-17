@@ -206,9 +206,8 @@ class Node:
     def __handle_cmd_delete_torrent(self, payload: DeleteTorrentPayload) -> dict[str, str]:
         self.qb.torrents_delete(torrent_hashes=payload.info_hash, delete_files=True)
         self.__update_job_status(
-            status=ITEM_STATUS_FAILED,
+            status=ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
             info_hash=payload.info_hash,
-            failed_reason="deleted by user",
         )
         return {"info_hash": payload.info_hash}
 

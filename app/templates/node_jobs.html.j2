@@ -42,7 +42,7 @@
         {% if j.status == 'downloading' %}<span class="badge bg-info text-dark">{{ j.status }}</span>
         {% elif j.status == 'done' %}<span class="badge bg-success">{{ j.status }}</span>
         {% elif j.status == 'failed' %}<span class="badge bg-danger">{{ j.status }}</span>
-        {% elif j.status == 'removed-by-client' %}<span class="badge bg-secondary">{{ j.status }}</span>
+        {% elif j.status == 'removed-by-client' %}<span class="badge bg-secondary">Removed</span>
         {% else %}<span class="badge bg-warning text-dark">{{ j.status }}</span>
         {% endif %}
       </td>
