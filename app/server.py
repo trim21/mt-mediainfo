@@ -640,7 +640,9 @@ def create_app() -> fastapi.FastAPI:
 
             f_bytes = s["fetched_bytes"]
             f_count = s["fetched_count"]
-            if is_today and f_count > 0:
+            if f_count == 0:
+                fetched_rate = 0.0
+            elif is_today:
                 fetched_rate = (f_bytes / f_count) * 1200 / 86400.0
             else:
                 fetched_rate = f_bytes / 86400.0
