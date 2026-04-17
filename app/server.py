@@ -1349,7 +1349,7 @@ def create_app() -> fastapi.FastAPI:
     async def nodes_page(render: Render) -> HTMLResponse:
         node_rows = await pool.fetch("select id, last_seen, alias from node order by id asc")
         job_rows = await pool.fetch(
-            "select node_id, status, count(1) as cnt, sum(dlspeed) as total_dlspeed from job group by node_id, status"
+            "select node_id, status, count(1) as cnt, coalesce(sum(dlspeed), 0) as total_dlspeed from job group by node_id, status"
         )
 
         counts: dict[str, dict[str, int]] = {}
@@ -1359,7 +1359,7 @@ def create_app() -> fastapi.FastAPI:
             counts.setdefault(nid, {})
             counts[nid][r["status"]] = r["cnt"]
             if r["status"] == ITEM_STATUS_DOWNLOADING:
-                speeds[nid] = r["total_dlspeed"] or 0
+                speeds[nid] = r["total_dlspeed"]
 
         nodes_data = [
             {
