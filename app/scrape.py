@@ -274,12 +274,12 @@ class Scrape:
                 else -1
             )
 
-            self.__store.write(tid, tc)
-
-            self.__db.execute(
-                """update thread set info_hash = $2, size = $3, selected_size = $4, torrent_fetched_at = current_timestamp where tid = $1""",
-                [tid, info_hash, t.total_length, selected_size],
-            )
+            with self.__db.connection() as conn, conn.transaction():
+                self.__store.write(tid, tc)
+                conn.execute(
+                    """update thread set info_hash = $2, size = $3, selected_size = $4, torrent_fetched_at = current_timestamp where tid = $1""",
+                    [tid, info_hash, t.total_length, selected_size],
+                )
         return False
 
     def backfill_selected_size(self) -> None:
