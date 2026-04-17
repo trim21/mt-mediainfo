@@ -472,26 +472,83 @@ def create_app() -> fastapi.FastAPI:
             "node_downloaded": r["node_downloaded"] or {},
         }
 
-    def _build_weekly_charts(
+    def _build_daily_stat(
+        day: date,
+        raw_stats: dict[str, Any],
+        *,
+        period_seconds: float = 86400.0,
+        project_fetched_rate: bool = False,
+    ) -> dict[str, Any]:
+        downloaded_bytes = int(raw_stats["downloaded_bytes"])
+        downloaded_count = int(raw_stats["downloaded_count"])
+        fetched_bytes = int(raw_stats["fetched_bytes"])
+        fetched_count = int(raw_stats["fetched_count"])
+        thread_count = int(raw_stats["thread_count"])
+        torrent_count = int(raw_stats["torrent_count"])
+        mediainfo_count = int(raw_stats["mediainfo_count"])
+        node_downloaded = cast(dict[str, dict[str, int]], raw_stats.get("node_downloaded", {}))
+
+        if fetched_count == 0:
+            fetched_byte_rate = 0.0
+        elif project_fetched_rate:
+            fetched_byte_rate = (fetched_bytes / fetched_count) * 1200 / 86400.0
+        else:
+            fetched_byte_rate = fetched_bytes / 86400.0
+
+        return {
+            "day": day,
+            "downloaded_bytes": downloaded_bytes,
+            "downloaded_count": downloaded_count,
+            "downloaded_byte_rate": downloaded_bytes / period_seconds,
+            "fetched_bytes": fetched_bytes,
+            "fetched_count": fetched_count,
+            "fetched_byte_rate": fetched_byte_rate,
+            "thread_count": thread_count,
+            "torrent_count": torrent_count,
+            "mediainfo_count": mediainfo_count,
+            "node_downloaded": node_downloaded,
+            "node_downloaded_byte_rate": {
+                nid: int(node_stats.get("bytes", 0)) / period_seconds
+                for nid, node_stats in node_downloaded.items()
+            },
+        }
+
+    def _build_chart_daily_stats(
         history_rows: list[asyncpg.Record],
         today_stats: dict[str, Any],
-    ) -> dict[str, Any]:
-        today = _today_start()
+    ) -> list[dict[str, Any]]:
+        daily_stats = {
+            r["day"]: _build_daily_stat(r["day"], _stats_from_record(r)) for r in history_rows
+        }
+
+        elapsed_today = max((datetime.now(_tz_shanghai) - _today_start()).total_seconds(), 1.0)
         today_date = today_stats["day"]
+        daily_stats[today_date] = _build_daily_stat(
+            today_date,
+            today_stats,
+            period_seconds=elapsed_today,
+            project_fetched_rate=True,
+        )
+
+        return [daily_stats[day] for day in sorted(daily_stats)]
+
+    def _build_weekly_charts(
+        daily_stats: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        today_date = max((s["day"] for s in daily_stats), default=_today_start().date())
+        today = datetime(today_date.year, today_date.month, today_date.day, tzinfo=_tz_shanghai)
         ref_date = today_date + timedelta(days=1)
         min_week, max_week = _week_range()
 
-        by_day: dict[date, dict[str, Any]] = {r["day"]: _stats_from_record(r) for r in history_rows}
-        by_day[today_date] = today_stats
-
         week_days: dict[int, list[dict[str, Any]]] = {w: [] for w in range(min_week, max_week + 1)}
-        for d, s in by_day.items():
+        for s in daily_stats:
+            d = s["day"]
             wn = (d - ref_date).days // 7
             if min_week <= wn <= max_week:
                 week_days[wn].append(s)
 
         all_node_ids: set[str] = set()
-        for s in by_day.values():
+        for s in daily_stats:
             all_node_ids.update(s.get("node_downloaded", {}).keys())
         sorted_node_ids = sorted(all_node_ids)
 
@@ -578,18 +635,14 @@ def create_app() -> fastapi.FastAPI:
         }
 
     def _build_daily_charts(
-        history_rows: list[asyncpg.Record],
-        today_stats: dict[str, Any],
-        days_back: int,
+        daily_stats: list[dict[str, Any]],
+        start_date: date,
+        end_date: date,
     ) -> dict[str, Any]:
-        today_date = today_stats["day"]
-        elapsed_today = max((datetime.now(_tz_shanghai) - _today_start()).total_seconds(), 1.0)
-
-        by_day: dict[date, dict[str, Any]] = {r["day"]: _stats_from_record(r) for r in history_rows}
-        by_day[today_date] = today_stats
+        by_day: dict[date, dict[str, Any]] = {s["day"]: s for s in daily_stats}
 
         all_node_ids: set[str] = set()
-        for v in by_day.values():
+        for v in daily_stats:
             all_node_ids.update(v.get("node_downloaded", {}).keys())
         sorted_node_ids = sorted(all_node_ids)
 
@@ -604,11 +657,10 @@ def create_app() -> fastapi.FastAPI:
         byte_rate_per_node: dict[str, list[float]] = {nid: [] for nid in sorted_node_ids}
         done_count_per_node: dict[str, list[int]] = {nid: [] for nid in sorted_node_ids}
 
-        for i in range(-days_back, 1):
-            d = today_date + timedelta(days=i)
+        for i in range((end_date - start_date).days + 1):
+            d = start_date + timedelta(days=i)
             label = d.strftime("%Y-%m-%d")
             labels.append(label)
-            is_today = d == today_date
             s = by_day.get(d)
 
             if s is None:
@@ -629,7 +681,7 @@ def create_app() -> fastapi.FastAPI:
                 continue
 
             dl_bytes = s["downloaded_bytes"]
-            byte_rate = dl_bytes / elapsed_today if is_today else dl_bytes / 86400.0
+            byte_rate = s["downloaded_byte_rate"]
             byte_rate_totals.append({
                 "byte_rate": byte_rate,
                 "byte_rate_fmt": human_readable_byte_rate(byte_rate),
@@ -638,27 +690,18 @@ def create_app() -> fastapi.FastAPI:
             })
             done_count_totals.append(s["downloaded_count"])
 
-            f_bytes = s["fetched_bytes"]
-            f_count = s["fetched_count"]
-            if f_count == 0:
-                fetched_rate = 0.0
-            elif is_today:
-                fetched_rate = (f_bytes / f_count) * 1200 / 86400.0
-            else:
-                fetched_rate = f_bytes / 86400.0
+            fetched_rate = s["fetched_byte_rate"]
             fetched_data.append({"day": label, "byte_rate": fetched_rate})
 
             thread_count_data.append({"day": label, "count": s["thread_count"]})
             torrent_count_data.append({"day": label, "count": s["torrent_count"]})
             mediainfo_count_data.append({"day": label, "count": s["mediainfo_count"]})
 
-            nd = s.get("node_downloaded", {})
+            node_byte_rates = s.get("node_downloaded_byte_rate", {})
             for nid in sorted_node_ids:
+                byte_rate_per_node[nid].append(node_byte_rates.get(nid, 0.0))
+                nd = s.get("node_downloaded", {})
                 n = nd.get(nid, {})
-                n_bytes = n.get("bytes", 0)
-                byte_rate_per_node[nid].append(
-                    n_bytes / elapsed_today if is_today else n_bytes / 86400.0
-                )
                 done_count_per_node[nid].append(n.get("count", 0))
 
         return {
@@ -891,7 +934,8 @@ def create_app() -> fastapi.FastAPI:
             ),
             _compute_today_stats(),
         )
-        return ORJSONResponse(_build_weekly_charts(history_rows, today_stats))
+        daily_stats = _build_chart_daily_stats(history_rows, today_stats)
+        return ORJSONResponse(_build_weekly_charts(daily_stats))
 
     @app.get("/detail")
     async def detail(render: Render, start: str | None = None) -> HTMLResponse:
@@ -906,7 +950,6 @@ def create_app() -> fastapi.FastAPI:
         if start_dt is None:
             start_dt = today - timedelta(days=364)
         start_dt = start_dt.replace(tzinfo=_tz_shanghai) if start_dt.tzinfo is None else start_dt
-        days_back = (today - start_dt).days
 
         await _backfill_daily_stats(start_dt.date())
         history_rows, today_stats, alias_rows = await asyncio.gather(
@@ -917,7 +960,8 @@ def create_app() -> fastapi.FastAPI:
             _compute_today_stats(),
             pool.fetch("select id, alias from node where alias != ''"),
         )
-        charts = _build_daily_charts(history_rows, today_stats, days_back)
+        daily_stats = _build_chart_daily_stats(history_rows, today_stats)
+        charts = _build_daily_charts(daily_stats, start_dt.date(), today.date())
         node_aliases = {str(r["id"]): str(r["alias"]) for r in alias_rows}
 
         return render(
