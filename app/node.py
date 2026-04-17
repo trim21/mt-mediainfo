@@ -102,7 +102,7 @@ class QbTorrent:
     seen_complete: int = 0
 
 
-_PICK_QUERY_DEFAULT = """
+_PICK_QUERY_BASE: LiteralString = """
     select thread.tid, thread.info_hash, thread.selected_size from thread
     left join job on (job.tid = thread.tid)
     where
@@ -113,20 +113,15 @@ _PICK_QUERY_DEFAULT = """
         category = any ($2) and
         job.tid is null and
         seeders != 0
+"""
+
+_PICK_QUERY_DEFAULT: LiteralString = f"""
+    {_PICK_QUERY_BASE}
     order by (category = any($3)) desc, tid asc
 """
 
-_PICK_QUERY_SEEDERS = """
-    select thread.tid, thread.info_hash, thread.selected_size from thread
-    left join job on (job.tid = thread.tid)
-    where
-        mediainfo = '' and
-        thread.info_hash != '' and
-        thread.selected_size > 0 and
-        thread.selected_size < $1 and
-        category = any ($2) and
-        job.tid is null and
-        seeders != 0
+_PICK_QUERY_SEEDERS: LiteralString = f"""
+    {_PICK_QUERY_BASE}
     order by seeders desc, (category = any($3)) desc, tid asc
 """
 
