@@ -105,7 +105,7 @@ class DailyStat:
         if snapshot.fetched_count == 0:
             fetched_byte_rate = 0.0
         elif project_fetched_rate:
-            fetched_byte_rate = (snapshot.fetched_bytes / snapshot.fetched_count) * 1200 / 86400.0
+            fetched_byte_rate = (snapshot.fetched_bytes / snapshot.fetched_count) * 900 / 86400.0
         else:
             fetched_byte_rate = snapshot.fetched_bytes / 86400.0
 
@@ -710,9 +710,7 @@ def create_app() -> fastapi.FastAPI:
             done_count_totals.append(total_dl_count)
 
             if is_current_week and total_fetched_count > 0:
-                fetched_rate = (
-                    (total_fetched_bytes / total_fetched_count) * 1200 * 7 / (7.0 * 86400)
-                )
+                fetched_rate = (total_fetched_bytes / total_fetched_count) * 900 * 7 / (7.0 * 86400)
             else:
                 fetched_rate = total_fetched_bytes / (7.0 * 86400)
             fetched_data.append(LabeledByteRate(label=label, byte_rate=fetched_rate))
