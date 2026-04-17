@@ -413,24 +413,14 @@ def create_app() -> fastapi.FastAPI:
             if start_date > yesterday:
                 return
 
-            # Find which days in the range are already cached
-            existing = await pool.fetch(
-                "select day from daily_stats where day >= $1 and day <= $2",
-                start_date,
-                yesterday,
-            )
-            existing_days = {r["day"] for r in existing}
-
-            missing_days = [
-                start_date + timedelta(days=i)
-                for i in range((yesterday - start_date).days + 1)
-                if (start_date + timedelta(days=i)) not in existing_days
+            target_days = [
+                start_date + timedelta(days=i) for i in range((yesterday - start_date).days + 1)
             ]
-            if not missing_days:
+            if not target_days:
                 return
 
-            first_missing = missing_days[0]
-            last_missing = missing_days[-1]
+            first_missing = target_days[0]
+            last_missing = target_days[-1]
             start_ts = datetime(
                 first_missing.year, first_missing.month, first_missing.day, tzinfo=_tz_shanghai
             )
@@ -442,7 +432,6 @@ def create_app() -> fastapi.FastAPI:
                 downloaded_rows,
                 fetched_rows,
                 thread_rows,
-                torrent_rows,
                 mediainfo_rows,
             ) = await asyncio.gather(
                 pool.fetch(
@@ -482,17 +471,6 @@ def create_app() -> fastapi.FastAPI:
                     select (created_at at time zone 'Asia/Shanghai')::date as day,
                            count(1)::int as count
                     from thread
-                    where created_at >= $1 and created_at < $2
-                    group by day
-                    """,
-                    start_ts,
-                    end_ts,
-                ),
-                pool.fetch(
-                    """
-                    select (created_at at time zone 'Asia/Shanghai')::date as day,
-                           count(1)::int as count
-                    from torrent
                     where created_at >= $1 and created_at < $2
                     group by day
                     """,
@@ -541,18 +519,16 @@ def create_app() -> fastapi.FastAPI:
                 d = _ensure_day(r["day"])
                 d["fetched_bytes"] = int(r["bytes"])
                 d["fetched_count"] = int(r["count"])
+                d["torrent_count"] = int(r["count"])
 
             for r in thread_rows:
                 _ensure_day(r["day"])["thread_count"] = int(r["count"])
-
-            for r in torrent_rows:
-                _ensure_day(r["day"])["torrent_count"] = int(r["count"])
 
             for r in mediainfo_rows:
                 _ensure_day(r["day"])["mediainfo_count"] = int(r["count"])
 
             rows_to_insert: list[tuple[Any, ...]] = []
-            for current in missing_days:
+            for current in target_days:
                 data = days_data.get(current)
                 if data:
                     rows_to_insert.append((
@@ -598,7 +574,6 @@ def create_app() -> fastapi.FastAPI:
             downloaded_rows,
             fetched_row,
             thread_count,
-            torrent_count,
             mediainfo_count,
         ) = await asyncio.gather(
             pool.fetch(
@@ -635,11 +610,6 @@ def create_app() -> fastapi.FastAPI:
                 tomorrow,
             ),
             pool.fetchval(
-                "select count(1)::int from torrent where created_at >= $1 and created_at < $2",
-                today,
-                tomorrow,
-            ),
-            pool.fetchval(
                 "select count(1)::int from thread where mediainfo_at >= $1 and mediainfo_at < $2",
                 today,
                 tomorrow,
@@ -665,7 +635,7 @@ def create_app() -> fastapi.FastAPI:
             fetched_bytes=int(fetched_row["bytes"]),
             fetched_count=int(fetched_row["count"]),
             thread_count=int(thread_count),
-            torrent_count=int(torrent_count),
+            torrent_count=int(fetched_row["count"]),
             mediainfo_count=int(mediainfo_count),
             node_downloaded=node_downloaded,
         )
