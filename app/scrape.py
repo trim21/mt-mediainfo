@@ -91,6 +91,7 @@ class Scrape:
             where
               deleted = false and
               mediainfo_at is null and
+              seeders != 0 and
               category = any($1)
             order by (category = any($3)) desc, tid asc
             limit $2
@@ -370,6 +371,7 @@ class Scrape:
             where
               deleted = false and
               mediainfo_at is null and
+              seeders != 0 and
               category = any($1)
             order by (category = any($3)) desc, tid asc
             limit $2
