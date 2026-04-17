@@ -126,7 +126,7 @@ class Node:
                 RAISE_NOTIMPLEMENTEDERROR_FOR_UNIMPLEMENTED_API_ENDPOINTS=True,
                 REQUESTS_ARGS={"timeout": 10},
             ),
-            store=TorrentStore(cfg, db),
+            store=TorrentStore(cfg),
         )
 
     def __post_init__(self) -> None:

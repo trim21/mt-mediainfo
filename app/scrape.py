@@ -1,7 +1,6 @@
 import dataclasses
 import enum
 import os
-import threading
 import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -76,14 +75,10 @@ class Scrape:
     def __init__(self, c: ScrapeConfig):
         self.__db = Database(c.pg_dsn())
         self.mteam_client = MTeamAPI(c)
-        self.__store = TorrentStore(c, self.__db)
+        self.__store = TorrentStore(c)
 
         run_migrations(self.__db)
         self.__kv = KVConfig(self.__db)
-
-        threading.Thread(
-            target=self.__migrate_all_torrents, name="torrent-migration", daemon=True
-        ).start()
 
     def scrape_detail(self, limit: int = 0) -> None:
         """Fetch torrent details for threads missing mediainfo, or fill tid gaps."""
@@ -278,7 +273,7 @@ class Scrape:
                 else -1
             )
 
-            self.__store.write(tid, info_hash, tc)
+            self.__store.write(tid, tc)
 
             self.__db.execute(
                 """update thread set info_hash = $2, size = $3, selected_size = $4, torrent_fetched_at = current_timestamp where tid = $1""",
@@ -415,35 +410,10 @@ class Scrape:
             return RunResult.error
         return RunResult.ok
 
-    def __migrate_all_torrents(self) -> None:
-        """Background thread: migrate all torrents from PG to S3, then exit."""
-        logger.info("starting background torrent migration (PG \u2192 S3)")
-        while True:
-            try:
-                count = self.__store.migrate_batch(500)
-            except Exception:
-                logger.exception("torrent migration batch failed, retrying in 30s")
-                time.sleep(30)
-                continue
-            if count == 0:
-                logger.info("torrent migration complete, no more rows in pg")
-                return
-            time.sleep(1)
-
-    def __run_migrate(self) -> RunResult:
-        try:
-            count = self.__store.migrate_batch(100)
-            if count == 0:
-                logger.info("torrent migration complete, no more rows in pg")
-        except Exception:
-            logger.exception("failed to migrate torrents to s3")
-            return RunResult.error
-        return RunResult.ok
-
     def __run(self) -> None:
         limit = parse_obj(int, os.environ.get("SCRAPE_LIMIT", "100"))
-        cooldown = timedelta(minutes=60)
-        interval = 10 * 60  # 10 minutes
+        cooldown = timedelta(minutes=20)
+        interval = 2 * 60  # 2 minutes
 
         # Earliest time each operation is allowed to run again
         epoch = datetime.now(TZ_SHANGHAI)
