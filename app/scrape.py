@@ -427,12 +427,20 @@ class Scrape:
                 self.__db.connection() as conn,
                 conn.cursor(row_factory=psycopg.rows.dict_row) as cur,
             ):
+                raw_size = 0
                 with cctx.stream_writer(buf, closefd=False) as writer:
                     for row in cur.stream(f"SELECT * FROM {table}"):
-                        writer.write(orjson.dumps(row))
+                        encoded = orjson.dumps(row)
+                        writer.write(encoded)
                         writer.write(b"\n")
+                        raw_size += len(encoded)
+                        raw_size += 1
                 key = f"backups/{backup_date}/{table}.jsonl.zst"
-                self.__op.write(key, buf.getvalue())
+                self.__op.write(
+                    key,
+                    buf.getvalue(),
+                    user_metadata={"raw-size": str(raw_size)},
+                )
                 logger.info("backed up {} to s3 ({})", table, key)
         self.__kv.set("last_backup_date", backup_date.isoformat())
 
