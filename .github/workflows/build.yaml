@@ -47,7 +47,7 @@ jobs:
         id: version
         run: |
           COMMIT_TS=$(git log -1 --format=%ct)
-          VERSION=$(TZ='Asia/Shanghai' date -d "@$COMMIT_TS" '+%Y%m%d%H%M%S')-$(git rev-parse --short HEAD)
+          VERSION=$(TZ='Asia/Shanghai' date -d "@$COMMIT_TS" '+%Y-%m-%d %H:%M:%S')-$(git rev-parse --short HEAD)
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
