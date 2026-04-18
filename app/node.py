@@ -556,7 +556,7 @@ class Node:
                 self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
 
 
-@dataclasses.dataclass(kw_only=True, slots=True)
+@dataclasses.dataclass(kw_only=True, slots=True, frozen=True)
 class Pick:
     title: str
     guid: str
