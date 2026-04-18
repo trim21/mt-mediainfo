@@ -438,6 +438,20 @@ class Scrape:
                 logger.info("backed up {} to s3 ({})", table, key)
         self.__kv.set("last_backup_date", backup_date.isoformat())
 
+        cutoff = backup_date - timedelta(days=7)
+        for entry in self.__op.scan("backups/"):
+            # entry.path looks like "backups/2026-04-12/thread.jsonl.zst"
+            parts = entry.path.split("/")
+            if len(parts) < 2:
+                continue
+            try:
+                entry_date = date.fromisoformat(parts[1])
+            except ValueError:
+                continue
+            if entry_date < cutoff:
+                self.__op.delete(entry.path)
+                logger.info("deleted old backup {}", entry.path)
+
     def __run_backup(self) -> RunResult:
         today = datetime.now(TZ_SHANGHAI).date()
         last = self.__kv.get("last_backup_date")
