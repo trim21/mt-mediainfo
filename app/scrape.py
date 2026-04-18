@@ -231,6 +231,7 @@ class Scrape:
               info_hash = '' and
               mediainfo_at is not null and
               mediainfo = '' and
+              torrent_invalid = '' and
               seeders != 0 and
               category = any($1)
             order by (category = any($2)) desc, tid asc
@@ -249,8 +250,8 @@ class Scrape:
             except TorrentFileError:
                 logger.warning("torrent file error for thread {}", tid)
                 self.__db.execute(
-                    """update thread set mediainfo = $2, mediainfo_at = current_timestamp where tid = $1""",
-                    [tid, "invalid torrent"],
+                    """update thread set torrent_invalid = $2 where tid = $1""",
+                    [tid, "file error"],
                 )
                 continue
 
@@ -259,8 +260,8 @@ class Scrape:
             except (pydantic.ValidationError, BencodeDecodeError):
                 logger.exception("failed to parse torrent of {}", tid)
                 self.__db.execute(
-                    """update thread set mediainfo = $2, mediainfo_at = current_timestamp where tid = $1""",
-                    [tid, "invalid torrent"],
+                    """update thread set torrent_invalid = $2 where tid = $1""",
+                    [tid, "parse error"],
                 )
                 continue
 

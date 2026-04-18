@@ -6,14 +6,15 @@ user-invocable: false
 
 # Thread Lifecycle (Database)
 
-A thread represents a torrent page on M-Team. Threads are stored in the `thread` table and progress through several stages based on column values. There is no explicit `status` column — the stage is determined by a combination of `mediainfo_at`, `mediainfo`, `info_hash`, and `selected_size`.
+A thread represents a torrent page on M-Team. Threads are stored in the `thread` table and progress through several stages based on column values. There is no explicit `status` column — the stage is determined by a combination of `mediainfo_at`, `mediainfo`, `info_hash`, `torrent_invalid`, and `selected_size`.
 
 ## Key Columns
 
 | Column | Type | Purpose |
 |---|---|---|
 | `mediainfo_at` | `timestamptz NULL` | When mediainfo was fetched (NULL = not yet attempted) |
-| `mediainfo` | `text` | Mediainfo text (`''` = not yet obtained, `'invalid torrent'` = parse error) |
+| `mediainfo` | `text` | Mediainfo text (`''` = not yet obtained) |
+| `torrent_invalid` | `text` | Torrent error reason (`''` = valid or not yet checked, `'file error'` = download failure, `'parse error'` = decode/validation failure) |
 | `info_hash` | `text` | Torrent info hash (`''` = torrent file not yet downloaded) |
 | `selected_size` | `int8` | Size of largest video file (`0` = not computed, `-1` = no video file found) |
 | `deleted` | `bool` | Marked as deleted on M-Team |
@@ -68,11 +69,12 @@ scrape_search() discovers thread
 
 ### Stage 2: Pending Fetch Torrent
 
-- **Condition**: `mediainfo_at IS NOT NULL AND mediainfo = '' AND info_hash = ''`
+- **Condition**: `mediainfo_at IS NOT NULL AND mediainfo = '' AND info_hash = '' AND torrent_invalid = ''`
 - **Action**: `fetch_torrent()` downloads the `.torrent` file via M-Team API, parses it to extract `info_hash`, computes `selected_size`
 - **Transition**: Sets `info_hash`, stores torrent content in `torrent` table, sets `selected_size`
 - **Edge cases**:
-  - Invalid torrent file → sets `mediainfo = 'invalid torrent'` (terminal)
+  - Torrent file download error → sets `torrent_invalid = 'file error'` (terminal)
+  - Torrent file parse error → sets `torrent_invalid = 'parse error'` (terminal)
   - No video file in torrent → sets `selected_size = -1` (skipped by download)
 
 ### Stage 3: Pending Download
@@ -89,7 +91,7 @@ scrape_search() discovers thread
 
 ### Stage 5: Done
 
-- **Condition**: `mediainfo_at IS NOT NULL AND mediainfo != '' AND mediainfo != 'invalid torrent'`
+- **Condition**: `mediainfo_at IS NOT NULL AND mediainfo != ''`
 - **Two paths**:
   - **API mediainfo**: Obtained directly from M-Team API in Stage 1 (no download needed, `info_hash` may be `''`)
   - **Local mediainfo**: Extracted from downloaded file by `__process_local_torrent()` (has `info_hash`)
@@ -100,7 +102,8 @@ scrape_search() discovers thread
 | State | Condition | Cause |
 |---|---|---|
 | Deleted | `deleted = true` | Thread removed from M-Team (`種子未找到`) |
-| Invalid torrent | `mediainfo = 'invalid torrent'` | Torrent file could not be parsed |
+| Invalid torrent (file error) | `torrent_invalid = 'file error'` | Torrent file could not be downloaded |
+| Invalid torrent (parse error) | `torrent_invalid = 'parse error'` | Torrent file could not be decoded/validated |
 | No video file | `selected_size = -1` | No video file found in torrent |
 
 ## Backfill

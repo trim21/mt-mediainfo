@@ -870,7 +870,7 @@ def create_app() -> fastapi.FastAPI:
               count(1) filter (where deleted = false and mediainfo_at is null
                                 and seeders != 0 and upload_at >= '2024-01-01' and category = any($1)) as pending_fetch_mediainfo,
               count(1) filter (where deleted = false and mediainfo_at is not null
-                                and mediainfo = '' and info_hash = '' and seeders != 0 and category = any($1)) as pending_fetch_torrent,
+                                and mediainfo = '' and info_hash = '' and torrent_invalid = '' and seeders != 0 and category = any($1)) as pending_fetch_torrent,
               count(1) filter (where mediainfo != '' and info_hash != ''
                 and category = any($1)) as done,
               coalesce(sum(selected_size) filter (where mediainfo != '' and info_hash != ''
@@ -1136,12 +1136,12 @@ def create_app() -> fastapi.FastAPI:
             count_sql="""
             select count(1)::int from thread
             where deleted = false and mediainfo_at is not null
-                            and mediainfo = '' and info_hash = '' and seeders != 0 and category = any($1)
+                            and mediainfo = '' and info_hash = '' and torrent_invalid = '' and seeders != 0 and category = any($1)
             """,
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from thread
             where deleted = false and mediainfo_at is not null
-                            and mediainfo = '' and info_hash = '' and seeders != 0 and category = any($1)
+                            and mediainfo = '' and info_hash = '' and torrent_invalid = '' and seeders != 0 and category = any($1)
             order by tid desc
             limit $2 offset $3
             """,

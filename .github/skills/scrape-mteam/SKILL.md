@@ -39,10 +39,10 @@ The scraper in `app/scrape.py` is a long-running scheduler that moves threads fr
 
 ### `fetch_torrent()`
 
-- Targets threads where `mediainfo_at is not null`, `mediainfo = ''`, `info_hash = ''`, `seeders != 0`, and category is selected
+- Targets threads where `mediainfo_at is not null`, `mediainfo = ''`, `info_hash = ''`, `torrent_invalid = ''`, `seeders != 0`, and category is selected
 - Downloads the `.torrent`, computes `info_hash`, stores raw content in `torrent`, and updates `torrent_fetched_at`
 - Parses files and sets `selected_size` to the largest video file size, or `-1` when no video file exists
-- Torrent parse failures and invalid torrent files are terminalized as `mediainfo = 'invalid torrent'`
+- Torrent download failures set `torrent_invalid = 'file error'`; parse failures set `torrent_invalid = 'parse error'`
 
 ### `backfill_selected_size()`
 
@@ -60,7 +60,7 @@ The scraper in `app/scrape.py` is a long-running scheduler that moves threads fr
 - Network failures return `RunResult.error` and do not alter cooldown timers
 - `MTeamRequestError` messages `請求過於頻繁` and `今日下載配額用盡` trigger a 60-minute cooldown for that operation only
 - Missing torrents (`種子未找到`) mark the thread deleted
-- Invalid torrent content is recorded in the database rather than retried indefinitely
+- Invalid torrent content is recorded via `torrent_invalid` column rather than retried indefinitely
 
 ## Related
 
