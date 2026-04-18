@@ -1,6 +1,6 @@
 ---
 name: thread-lifecycle
-description: 'Database thread lifecycle stages and transitions. Use when working on thread state queries, scraping logic, or status filtering in app/scrape.py, app/server.py, app/node.py.'
+description: "Database thread lifecycle stages and transitions. Use when working on thread state queries, scraping logic, or status filtering in app/scrape.py, app/server.py, app/node.py."
 user-invocable: false
 ---
 
@@ -10,15 +10,15 @@ A thread represents a torrent page on M-Team. Threads are stored in the `thread`
 
 ## Key Columns
 
-| Column | Type | Purpose |
-|---|---|---|
-| `mediainfo_at` | `timestamptz NULL` | When mediainfo was fetched (NULL = not yet attempted) |
-| `mediainfo` | `text` | Mediainfo text (`''` = not yet obtained) |
-| `torrent_invalid` | `text` | Torrent error reason (`''` = valid or not yet checked, `'file error'` = download failure, `'parse error'` = decode/validation failure) |
-| `info_hash` | `text` | Torrent info hash (`''` = torrent file not yet downloaded) |
-| `selected_size` | `int8` | Size of largest video file (`0` = not computed, `-1` = no video file found) |
-| `deleted` | `bool` | Marked as deleted on M-Team |
-| `seeders` | `int8` | Number of seeders |
+| Column            | Type               | Purpose                                                                                                                                |
+| ----------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `mediainfo_at`    | `timestamptz NULL` | When mediainfo was fetched (NULL = not yet attempted)                                                                                  |
+| `mediainfo`       | `text`             | Mediainfo text (`''` = not yet obtained)                                                                                               |
+| `torrent_invalid` | `text`             | Torrent error reason (`''` = valid or not yet checked, `'file error'` = download failure, `'parse error'` = decode/validation failure) |
+| `info_hash`       | `text`             | Torrent info hash (`''` = torrent file not yet downloaded)                                                                             |
+| `selected_size`   | `int8`             | Size of largest video file (`0` = not computed, `-1` = no video file found)                                                            |
+| `deleted`         | `bool`             | Marked as deleted on M-Team                                                                                                            |
+| `seeders`         | `int8`             | Number of seeders                                                                                                                      |
 
 ## Lifecycle Stages
 
@@ -99,12 +99,12 @@ scrape_search() discovers thread
 
 ## Terminal States
 
-| State | Condition | Cause |
-|---|---|---|
-| Deleted | `deleted = true` | Thread removed from M-Team (`種子未找到`) |
-| Invalid torrent (file error) | `torrent_invalid = 'file error'` | Torrent file could not be downloaded |
+| State                         | Condition                         | Cause                                       |
+| ----------------------------- | --------------------------------- | ------------------------------------------- |
+| Deleted                       | `deleted = true`                  | Thread removed from M-Team (`種子未找到`)   |
+| Invalid torrent (file error)  | `torrent_invalid = 'file error'`  | Torrent file could not be downloaded        |
 | Invalid torrent (parse error) | `torrent_invalid = 'parse error'` | Torrent file could not be decoded/validated |
-| No video file | `selected_size = -1` | No video file found in torrent |
+| No video file                 | `selected_size = -1`              | No video file found in torrent              |
 
 ## Backfill
 

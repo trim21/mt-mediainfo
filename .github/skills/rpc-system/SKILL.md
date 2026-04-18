@@ -1,6 +1,6 @@
 ---
 name: rpc-system
-description: 'RPC command queue system for server-to-node communication. Use when working on RPC methods, command dispatch, or the /rpc and /api/node/{node_id}/rpc endpoints in app/rpc.py, app/node.py, app/server.py.'
+description: "RPC command queue system for server-to-node communication. Use when working on RPC methods, command dispatch, or the /rpc and /api/node/{node_id}/rpc endpoints in app/rpc.py, app/node.py, app/server.py."
 user-invocable: false
 ---
 
@@ -37,10 +37,10 @@ create index if not exists idx_node_command_pending
 
 Defined in `app/rpc.py`:
 
-| Method | Payload | Handler | Description |
-|--------|---------|---------|-------------|
+| Method           | Payload                | Handler                            | Description                                                                                         |
+| ---------------- | ---------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `delete-torrent` | `{"info_hash": "..."}` | `Node.__handle_cmd_delete_torrent` | Deletes torrent from qBittorrent (with files) and marks job as failed with reason "deleted by user" |
-| `ping` | `{}` | `Node.__handle_cmd_ping` | Returns `{"pong": "ok"}`, used for connectivity testing |
+| `ping`           | `{}`                   | `Node.__handle_cmd_ping`           | Returns `{"pong": "ok"}`, used for connectivity testing                                             |
 
 ## Key Types (`app/rpc.py`)
 

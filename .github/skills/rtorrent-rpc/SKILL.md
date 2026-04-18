@@ -1,6 +1,6 @@
 ---
 name: rtorrent-rpc
-description: 'rtorrent-rpc library usage patterns and rTorrent RPC API. Use when working on rTorrent integration in app/rt.py or adding new rTorrent operations.'
+description: "rtorrent-rpc library usage patterns and rTorrent RPC API. Use when working on rTorrent integration in app/rt.py or adding new rTorrent operations."
 user-invocable: false
 ---
 
@@ -23,13 +23,14 @@ rt = RTorrent("http://127.0.0.1:8080")
 
 Constructor parameters:
 
-| Parameter | Default | Description |
-|---|---|---|
-| `address` | — | `scgi://`, `http://`, or `https://` URL |
-| `rutorrent_compatibility` | `True` | Store add-time, tags in `d.custom1`, comment in `d.custom2` (compatible with ruTorrent/Flood) |
-| `timeout` | `5.0` | Socket timeout in seconds. In this project we use `30` |
+| Parameter                 | Default | Description                                                                                   |
+| ------------------------- | ------- | --------------------------------------------------------------------------------------------- |
+| `address`                 | —       | `scgi://`, `http://`, or `https://` URL                                                       |
+| `rutorrent_compatibility` | `True`  | Store add-time, tags in `d.custom1`, comment in `d.custom2` (compatible with ruTorrent/Flood) |
+| `timeout`                 | `5.0`   | Socket timeout in seconds. In this project we use `30`                                        |
 
 The library exposes three call interfaces:
+
 - **`rt.rpc.*`** — `xmlrpc.client.ServerProxy` for XML-RPC calls (always available)
 - **`rt.jsonrpc.call(method, params)`** — JSON-RPC (only on jesec/rtorrent forks with JSON-RPC support)
 - **`rt._transport.request(data, content_type)`** — Raw SCGI transport
@@ -40,16 +41,16 @@ In this project, `_RTorrent` subclass adds a `call()` method that auto-detects J
 
 rTorrent uses a hierarchical dot-separated naming scheme:
 
-| Prefix | Scope | Example |
-|---|---|---|
-| `d.*` | Download (torrent) | `d.name=`, `d.hash=`, `d.start`, `d.stop` |
-| `f.*` | File within a download | `f.path=`, `f.size_bytes=`, `f.priority.set` |
-| `t.*` | Tracker within a download | `t.url=`, `t.is_enabled.set` |
-| `p.*` | Peer within a download | `p.address`, `p.down_rate` |
-| `system.*` | System-level | `system.multicall`, `system.listMethods` |
-| `load.*` | Load torrents | `load.raw_start_verbose` |
-| `throttle.*` | Speed limits | `throttle.up` |
-| `choke_group.*` | Choke group management | `choke_group.list` |
+| Prefix          | Scope                     | Example                                      |
+| --------------- | ------------------------- | -------------------------------------------- |
+| `d.*`           | Download (torrent)        | `d.name=`, `d.hash=`, `d.start`, `d.stop`    |
+| `f.*`           | File within a download    | `f.path=`, `f.size_bytes=`, `f.priority.set` |
+| `t.*`           | Tracker within a download | `t.url=`, `t.is_enabled.set`                 |
+| `p.*`           | Peer within a download    | `p.address`, `p.down_rate`                   |
+| `system.*`      | System-level              | `system.multicall`, `system.listMethods`     |
+| `load.*`        | Load torrents             | `load.raw_start_verbose`                     |
+| `throttle.*`    | Speed limits              | `throttle.up`                                |
+| `choke_group.*` | Choke group management    | `choke_group.list`                           |
 
 Getter methods end with `=` in multicall context (e.g., `"d.name="`). Setter methods use `.set` suffix (e.g., `"d.directory_base.set"`).
 
@@ -128,11 +129,11 @@ Used for atomic multi-step operations (e.g., stop+close, open+start).
 
 Three fields determine torrent state:
 
-| Field | Values | Meaning |
-|---|---|---|
-| `d.complete` | 0 / 1 | All selected data downloaded |
-| `d.is_open` | 0 / 1 | Torrent handle is open (active) |
-| `d.state` | 0 / 1 | 0 = stopped, 1 = started (leeching or seeding) |
+| Field        | Values | Meaning                                        |
+| ------------ | ------ | ---------------------------------------------- |
+| `d.complete` | 0 / 1  | All selected data downloaded                   |
+| `d.is_open`  | 0 / 1  | Torrent handle is open (active)                |
+| `d.state`    | 0 / 1  | 0 = stopped, 1 = started (leeching or seeding) |
 
 State mapping in `app/rt.py`:
 
@@ -229,31 +230,31 @@ rt.t_disable_tracker(info_hash, tracker_index=0)
 
 `rtorrent_rpc.helper` provides:
 
-| Function | Description |
-|---|---|
-| `parse_tags(s)` | Parse `d.custom1` string → `set[str]` |
-| `parse_comment(s)` | Parse `d.custom2` string → comment string |
-| `get_torrent_info_hash(content)` | SHA1 info_hash from `.torrent` bytes |
-| `add_fast_resume_file(path, content)` | Inject resume data (skip hash check) — **use with caution** |
-| `add_completed_resume_file(path, content)` | Inject completed resume data — **use with caution** |
+| Function                                   | Description                                                 |
+| ------------------------------------------ | ----------------------------------------------------------- |
+| `parse_tags(s)`                            | Parse `d.custom1` string → `set[str]`                       |
+| `parse_comment(s)`                         | Parse `d.custom2` string → comment string                   |
+| `get_torrent_info_hash(content)`           | SHA1 info_hash from `.torrent` bytes                        |
+| `add_fast_resume_file(path, content)`      | Inject resume data (skip hash check) — **use with caution** |
+| `add_completed_resume_file(path, content)` | Inject completed resume data — **use with caution**         |
 
 ## Project-Specific Wrapper: RTorrentClient
 
 `app/rt.py` wraps `rtorrent_rpc.RTorrent` into `RTorrentClient` implementing the `DownloadClient` protocol:
 
-| Protocol Method | rTorrent Implementation |
-|---|---|
-| `connect()` | `system.listMethods()` — verifies connection |
-| `list_torrents()` | `d.multicall2` with 14 fields |
-| `list_files(hash)` | `f.multicall` with 5 fields |
-| `add_torrent(data, ...)` | `add_torrent_by_file()` with extras for throttle |
-| `delete_torrent(hash)` | `d.stop` + `d.erase` (suppress errors) |
-| `pause_torrent(hash)` | `stop_torrent()` (d.stop + d.close) |
-| `resume_torrent(hash)` | `start_torrent()` (d.open + d.start) |
-| `set_download_limit(hash, limit)` | `d.throttle.max.set` |
-| `add_tags(hash, tags)` | Read current → merge → `d_set_tags()` |
-| `remove_tags(hash, tags)` | Read current → subtract → `d_set_tags()` |
-| `set_file_priority(hash, ids, pri)` | Loop `f.priority.set` per file ID |
+| Protocol Method                     | rTorrent Implementation                          |
+| ----------------------------------- | ------------------------------------------------ |
+| `connect()`                         | `system.listMethods()` — verifies connection     |
+| `list_torrents()`                   | `d.multicall2` with 14 fields                    |
+| `list_files(hash)`                  | `f.multicall` with 5 fields                      |
+| `add_torrent(data, ...)`            | `add_torrent_by_file()` with extras for throttle |
+| `delete_torrent(hash)`              | `d.stop` + `d.erase` (suppress errors)           |
+| `pause_torrent(hash)`               | `stop_torrent()` (d.stop + d.close)              |
+| `resume_torrent(hash)`              | `start_torrent()` (d.open + d.start)             |
+| `set_download_limit(hash, limit)`   | `d.throttle.max.set`                             |
+| `add_tags(hash, tags)`              | Read current → merge → `d_set_tags()`            |
+| `remove_tags(hash, tags)`           | Read current → subtract → `d_set_tags()`         |
+| `set_file_priority(hash, ids, pri)` | Loop `f.priority.set` per file ID                |
 
 ## JSON-RPC vs XML-RPC
 

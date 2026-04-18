@@ -1,6 +1,6 @@
 ---
 name: server-dashboard
-description: 'FastAPI dashboard routes, daily_stats cache and backfill, thread pages, node pages, and admin APIs. Use when working on app/server.py or dashboard templates.'
+description: "FastAPI dashboard routes, daily_stats cache and backfill, thread pages, node pages, and admin APIs. Use when working on app/server.py or dashboard templates."
 user-invocable: false
 ---
 

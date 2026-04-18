@@ -1,6 +1,6 @@
 ---
 name: scrape-mteam
-description: 'M-Team scraping workflow, search cursor, rate limiting, and torrent or mediainfo fetch behavior. Use when working on app/scrape.py, app/mt.py, or thread discovery and fetch flow.'
+description: "M-Team scraping workflow, search cursor, rate limiting, and torrent or mediainfo fetch behavior. Use when working on app/scrape.py, app/mt.py, or thread discovery and fetch flow."
 user-invocable: false
 ---
 

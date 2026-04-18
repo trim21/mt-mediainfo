@@ -1,6 +1,6 @@
 ---
 name: qb-torrent-lifecycle
-description: 'qBittorrent torrent lifecycle stages and tag transitions. Use when working on torrent download, processing, or tag logic in app/node.py.'
+description: "qBittorrent torrent lifecycle stages and tag transitions. Use when working on torrent download, processing, or tag logic in app/node.py."
 user-invocable: false
 ---
 
@@ -12,13 +12,13 @@ Torrents managed by the application go through several stages in qBittorrent. Th
 
 Tags are defined in `app/const.py`. They do NOT drive lifecycle logic — they are set/removed alongside state transitions to provide visibility.
 
-| Constant | Value | Description |
-|---|---|---|
-| `QB_TAG_NEED_SELECT` | `need-select` | Newly added torrent, needs file selection |
-| `QB_TAG_SELECTING_FILES` | `selecting-files` | Torrent is in stopped state, waiting for file selection |
-| `QB_TAG_DOWNLOADING` | `downloading` | Torrent has been resumed and is actively downloading |
-| `QB_TAG_PROCESSING` | `processing` | Download complete, extracting mediainfo |
-| `QB_TAG_PROCESS_ERROR` | `process-error` | Mediainfo extraction failed (**exception**: this tag IS used in logic to skip retries) |
+| Constant                 | Value             | Description                                                                            |
+| ------------------------ | ----------------- | -------------------------------------------------------------------------------------- |
+| `QB_TAG_NEED_SELECT`     | `need-select`     | Newly added torrent, needs file selection                                              |
+| `QB_TAG_SELECTING_FILES` | `selecting-files` | Torrent is in stopped state, waiting for file selection                                |
+| `QB_TAG_DOWNLOADING`     | `downloading`     | Torrent has been resumed and is actively downloading                                   |
+| `QB_TAG_PROCESSING`      | `processing`      | Download complete, extracting mediainfo                                                |
+| `QB_TAG_PROCESS_ERROR`   | `process-error`   | Mediainfo extraction failed (**exception**: this tag IS used in logic to skip retries) |
 
 ## Lifecycle Stages
 

@@ -21,7 +21,6 @@ tasks:
       - .env
     cmd: python ./main.py node
 
-
   scrape:
     dotenv:
       - .env

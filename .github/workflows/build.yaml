@@ -66,9 +66,9 @@ jobs:
       - uses: actions/delete-package-versions@v5.0.0
         if: ${{ github.event_name == 'push' }}
         with:
-          owner: 'trim21'
-          ignore-versions: '^master$'
+          owner: "trim21"
+          ignore-versions: "^master$"
           token: ${{ github.token }}
-          package-name: 'mt-mediainfo'
-          package-type: 'container'
+          package-name: "mt-mediainfo"
+          package-type: "container"
           min-versions-to-keep: 1
