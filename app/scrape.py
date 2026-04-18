@@ -431,7 +431,9 @@ class Scrape:
                     for row in cur.stream(f"SELECT * FROM {table}"):
                         writer.write(orjson.dumps(row) + b"\n")
                 key = f"backups/{backup_date}/{table}.jsonl.zst"
-                self.__op.write(key, buf.getvalue())
+                self.__op.write(
+                    key, buf.getvalue(), user_metadata={"raw-size": str(len(buf.getvalue()))}
+                )
                 logger.info("backed up {} to s3 ({})", table, key)
         self.__kv.set("last_backup_date", backup_date.isoformat())
 
