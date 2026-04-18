@@ -89,7 +89,7 @@ requires-dist = [
     { name = "rich", specifier = "==15.0.0" },
     { name = "six", specifier = "==1.17.0" },
     { name = "sslog", specifier = "==0.0.0a52" },
-    { name = "tzdata" },
+    { name = "tzdata", specifier = ">=2026.1" },
     { name = "uvicorn", specifier = "==0.44.0" },
     { name = "xxhash", specifier = "==3.6.0" },
     { name = "yarl", specifier = "==1.23.0" },
