@@ -3,10 +3,9 @@ from collections.abc import Iterator, Sequence
 from typing import Any, LiteralString
 
 import psycopg.connection
+from pg_dlock import Lock, Locker
 from psycopg import RawCursor
 from psycopg_pool import ConnectionPool
-
-from . import dlock
 
 
 class Connection(psycopg.connection.Connection):
@@ -38,6 +37,7 @@ class Connection(psycopg.connection.Connection):
 class Database:
     def __init__(self, dsn: str):
         self.__conn_info = dsn
+        self.__locker = Locker(dsn)
 
         self.db = ConnectionPool(
             self.__conn_info,
@@ -50,8 +50,8 @@ class Database:
     def connection(self) -> contextlib.AbstractContextManager[Connection]:
         return self.db.connection()
 
-    def lock(self, key: str) -> dlock.Lock:
-        return dlock.Lock(self.__conn_info, key, scope="session")
+    def lock(self, key: str) -> Lock:
+        return self.__locker.lock(key, scope="session")
 
     def execute(self, sql: LiteralString, args: Sequence[Any] = ()) -> None:
         with self.db.connection() as conn:
