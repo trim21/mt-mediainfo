@@ -34,6 +34,83 @@ wheels = [
 ]
 
 [[package]]
+name = "app"
+version = "0"
+source = { virtual = "." }
+dependencies = [
+    { name = "asyncpg" },
+    { name = "bencode2" },
+    { name = "click" },
+    { name = "durationpy" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "jinja2" },
+    { name = "opendal" },
+    { name = "orjson" },
+    { name = "psycopg", extra = ["binary", "pool"] },
+    { name = "pydantic" },
+    { name = "qbittorrent-api" },
+    { name = "rapidocr-onnxruntime" },
+    { name = "regex" },
+    { name = "rich" },
+    { name = "six" },
+    { name = "sslog" },
+    { name = "tenacity" },
+    { name = "tomli" },
+    { name = "tzdata" },
+    { name = "uuid-utils" },
+    { name = "uvicorn" },
+    { name = "xxhash" },
+    { name = "yarl" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "asyncpg-stubs" },
+    { name = "mypy" },
+    { name = "ty" },
+    { name = "types-regex" },
+    { name = "types-six" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "asyncpg", specifier = "==0.31.0" },
+    { name = "bencode2", specifier = "==0.3.30" },
+    { name = "click", specifier = "==8.3.2" },
+    { name = "durationpy", specifier = "==0.10" },
+    { name = "fastapi", specifier = "==0.136.0" },
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "jinja2", specifier = "==3.1.6" },
+    { name = "opendal", specifier = "==0.46.0" },
+    { name = "orjson", specifier = "==3.11.8" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.3" },
+    { name = "pydantic", specifier = "==2.13.2" },
+    { name = "qbittorrent-api", specifier = "==2025.11.1" },
+    { name = "rapidocr-onnxruntime", specifier = "==1.4.4" },
+    { name = "regex", specifier = "==2026.4.4" },
+    { name = "rich", specifier = "==15.0.0" },
+    { name = "six", specifier = "==1.17.0" },
+    { name = "sslog", specifier = "==0.0.0a52" },
+    { name = "tenacity", specifier = "==9.1.4" },
+    { name = "tomli", specifier = "==2.4.1" },
+    { name = "tzdata" },
+    { name = "uuid-utils", specifier = "==0.14.1" },
+    { name = "uvicorn", specifier = "==0.44.0" },
+    { name = "xxhash", specifier = "==3.6.0" },
+    { name = "yarl", specifier = "==1.23.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "asyncpg-stubs", specifier = "==0.31.2" },
+    { name = "mypy", specifier = "==1.20.1" },
+    { name = "ty", specifier = "==0.0.31" },
+    { name = "types-regex", specifier = "==2026.4.4.20260408" },
+    { name = "types-six", specifier = "==1.17.0.20260408" },
+]
+
+[[package]]
 name = "asyncpg"
 version = "0.31.0"
 source = { registry = "https://pypi.org/simple" }
@@ -579,83 +656,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/56/9a/9470d013d0d50af0da9c4251614aeb3c1823635cab3edc211e3839db0bcf/psycopg_pool-3.3.0.tar.gz", hash = "sha256:fa115eb2860bd88fce1717d75611f41490dec6135efb619611142b24da3f6db5", size = 31606, upload-time = "2025-12-01T11:34:33.11Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e7/c3/26b8a0908a9db249de3b4169692e1c7c19048a9bc41a4d3209cee7dbb758/psycopg_pool-3.3.0-py3-none-any.whl", hash = "sha256:2e44329155c410b5e8666372db44276a8b1ebd8c90f1c3026ebba40d4bc81063", size = 39995, upload-time = "2025-12-01T11:34:29.761Z" },
-]
-
-[[package]]
-name = "pt-repost"
-version = "0"
-source = { virtual = "." }
-dependencies = [
-    { name = "asyncpg" },
-    { name = "bencode2" },
-    { name = "click" },
-    { name = "durationpy" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "jinja2" },
-    { name = "opendal" },
-    { name = "orjson" },
-    { name = "psycopg", extra = ["binary", "pool"] },
-    { name = "pydantic" },
-    { name = "qbittorrent-api" },
-    { name = "rapidocr-onnxruntime" },
-    { name = "regex" },
-    { name = "rich" },
-    { name = "six" },
-    { name = "sslog" },
-    { name = "tenacity" },
-    { name = "tomli" },
-    { name = "tzdata" },
-    { name = "uuid-utils" },
-    { name = "uvicorn" },
-    { name = "xxhash" },
-    { name = "yarl" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "asyncpg-stubs" },
-    { name = "mypy" },
-    { name = "ty" },
-    { name = "types-regex" },
-    { name = "types-six" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "asyncpg", specifier = "==0.31.0" },
-    { name = "bencode2", specifier = "==0.3.30" },
-    { name = "click", specifier = "==8.3.2" },
-    { name = "durationpy", specifier = "==0.10" },
-    { name = "fastapi", specifier = "==0.136.0" },
-    { name = "httpx", specifier = "==0.28.1" },
-    { name = "jinja2", specifier = "==3.1.6" },
-    { name = "opendal", specifier = "==0.46.0" },
-    { name = "orjson", specifier = "==3.11.8" },
-    { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.3" },
-    { name = "pydantic", specifier = "==2.13.2" },
-    { name = "qbittorrent-api", specifier = "==2025.11.1" },
-    { name = "rapidocr-onnxruntime", specifier = "==1.4.4" },
-    { name = "regex", specifier = "==2026.4.4" },
-    { name = "rich", specifier = "==15.0.0" },
-    { name = "six", specifier = "==1.17.0" },
-    { name = "sslog", specifier = "==0.0.0a52" },
-    { name = "tenacity", specifier = "==9.1.4" },
-    { name = "tomli", specifier = "==2.4.1" },
-    { name = "tzdata" },
-    { name = "uuid-utils", specifier = "==0.14.1" },
-    { name = "uvicorn", specifier = "==0.44.0" },
-    { name = "xxhash", specifier = "==3.6.0" },
-    { name = "yarl", specifier = "==1.23.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "asyncpg-stubs", specifier = "==0.31.2" },
-    { name = "mypy", specifier = "==1.20.1" },
-    { name = "ty", specifier = "==0.0.31" },
-    { name = "types-regex", specifier = "==2026.4.4.20260408" },
-    { name = "types-six", specifier = "==1.17.0.20260408" },
 ]
 
 [[package]]

@@ -1,8 +1,8 @@
-# AGENTS.md - AI Agent Guide for pt-repost
+# AGENTS.md - AI Agent Guide
 
 ## Project Overview
 
-**pt-repost** downloads torrents from M-Team, processes local media files to extract metadata, detects hardcoded subtitles, and prepares reposting data. The codebase has three long-running modes: a download node, a background scraper, and a FastAPI web server.
+This project downloads torrents from M-Team, processes local media files to extract metadata, detects hardcoded subtitles, and prepares reposting data. The codebase has three long-running modes: a download node, a background scraper, and a FastAPI web server.
 
 ## Code Map
 
