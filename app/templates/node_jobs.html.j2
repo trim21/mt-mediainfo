@@ -16,7 +16,7 @@
 <div class="container-fluid mt-4 px-4">
   <p><a href="/nodes">&larr; Back to Nodes</a></p>
   <h2>Node <code>{{ node_name }}</code> <small class="text-muted fs-6">({{ jobs | length }} jobs)</small></h2>
-  <p class="text-muted">Full ID: <code>{{ node_id }}</code> &mdash; Last seen: {{ last_seen | fmt_dt }}</p>
+  <p class="text-muted">Full ID: <code>{{ node_id }}</code> &mdash; Version: <code>{{ version or '-' }}</code> &mdash; Last seen: {{ last_seen | fmt_dt }}</p>
 
   <table class="table table-bordered table-hover table-sm">
     <thead class="table-light">

@@ -43,6 +43,13 @@ jobs:
           tags: |
             type=ref,event=branch
 
+      - name: Compute version
+        id: version
+        run: |
+          COMMIT_TS=$(git log -1 --format=%ct)
+          VERSION=$(TZ='Asia/Shanghai' date -d "@$COMMIT_TS" '+%Y%m%d%H%M%S')-$(git rev-parse --short HEAD)
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v7.1.0
         with:
@@ -51,6 +58,7 @@ jobs:
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ steps.version.outputs.VERSION }}
           cache-from: type=gha,scope=buildkit-${{ runner.arch }}
           cache-to: type=gha,mode=max,scope=buildkit-${{ runner.arch }}
           github-token: ${{ github.token }}

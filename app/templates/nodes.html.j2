@@ -22,6 +22,7 @@
     <tr>
       <th>Node</th>
       <th>Alias</th>
+      <th>Version</th>
       <th>Last Seen</th>
       <th>Downloading</th>
       <th>Speed</th>
@@ -48,6 +49,7 @@
                   onclick="saveAlias('{{ n.id }}', document.getElementById('alias-{{ loop.index }}').value, this)">Save</button>
         </div>
       </td>
+      <td><code>{{ n.version or '-' }}</code></td>
       <td title="{{ n.last_seen | fmt_dt }}">{{ n.last_seen | timeago }}</td>
       <td>{{ n.downloading }}</td>
       <td>{{ n.dlspeed_fmt }}</td>

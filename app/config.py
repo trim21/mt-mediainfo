@@ -174,6 +174,11 @@ class NodeConfig(BaseConfig, S3Mixin):
         Field(os.environ.get("PICK_STRATEGY", PickStrategy.seeders), validate_default=True),
     ]
 
+    version: Annotated[
+        str,
+        Field(os.environ.get("APP_VERSION", ""), validate_default=True),
+    ]
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class ScrapeConfig(BaseConfig, S3Mixin):

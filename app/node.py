@@ -218,10 +218,10 @@ class Node:
     def __heart_beat(self) -> None:
         self.db.execute(
             """
-            insert into node (id, last_seen) values ($1, $2)
-            on conflict (id) do update set last_seen = excluded.last_seen
+            insert into node (id, last_seen, version) values ($1, $2, $3)
+            on conflict (id) do update set last_seen = excluded.last_seen, version = excluded.version
             """,
-            [self.config.node_id, datetime.now(tz=UTC)],
+            [self.config.node_id, datetime.now(tz=UTC), self.config.version],
         )
 
     def __set_tags(self, info_hash: str, *, remove: str, add: str) -> None:

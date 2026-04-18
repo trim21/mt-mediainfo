@@ -1363,7 +1363,9 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/nodes")
     async def nodes_page(render: Render) -> HTMLResponse:
-        node_rows = await pool.fetch("select id, last_seen, alias from node order by id asc")
+        node_rows = await pool.fetch(
+            "select id, last_seen, alias, version from node order by id asc"
+        )
         job_rows = await pool.fetch(
             "select node_id, status, count(1) as cnt, coalesce(sum(dlspeed), 0) as total_dlspeed from job group by node_id, status"
         )
@@ -1382,6 +1384,7 @@ def create_app() -> fastapi.FastAPI:
                 "id": str(n["id"]),
                 "alias": n["alias"],
                 "last_seen": n["last_seen"],
+                "version": n["version"],
                 "downloading": counts.get(str(n["id"]), {}).get(ITEM_STATUS_DOWNLOADING, 0),
                 "dlspeed_fmt": human_readable_byte_rate(speeds.get(str(n["id"]), 0)),
                 "done": counts.get(str(n["id"]), {}).get(ITEM_STATUS_DONE, 0),
@@ -1404,7 +1407,7 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/nodes/{node_id}")
     async def node_jobs_page(node_id: str, render: Render) -> HTMLResponse:
         node_row = await pool.fetchrow(
-            "select id, last_seen, alias from node where id = $1", node_id
+            "select id, last_seen, alias, version from node where id = $1", node_id
         )
         if node_row is None:
             return render("nodes.html.j2", ctx={"nodes": []}, status_code=404)
@@ -1465,6 +1468,7 @@ def create_app() -> fastapi.FastAPI:
                 "node_id": str(node_row["id"]),
                 "node_name": node_row["alias"] or str(node_row["id"])[:8],
                 "last_seen": node_row["last_seen"],
+                "version": node_row["version"],
                 "jobs": jobs,
             },
         )

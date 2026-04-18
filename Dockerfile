@@ -25,3 +25,6 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev --frozen --no-install-project --no-build --no-cache
 
 COPY . .
+
+ARG VERSION=""
+ENV APP_VERSION=$VERSION
