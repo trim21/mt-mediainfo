@@ -1304,6 +1304,21 @@ def create_app() -> fastapi.FastAPI:
         )
         return ORJSONResponse({"deleted": result})
 
+    @app.post("/api/node/{node_id}/reset-jobs")
+    async def reset_node_jobs(node_id: str) -> ORJSONResponse:
+        node_row = await pool.fetchrow("select id from node where id = $1", node_id)
+        if node_row is None:
+            return ORJSONResponse({"error": "node not found"}, status_code=404)
+        result = await pool.execute(
+            """
+            delete from job
+            where node_id = $1 and status = $2
+            """,
+            node_id,
+            ITEM_STATUS_DOWNLOADING,
+        )
+        return ORJSONResponse({"deleted": result})
+
     @app.post("/api/node/{node_id}/rpc")
     async def node_rpc(node_id: str, body: RpcRequest) -> ORJSONResponse:
         payload_cls = PAYLOAD_TYPES.get(body.method)

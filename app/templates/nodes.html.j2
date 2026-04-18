@@ -57,6 +57,7 @@
       <td>{{ n.total }}</td>
       <td>
         <button class="btn btn-sm btn-outline-primary" onclick="pingNode('{{ n.id }}', this)">Ping</button>
+        <button class="btn btn-sm btn-outline-danger" onclick="resetNodeJobs('{{ n.id }}', {{ n.downloading }}, this)">Reset Jobs</button>
       </td>
     </tr>
     {% endfor %}
@@ -90,6 +91,28 @@ async function saveAlias(nodeId, alias, btn) {
     btn.textContent = 'Save';
     btn.className = 'btn btn-sm btn-outline-secondary';
   }, 2000);
+}
+
+async function resetNodeJobs(nodeId, count, btn) {
+  if (!confirm('确认要重置该节点的 ' + count + ' 个下载中的任务吗？这些任务将被释放给其他节点下载。')) return;
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const resp = await fetch('/api/node/' + nodeId + '/reset-jobs', {
+      method: 'POST',
+    });
+    if (!resp.ok) {
+      btn.textContent = 'Error';
+      btn.classList.replace('btn-outline-danger', 'btn-danger');
+      return;
+    }
+    btn.textContent = 'Done';
+    btn.classList.replace('btn-outline-danger', 'btn-success');
+    setTimeout(() => location.reload(), 1000);
+  } catch (e) {
+    btn.textContent = 'Error';
+    btn.classList.replace('btn-outline-danger', 'btn-danger');
+  }
 }
 
 async function pingNode(nodeId, btn) {
