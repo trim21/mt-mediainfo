@@ -1,10 +1,9 @@
 import threading
 from types import TracebackType
-from typing import Literal, LiteralString, cast
+from typing import Literal, LiteralString
 
 import psycopg
 import psycopg.sql
-import six
 import xxhash
 from psycopg.errors import QueryCanceled
 
@@ -35,11 +34,8 @@ class _NoopLock:
 
 class Lock:
     __conn: psycopg.Connection
-    key: str | int | tuple[int, int]
-    __lock_id: tuple[int] | tuple[int, int]
-    __value_holder: LiteralString
-    __scope: str
-    __shared: bool
+    __key: str
+    __lock_id: int
 
     __blocking_lock_func: LiteralString
     __nonblocking_lock_func: LiteralString
@@ -48,7 +44,7 @@ class Lock:
     def __init__(
         self,
         conn_info: str,
-        key: str | int | tuple[int, int],
+        key: str,
         scope: Literal["session"] = "session",
         shared: bool = False,
         timeout_ms: int | None = None,
@@ -62,7 +58,9 @@ class Lock:
             shared: Use a shared lock, it works like read-only lock in rwlock.
                     it will be blocked is someone holding a non-shared lock.
         """
-        self.__conn = psycopg.Connection.connect(conn_info, autocommit=True)
+        self.__conn = psycopg.Connection.connect(
+            conn_info, autocommit=True, cursor_factory=psycopg.RawCursor
+        )
         if timeout_ms:
             if isinstance(timeout_ms, int):
                 self.__conn.execute(
@@ -73,32 +71,12 @@ class Lock:
             else:
                 raise ValueError(f"timeout_ms must be int or None, get {timeout_ms!r}")
 
-        self.key = key
         # convert uint64 value range to int64 value range
-        if isinstance(key, str | bytes):
-            self.__lock_id = (
-                xxhash.xxh3_64_intdigest(six.ensure_binary(key)) - 9223372036854775808,
-            )
-            self.__value_holder: LiteralString = "%s"
-        elif isinstance(key, int):
-            self.__lock_id = (key,)
-            self.__value_holder = "%s"
-        else:
-            self.__lock_id = key
-            self.__value_holder = "%s, %s"
-
-        if len(self.__lock_id) == 1:
-            assert -9223372036854775808 <= self.__lock_id[0] <= +9223372036854775807
-        else:
-            lock_id_2 = cast(tuple[int, int], self.__lock_id)  # type: ignore[redundant-cast]
-            assert -2147483648 <= lock_id_2[0] <= 2147483647
-            assert -2147483648 <= lock_id_2[1] <= 2147483647
-
-        self.__scope = scope
-        self.__shared = shared
+        self.__key = key
+        self.__lock_id = xxhash.xxh3_64_intdigest(key.encode()) - 9223372036854775808
+        assert -9223372036854775808 <= self.__lock_id <= +9223372036854775807
 
         suffix: LiteralString = ""
-
         if shared:
             suffix = "_shared"
 
@@ -132,19 +110,19 @@ class Lock:
         self.__lock.release()
 
     def __acquire(self) -> bool:
-        with self.__conn.cursor() as cursor:
-            try:
-                cursor.execute(
-                    f"SELECT pg_catalog.{self.__blocking_lock_func}({self.__value_holder})",
-                    self.__lock_id,
-                )
-            except QueryCanceled as e:
-                raise FailedToLockError(f"timeout when _acquire lock for {self.key!r}") from e
+        try:
+            row = self.__conn.execute(
+                psycopg.sql.SQL("SELECT pg_catalog.{}($1)").format(
+                    psycopg.sql.SQL(self.__blocking_lock_func),
+                ),
+                (self.__lock_id,),
+            ).fetchone()
+        except QueryCanceled as e:
+            raise FailedToLockError(f"timeout when _acquire lock for {self.__key!r}") from e
 
-            row = cursor.fetchone()
-            if row is None:
-                raise UnreachableError()
-            result, *_ = row
+        if row is None:
+            raise UnreachableError()
+        result, *_ = row
 
         # lock function returns True/False in unblocking mode, and always None in blocking mode
         return result is not False
@@ -158,15 +136,15 @@ class Lock:
         Returns:
             bool: True, if the lock was released, otherwise False.
         """
-        with self.__conn.cursor() as cursor:
-            cursor.execute(
-                f"SELECT pg_catalog.{self.__unlock_func}({self.__value_holder})",
-                self.__lock_id,
-            )
-            row = cursor.fetchone()
-            if row is None:
-                raise UnreachableError()
-            result, *_ = row
+        row = self.__conn.execute(
+            psycopg.sql.SQL("SELECT pg_catalog.{}($1)").format(
+                psycopg.sql.SQL(self.__unlock_func),
+            ),
+            (self.__lock_id,),
+        ).fetchone()
+        if row is None:
+            raise UnreachableError()
+        result, *_ = row
 
         return result
 
