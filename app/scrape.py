@@ -428,7 +428,8 @@ class Scrape:
                 conn.cursor(row_factory=psycopg.rows.dict_row) as cur,
             ):
                 for row in cur.stream(f"SELECT * FROM {table}"):
-                    buf.write(orjson.dumps(row) + b"\n")
+                    buf.write(orjson.dumps(row))
+                    buf.write(b"\n")
                 key = f"backups/{backup_date}/{table}.jsonl.zst"
                 self.__op.write(
                     key,
