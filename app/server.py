@@ -402,7 +402,7 @@ def create_app() -> fastapi.FastAPI:
 
     def _week_range() -> tuple[int, int]:
         """Return (min_week_num, max_week_num) for last 52 weeks."""
-        return -52, -1
+        return -12, -1
 
     def _week_label(today: datetime, week_num: int) -> str:
         ref = today + timedelta(days=1)
@@ -1055,7 +1055,7 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/api/weekly-charts")
     async def weekly_charts() -> ORJSONResponse:
-        since = _today_start().date() - timedelta(days=365)
+        since = _today_start().date() - timedelta(days=13 * 7)
         await _backfill_daily_stats(since)
         history_rows, today_stats = await asyncio.gather(
             pool.fetch(
