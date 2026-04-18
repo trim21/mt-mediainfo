@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from operator import itemgetter
 from pathlib import Path
 from typing import Annotated, Any, Protocol, cast
 from zoneinfo import ZoneInfo
@@ -1393,7 +1394,7 @@ def create_app() -> fastapi.FastAPI:
             for n in node_rows
         ]
 
-        return render("nodes.html.j2", ctx={"nodes": nodes_data})
+        return render("nodes.html.j2", ctx={"nodes": sorted(nodes_data, key=itemgetter("alias"))})
 
     def _fmt_eta(seconds: float) -> str:
         if seconds <= 0 or seconds > 365 * 24 * 3600:
