@@ -1,14 +1,18 @@
 import dataclasses
 import enum
+import io
 import os
 import time
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import LiteralString, cast
 from zoneinfo import ZoneInfo
 
+import orjson
+import psycopg.rows
 import pydantic
+import zstandard
 from bencode2 import BencodeDecodeError
 from sslog import logger
 
@@ -18,7 +22,7 @@ from app.db import Database
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
 from app.torrent import find_largest_video_file, parse_torrent
-from app.torrent_store import TorrentStore
+from app.torrent_store import TorrentStore, _create_operator
 from app.utils import get_info_hash_v1_from_content, parse_obj
 
 TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -76,6 +80,7 @@ class Scrape:
         self.__db = Database(c.pg_dsn())
         self.mteam_client = MTeamAPI(c)
         self.__store = TorrentStore(c)
+        self.__op = _create_operator(c)
 
         run_migrations(self.__db)
         self.__kv = KVConfig(self.__db)
@@ -413,6 +418,36 @@ class Scrape:
             return RunResult.error
         return RunResult.ok
 
+    def backup_to_s3(self, backup_date: date) -> None:
+        """Dump thread and job tables as zstd-compressed JSON Lines to S3."""
+        cctx = zstandard.ZstdCompressor()
+        for table in ("thread", "job", "node"):
+            with (
+                io.BytesIO() as buf,
+                self.__db.connection() as conn,
+                conn.cursor(row_factory=psycopg.rows.dict_row) as cur,
+                cctx.stream_writer(buf, closefd=False) as writer,
+            ):
+                for row in cur.stream(f"SELECT * FROM {table}"):
+                    writer.write(orjson.dumps(row) + b"\n")
+            key = f"backups/{backup_date}/{table}.jsonl.zst"
+            self.__op.write(key, buf.getvalue())
+            logger.info("backed up {} to s3 ({})", table, key)
+        self.__kv.set("last_backup_date", backup_date.isoformat())
+
+    def __run_backup(self) -> RunResult:
+        today = datetime.now(TZ_SHANGHAI).date()
+        last = self.__kv.get("last_backup_date")
+        if last == today.isoformat():
+            logger.info("skipping backup (already done today)")
+            return RunResult.ok
+        try:
+            self.backup_to_s3(today)
+        except Exception:
+            logger.exception("failed to backup to s3")
+            return RunResult.error
+        return RunResult.ok
+
     def __run(self) -> None:
         limit = parse_obj(int, os.environ.get("SCRAPE_LIMIT", "100"))
         cooldown = timedelta(minutes=20)
@@ -425,6 +460,7 @@ class Scrape:
             "search": epoch,
             "mediainfo": epoch,
             "scrape": epoch,
+            "backup": epoch,
         }
 
         runners: dict[str, Callable[[], RunResult]] = {
@@ -432,6 +468,7 @@ class Scrape:
             "search": lambda: self.__run_search(),
             "mediainfo": lambda: self.__run_mediainfo(limit),
             "scrape": lambda: self.__run_scrape(limit),
+            "backup": lambda: self.__run_backup(),
         }
 
         while True:
