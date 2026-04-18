@@ -3,6 +3,7 @@ import os
 import stat
 import tempfile
 import uuid
+from pathlib import Path
 from typing import Annotated, Any
 
 import durationpy
@@ -23,8 +24,24 @@ def parse_go_duration_str(s: Any) -> Any:
     return s
 
 
+def _data_dir() -> Path:
+    return Path(os.getenv("DATA_DIR", os.path.expanduser("~/.local/share/mt-mediainfo")))
+
+
 def default_node_id() -> str:
-    return os.getenv("NODE_ID") or str(uuid.UUID(int=uuid.getnode()))
+    if node_id := os.getenv("NODE_ID"):
+        return node_id
+
+    data_dir = _data_dir()
+    node_id_file = data_dir.joinpath("node_id")
+
+    if node_id_file.exists():
+        return node_id_file.read_text().strip()
+
+    node_id = str(uuid.uuid4())
+    os.makedirs(data_dir, exist_ok=True)
+    node_id_file.write_text(node_id)
+    return node_id
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

@@ -10,7 +10,10 @@ ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_PREFERENCE=only-system \
-    PATH="/src/.venv/bin:$PATH"
+    PATH="/src/.venv/bin:$PATH" \
+    DATA_DIR=/data
+
+VOLUME ["/data"]
 
 ENTRYPOINT ["python", "main.py"]
 
