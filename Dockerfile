@@ -4,13 +4,13 @@ FROM python:3.12-slim@sha256:804ddf3251a60bbf9c92e73b7566c40428d54d0e79d3428194e
 
 COPY --from=uv /usr/local/bin/uv /bin/uv
 
-WORKDIR /app
+WORKDIR /src
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app \
+    PYTHONPATH=/src \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_PREFERENCE=only-system \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/src/.venv/bin:$PATH"
 
 ENTRYPOINT ["python", "main.py"]
 
