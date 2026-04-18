@@ -17,7 +17,7 @@
 
 ## Runtime Invariants
 
-- Python 3.12.12 project with environment-driven config in `app/config.py`
+- Python 3.12 project with environment-driven config in `app/config.py`
 - `app/node.py` uses `qbittorrentapi` directly to interact with qBittorrent
 - Node loop order matters: heartbeat -> process RPC commands -> process qBittorrent torrents -> pick new jobs
 - `app/node.py` and `app/scrape.py` use psycopg-based sync DB access; `app/server.py` uses asyncpg
