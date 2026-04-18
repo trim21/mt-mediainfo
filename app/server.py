@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -288,6 +289,12 @@ type Render = Annotated[_Render, Depends(__render)]
 
 
 PAGE_SIZE = 100
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ConfigUpsertRequest:
+    key: str
+    value: str
 
 
 def create_app() -> fastapi.FastAPI:
@@ -1357,9 +1364,42 @@ def create_app() -> fastapi.FastAPI:
         result = await pool.execute("delete from daily_stats")
         return ORJSONResponse({"deleted": result})
 
+    @app.get("/api/config")
+    async def list_config() -> ORJSONResponse:
+        rows = await pool.fetch("select key, value from config order by key")
+        return ORJSONResponse([{"key": r["key"], "value": r["value"]} for r in rows])
+
+    @app.post("/api/config")
+    async def upsert_config(body: ConfigUpsertRequest) -> ORJSONResponse:
+        key = body.key.strip()
+        value = body.value.strip()
+        if not key:
+            return ORJSONResponse({"error": "key is required"}, status_code=422)
+        if not value:
+            return ORJSONResponse({"error": "value is required"}, status_code=422)
+        if key == "schema_version":
+            return ORJSONResponse({"error": "key is protected"}, status_code=403)
+        await pool.execute(
+            "insert into config (key, value) values ($1, $2)"
+            " on conflict (key) do update set value = excluded.value",
+            key,
+            value,
+        )
+        return ORJSONResponse({"ok": True})
+
+    @app.delete("/api/config/{key}")
+    async def delete_config(key: str) -> ORJSONResponse:
+        if key == "schema_version":
+            return ORJSONResponse({"error": "key is protected"}, status_code=403)
+        result = await pool.execute("delete from config where key = $1", key)
+        if result == "DELETE 0":
+            return ORJSONResponse({"error": "key not found"}, status_code=404)
+        return ORJSONResponse({"ok": True})
+
     @app.get("/admin")
     async def admin_page(render: Render) -> HTMLResponse:
-        return render("admin.html.j2")
+        config_rows = await pool.fetch("select key, value from config order by key")
+        return render("admin.html.j2", ctx={"config": [dict(r) for r in config_rows]})
 
     @app.get("/nodes")
     async def nodes_page(render: Render) -> HTMLResponse:

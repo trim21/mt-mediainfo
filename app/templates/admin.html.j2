@@ -26,9 +26,112 @@
       <span id="clearResult" class="ms-2 text-success" style="display:none;">Cleared!</span>
     </div>
   </div>
+
+  <div class="card mt-3">
+    <div class="card-body">
+      <h5 class="card-title">Config</h5>
+      <table class="table table-sm table-bordered mb-3" id="configTable">
+        <thead class="table-light">
+          <tr>
+            <th style="width:35%">Key</th>
+            <th>Value</th>
+            <th style="width:130px"></th>
+          </tr>
+        </thead>
+        <tbody id="configBody">
+          {% if config %}
+            {% for row in config %}
+            <tr data-key="{{ row.key | e }}">
+              <td><code>{{ row.key | e }}</code></td>
+              {% if row.key == 'schema_version' %}
+              <td>{{ row.value | e }}</td>
+              <td><span class="badge bg-secondary">protected</span></td>
+              {% else %}
+              <td class="value-cell">{{ row.value | e }}</td>
+              <td>
+                <button class="btn btn-sm btn-outline-secondary me-1" onclick="startEdit(this)">Edit</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteConfig('{{ row.key | e }}')">Delete</button>
+              </td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          {% else %}
+          <tr><td colspan="3" class="text-muted">No config entries.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+      <form class="row g-2 align-items-end" id="addConfigForm">
+        <div class="col-auto">
+          <label class="form-label mb-1">Key</label>
+          <input type="text" class="form-control form-control-sm" id="newKey" required placeholder="key">
+        </div>
+        <div class="col">
+          <label class="form-label mb-1">Value</label>
+          <input type="text" class="form-control form-control-sm" id="newValue" required placeholder="value">
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-sm btn-primary">Add / Update</button>
+        </div>
+        <div class="col-auto">
+          <span id="addConfigError" class="text-danger" style="display:none;"></span>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <script>
+  function startEdit(btn) {
+    const row = btn.closest('tr');
+    const cell = row.querySelector('.value-cell');
+    const currentValue = cell.textContent.trim();
+    cell.innerHTML = `<input type="text" class="form-control form-control-sm" value="${currentValue.replace(/"/g, '&quot;')}">`;
+    btn.textContent = 'Save';
+    btn.onclick = () => saveEdit(btn);
+    const cancelBtn = btn.nextElementSibling;
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'btn btn-sm btn-outline-secondary';
+    cancelBtn.onclick = () => location.reload();
+  }
+
+  async function saveEdit(btn) {
+    const row = btn.closest('tr');
+    const key = row.dataset.key;
+    const value = row.querySelector('input').value.trim();
+    if (!value) { alert('Value cannot be empty.'); return; }
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({key, value}),
+    });
+    if (res.ok) { location.reload(); } else { alert((await res.json()).error); }
+  }
+
+  async function deleteConfig(key) {
+    if (!confirm(`Delete config key "${key}"?`)) return;
+    const res = await fetch(`/api/config/${encodeURIComponent(key)}`, {method: 'DELETE'});
+    if (res.ok) { location.reload(); } else { alert((await res.json()).error); }
+  }
+
+  document.getElementById('addConfigForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const key = document.getElementById('newKey').value.trim();
+    const value = document.getElementById('newValue').value.trim();
+    const errEl = document.getElementById('addConfigError');
+    errEl.style.display = 'none';
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({key, value}),
+    });
+    if (res.ok) {
+      location.reload();
+    } else {
+      errEl.textContent = (await res.json()).error;
+      errEl.style.display = 'inline';
+    }
+  });
+
   function clearDailyStats() {
     if (!confirm('Clear daily stats cache? Charts will recompute on next load.')) return;
     fetch('/api/daily-stats/clear', {method: 'POST'})

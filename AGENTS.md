@@ -42,6 +42,7 @@ This project downloads torrents from M-Team, processes local media files to extr
 
 ## Change Guidelines
 
+- Always use a dataclass to receive JSON request bodies in FastAPI endpoints; never call `request.json()` and manually extract fields
 - Keep statuses, tags, and selected-category definitions in `app/const.py` as the source of truth
 - Treat this project as an application rather than a reusable library: preserve data compatibility during refactors, but backward compatibility of internal code interfaces is not required
 - When changing thread or job state queries, keep `app/node.py`, `app/scrape.py`, and `app/server.py` aligned with `thread-lifecycle`
