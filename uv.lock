@@ -83,7 +83,7 @@ requires-dist = [
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "opendal", specifier = "==0.46.0" },
     { name = "orjson", specifier = "==3.11.8" },
-    { name = "pg-dlock", specifier = ">=0.0.0a0" },
+    { name = "pg-dlock", specifier = "==0.0.0a0" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.3" },
     { name = "pydantic", specifier = "==2.13.2" },
     { name = "qbittorrent-api", specifier = "==2025.11.1" },

@@ -27,7 +27,7 @@ dependencies = [
   # "polars==1.39.3",
   "opendal==0.46.0",
   "zstandard==0.25.0",
-  "pg-dlock>=0.0.0a0",
+  "pg-dlock==0.0.0a0",
 ]
 
 [dependency-groups]
