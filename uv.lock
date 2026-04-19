@@ -83,7 +83,7 @@ requires-dist = [
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "opendal", specifier = "==0.46.0" },
     { name = "orjson", specifier = "==3.11.8" },
-    { name = "pg-dlock", specifier = "==0.0.0a0" },
+    { name = "pg-dlock", specifier = "==0.0.0a2" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.3" },
     { name = "pydantic", specifier = "==2.13.2" },
     { name = "qbittorrent-api", specifier = "==2025.11.1" },
@@ -549,15 +549,15 @@ wheels = [
 
 [[package]]
 name = "pg-dlock"
-version = "0.0.0a0"
+version = "0.0.0a2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/21/ba/80c36b8bc37178ee7331dbf39551983e21b06b904bcf994a86b021b50a56/pg_dlock-0.0.0a0.tar.gz", hash = "sha256:b98e4d46179f19ac30de217f7aca86ee3cdcf4d0c989194027086c13034931ef", size = 8152, upload-time = "2026-04-19T08:32:34.017Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1b/dc/095483e39525edfef6d25a32f1f7e732278db948db64dadbf45bc7ff8294/pg_dlock-0.0.0a2.tar.gz", hash = "sha256:75094aec84c31cfb45cc6fcb575aba4a212ce04704735dc293917000c3075ce4", size = 8962, upload-time = "2026-04-19T10:51:36.869Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/a8/8b27aed47732493d7a4384025397dacb4c53171335ee1db6741045d03bba/pg_dlock-0.0.0a0-py3-none-any.whl", hash = "sha256:de9b517ae39945d61fa5bd09e6672ecfb9a77d5e8ff2884fb650f3167299f8fc", size = 8638, upload-time = "2026-04-19T08:32:35.062Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/bd/cda43565bcbece0494c2a3c3bd094aa88dead987d51b0449c1885734f85d/pg_dlock-0.0.0a2-py3-none-any.whl", hash = "sha256:aa5e444e6bf9246fc6e1f2b709ff16bd44bc73d1443fca9fc4a92a0de722e19c", size = 8996, upload-time = "2026-04-19T10:51:35.946Z" },
 ]
 
 [[package]]
