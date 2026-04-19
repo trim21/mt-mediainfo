@@ -454,7 +454,10 @@ class Node:
 
         hard_code_subtitle = check_hardcode_chinese_subtitle(path)
 
-        with self.db.connection() as conn, conn.transaction():
+        with (
+            self.db.connection() as conn,
+            conn.transaction(),
+        ):
             conn.execute(
                 """
                     update thread set mediainfo = $1, hard_coded_subtitle = $2 where info_hash = $3
