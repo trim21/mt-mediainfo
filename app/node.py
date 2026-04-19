@@ -454,13 +454,19 @@ class Node:
 
         hard_code_subtitle = check_hardcode_chinese_subtitle(path)
 
-        self.db.execute(
-            """
-                update thread set mediainfo = $1, hard_coded_subtitle = $2 where info_hash = $3
-                """,
-            [media_info, hard_code_subtitle, t.hash],
-        )
-        self.__update_job_status(status=ITEM_STATUS_DONE, info_hash=t.hash)
+        with self.db.connection() as conn, conn.transaction():
+            conn.execute(
+                """
+                    update thread set mediainfo = $1, hard_coded_subtitle = $2 where info_hash = $3
+                    """,
+                [media_info, hard_code_subtitle, t.hash],
+            )
+            conn.execute(
+                """update job set status = $1, failed_reason = '', updated_at = current_timestamp,
+                   completed_at = current_timestamp
+                   where info_hash = $2 and node_id = $3""",
+                [ITEM_STATUS_DONE, t.hash, self.config.node_id],
+            )
         self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
     def __pick_and_add_jobs(self) -> None:
