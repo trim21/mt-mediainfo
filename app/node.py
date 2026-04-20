@@ -495,7 +495,7 @@ class Node:
             rows: list[tuple[int, str, int]] = conn.fetch_all(
                 _pick_query(self.config.pick_strategy),
                 [
-                    min(int(self.config.single_torrent_size_limit), left_size),
+                    int(self.config.single_torrent_size_limit),
                     SELECTED_CATEGORY,
                     PRIORITY_CATEGORY,
                 ],
