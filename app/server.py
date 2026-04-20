@@ -382,8 +382,13 @@ def create_app() -> fastapi.FastAPI:
         show_reset: bool = False,
         show_reset_all: bool = False,
         extra_ctx: dict[str, Any] | None = None,
+        count_params: list[Any] | None = None,
     ) -> HTMLResponse:
-        total_count = cast(int, await pool.fetchval(count_sql, *params) or 0)
+        total_count = cast(
+            int,
+            await pool.fetchval(count_sql, *(count_params if count_params is not None else params))
+            or 0,
+        )
         pager = _pagination(page, total_count)
         rows = await pool.fetch(rows_sql, *params, pager["page_size"], pager["offset"])
         ctx = {
@@ -1194,6 +1199,7 @@ def create_app() -> fastapi.FastAPI:
             limit $3 offset $4
             """,
             params=[SELECTED_CATEGORY, PRIORITY_CATEGORY],
+            count_params=[SELECTED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=False,
