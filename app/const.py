@@ -37,7 +37,7 @@ MOVIE_CATEGORY = {401, 419, 420, 421, 439}
 
 
 class PickStrategy(str, enum.Enum):
-    default = "default"  # priority category first, then tid asc
+    tid = "tid"  # priority category first, then tid asc
     seeders = "seeders"  # seeders desc, then priority category, then tid asc
 
 

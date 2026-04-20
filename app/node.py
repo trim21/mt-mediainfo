@@ -115,7 +115,7 @@ _PICK_QUERY_BASE: LiteralString = """
         seeders != 0
 """
 
-_PICK_QUERY_DEFAULT: LiteralString = f"""
+_PICK_QUERY_TID: LiteralString = f"""
     {_PICK_QUERY_BASE}
     order by (category = any($3)) desc, tid asc
 """
@@ -129,7 +129,7 @@ _PICK_QUERY_SEEDERS: LiteralString = f"""
 def _pick_query(strategy: PickStrategy) -> LiteralString:
     if strategy == PickStrategy.seeders:
         return _PICK_QUERY_SEEDERS
-    return _PICK_QUERY_DEFAULT
+    return _PICK_QUERY_TID
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
