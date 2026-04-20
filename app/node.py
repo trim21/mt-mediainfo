@@ -507,7 +507,7 @@ class Node:
 
             for tid, info_hash, selected_size in rows:
                 if left_size - selected_size <= 0:
-                    continue
+                    break
 
                 conn.execute(
                     """
