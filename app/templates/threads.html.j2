@@ -79,12 +79,21 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div class="text-muted small">Page {{ page }} / {{ total_pages }}{% if total_count %} · Showing {{ threads | length }} of {{ total_count }}{% endif %}</div>
     <div class="d-flex align-items-center gap-2">
+      {% if pick_strategies is defined %}
+      <label class="text-muted small mb-0" for="strategy-select">Strategy:</label>
+      <select id="strategy-select" class="form-select form-select-sm" style="width:auto" onchange="location.href='?strategy='+this.value">
+        {% for s in pick_strategies %}
+        <option value="{{ s }}"{% if s == current_strategy %} selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
       {% if show_reset_all %}
       <button type="button" class="btn btn-outline-danger btn-sm" onclick="resetAllRemoved()">Reset All</button>
       {% endif %}
       <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
-        <a class="btn btn-outline-secondary{% if not has_prev %} disabled{% endif %}" href="?page={{ prev_page if prev_page else 1 }}">Previous</a>
-        <a class="btn btn-outline-secondary{% if not has_next %} disabled{% endif %}" href="?page={{ next_page if next_page else total_pages }}">Next</a>
+        {% set _qs = 'strategy=' ~ current_strategy ~ '&' if current_strategy is defined else '' %}
+        <a class="btn btn-outline-secondary{% if not has_prev %} disabled{% endif %}" href="?{{ _qs }}page={{ prev_page if prev_page else 1 }}">Previous</a>
+        <a class="btn btn-outline-secondary{% if not has_next %} disabled{% endif %}" href="?{{ _qs }}page={{ next_page if next_page else total_pages }}">Next</a>
       </div>
     </div>
   </div>

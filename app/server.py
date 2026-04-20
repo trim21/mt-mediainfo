@@ -15,7 +15,7 @@ import asyncpg
 import durationpy
 import fastapi
 import orjson
-from fastapi import Depends, Request
+from fastapi import Depends, Query, Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, JSONResponse
 
@@ -25,7 +25,9 @@ from app.const import (
     ITEM_STATUS_DOWNLOADING,
     ITEM_STATUS_FAILED,
     ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+    PRIORITY_CATEGORY,
     SELECTED_CATEGORY,
+    PickStrategy,
 )
 from app.rpc import PAYLOAD_TYPES, RpcRequest, enqueue_command
 from app.utils import human_readable_byte_rate, human_readable_size, parse_obj
@@ -379,29 +381,30 @@ def create_app() -> fastapi.FastAPI:
         show_failed_reason: bool,
         show_reset: bool = False,
         show_reset_all: bool = False,
+        extra_ctx: dict[str, Any] | None = None,
     ) -> HTMLResponse:
         total_count = cast(int, await pool.fetchval(count_sql, *params) or 0)
         pager = _pagination(page, total_count)
         rows = await pool.fetch(rows_sql, *params, pager["page_size"], pager["offset"])
-        return render(
-            "threads.html.j2",
-            ctx={
-                "title": title,
-                "show_progress": show_progress,
-                "show_failed_reason": show_failed_reason,
-                "show_reset": show_reset,
-                "show_reset_all": show_reset_all,
-                "threads": [_thread_row(r, show_failed_reason=show_failed_reason) for r in rows],
-                "page": pager["page"],
-                "page_size": pager["page_size"],
-                "total_count": pager["total_count"],
-                "total_pages": pager["total_pages"],
-                "has_prev": pager["has_prev"],
-                "has_next": pager["has_next"],
-                "prev_page": pager["prev_page"],
-                "next_page": pager["next_page"],
-            },
-        )
+        ctx = {
+            "title": title,
+            "show_progress": show_progress,
+            "show_failed_reason": show_failed_reason,
+            "show_reset": show_reset,
+            "show_reset_all": show_reset_all,
+            "threads": [_thread_row(r, show_failed_reason=show_failed_reason) for r in rows],
+            "page": pager["page"],
+            "page_size": pager["page_size"],
+            "total_count": pager["total_count"],
+            "total_pages": pager["total_pages"],
+            "has_prev": pager["has_prev"],
+            "has_next": pager["has_next"],
+            "prev_page": pager["prev_page"],
+            "next_page": pager["next_page"],
+        }
+        if extra_ctx:
+            ctx.update(extra_ctx)
+        return render("threads.html.j2", ctx=ctx)
 
     def _today_start() -> datetime:
         now = datetime.now(_tz_shanghai)
@@ -1159,7 +1162,15 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/threads/pending-download")
-    async def threads_pending_download(render: Render, page: int = 1) -> HTMLResponse:
+    async def threads_pending_download(
+        render: Render,
+        page: int = 1,
+        strategy: Annotated[PickStrategy, Query()] = PickStrategy.seeders,
+    ) -> HTMLResponse:
+        if strategy == PickStrategy.seeders:
+            order = "order by seeders desc, (category = any($2)) desc, tid asc"
+        else:
+            order = "order by (category = any($2)) desc, tid asc"
         return await _render_thread_list(
             render,
             title="Pending to Download",
@@ -1172,20 +1183,24 @@ def create_app() -> fastapi.FastAPI:
               and selected_size > 0
               and category = any($1) and job.tid is null
             """,
-            rows_sql="""
+            rows_sql=f"""
             select thread.tid, category, size, selected_size, seeders, thread.created_at from thread
             left join job on (job.tid = thread.tid)
             where deleted = false and seeders != 0
               and mediainfo = '' and thread.info_hash != ''
               and selected_size > 0
               and category = any($1) and job.tid is null
-            order by selected_size desc, thread.tid desc
-            limit $2 offset $3
+            {order}
+            limit $3 offset $4
             """,
-            params=[SELECTED_CATEGORY],
+            params=[SELECTED_CATEGORY, PRIORITY_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=False,
+            extra_ctx={
+                "pick_strategies": [s.value for s in PickStrategy],
+                "current_strategy": strategy.value,
+            },
         )
 
     @app.get("/threads/downloading")
