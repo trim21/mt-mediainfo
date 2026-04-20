@@ -23,6 +23,7 @@
     <tr>
       <th>TID</th>
       <th>Status</th>
+      <th>Seeders</th>
       <th>Size</th>
       <th>Selected Size</th>
       <th>Progress</th>
@@ -46,6 +47,7 @@
         {% else %}<span class="badge bg-warning text-dark">{{ j.status }}</span>
         {% endif %}
       </td>
+      <td>{{ j.seeders }}</td>
       <td>{{ j.size_fmt }}</td>
       <td>{{ j.selected_size_fmt }}</td>
       <td>{{ j.progress_fmt }}%</td>

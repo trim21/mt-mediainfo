@@ -1481,7 +1481,7 @@ def create_app() -> fastapi.FastAPI:
             select job.tid, job.status, job.progress, job.failed_reason,
                    job.start_download_time, job.updated_at,
                    job.dlspeed, job.eta, job.info_hash,
-                   thread.size, thread.selected_size
+                   thread.size, thread.selected_size, thread.seeders
             from job
             join thread on (thread.tid = job.tid)
             where job.node_id = $1 and job.status = $2
