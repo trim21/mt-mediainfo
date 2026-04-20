@@ -1245,9 +1245,12 @@ def create_app() -> fastapi.FastAPI:
             where mediainfo != '' and info_hash != '' and category = any($1)
             """,
             rows_sql="""
-            select tid, category, size, selected_size, seeders, created_at from thread
-            where mediainfo != '' and info_hash != '' and category = any($1)
-            order by tid desc
+            select thread.tid, category, size, selected_size, seeders, thread.created_at
+            from thread
+            join job on (job.tid = thread.tid)
+            where mediainfo != '' and thread.info_hash != '' and category = any($1)
+              and job.status = 'done'
+            order by job.completed_at desc
             limit $2 offset $3
             """,
             params=[SELECTED_CATEGORY],
