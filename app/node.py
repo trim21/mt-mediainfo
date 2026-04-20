@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, LiteralString
 
+import psycopg
 import qbittorrentapi
 from pydantic import BeforeValidator
 from qbittorrentapi import NotFound404Error, TorrentState
@@ -176,8 +177,8 @@ class Node:
         interval = 1
         while True:
             self.__heart_beat()
-            time.sleep(interval)
-            interval = 60
+            self.__wait_for_notify(interval)
+            interval = 60 * 5
             try:
                 self.__process_commands()
             except Exception as e:
@@ -187,6 +188,16 @@ class Node:
                 self.__run_at_interval()
             except Exception as e:
                 print("failed to run", format_exc(e))
+
+    def __wait_for_notify(self, timeout: float) -> None:
+        """Wait for a PG notification or until timeout expires."""
+        try:
+            with psycopg.connect(self.config.pg_dsn(), autocommit=True) as conn:
+                conn.execute("LISTEN node_rpc")
+                for _ in conn.notifies(timeout=timeout, stop_after=1):
+                    pass
+        except Exception:
+            time.sleep(timeout)
 
     def __process_commands(self) -> None:
         """Poll and execute pending RPC commands for this node."""
