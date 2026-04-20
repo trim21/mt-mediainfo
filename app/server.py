@@ -781,10 +781,11 @@ def create_app() -> fastapi.FastAPI:
         daily_stats: list[DailyStat],
         start_date: date,
         end_date: date,
+        known_node_ids: set[str] | None = None,
     ) -> DailyCharts:
         by_day: dict[date, DailyStat] = {s.day: s for s in daily_stats}
 
-        all_node_ids: set[str] = set()
+        all_node_ids: set[str] = set(known_node_ids) if known_node_ids else set()
         for v in daily_stats:
             all_node_ids.update(v.node_downloaded.keys())
         sorted_node_ids = sorted(all_node_ids)
@@ -1100,19 +1101,23 @@ def create_app() -> fastapi.FastAPI:
         start_dt = start_dt.replace(tzinfo=_tz_shanghai) if start_dt.tzinfo is None else start_dt
 
         await _backfill_daily_stats(start_dt.date())
-        history_rows, today_stats, alias_rows = await asyncio.gather(
+        history_rows, today_stats, alias_rows, all_node_rows = await asyncio.gather(
             pool.fetch(
                 "select * from daily_stats where day >= $1 order by day",
                 start_dt.date(),
             ),
             _compute_today_stats(),
             pool.fetch("select id, alias from node where alias != ''"),
+            pool.fetch("select id from node"),
         )
         history_stats = [DailyStatsSnapshot.from_record(row) for row in history_rows]
         history_daily_stats = _build_history_daily_stats(history_stats)
         today_daily_stat = _build_today_daily_stat(today_stats)
         daily_stats = _combine_daily_stats(history_daily_stats, today_daily_stat)
-        charts = _build_daily_charts(daily_stats, start_dt.date(), today.date()).to_context()
+        all_node_ids = {str(r["id"]) for r in all_node_rows}
+        charts = _build_daily_charts(
+            daily_stats, start_dt.date(), today.date(), all_node_ids
+        ).to_context()
         node_aliases = {str(r["id"]): str(r["alias"]) for r in alias_rows}
 
         return render(
