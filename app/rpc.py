@@ -100,5 +100,5 @@ async def enqueue_command(
         method,
         orjson.dumps(payload).decode(),
     )
-    await pool.execute("SELECT pg_notify('node_rpc', $1)", node_id)
+    await pool.execute("SELECT pg_notify($1, $2)", f"node_rpc_{node_id}", node_id)
     return cmd_id

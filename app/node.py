@@ -192,8 +192,9 @@ class Node:
     def __wait_for_notify(self, timeout: float) -> None:
         """Wait for a PG notification or until timeout expires."""
         try:
+            channel = f"node_rpc_{self.config.node_id}"
             with psycopg.connect(self.config.pg_dsn(), autocommit=True) as conn:
-                conn.execute("LISTEN node_rpc")
+                conn.execute(f'LISTEN "{channel}"')  # type: ignore
                 for _ in conn.notifies(timeout=timeout, stop_after=1):
                     pass
         except Exception:
