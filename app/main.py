@@ -1,7 +1,7 @@
 import click
 
-from app.config import load_node_config, load_scrape_config
-from app.node import Node
+from app.config import load_downloader_config, load_scrape_config
+from app.downloader import Downloader
 from app.scrape import Scrape
 
 
@@ -11,10 +11,10 @@ def cli() -> None:
 
 
 @cli.command()
-def node() -> None:
-    cfg = load_node_config()
+def downloader() -> None:
+    cfg = load_downloader_config()
 
-    app = Node.new(cfg)
+    app = Downloader.new(cfg)
 
     app.start()
 

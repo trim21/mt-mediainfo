@@ -53,7 +53,7 @@ The scraper in `app/scrape.py` is a long-running scheduler that moves threads fr
 
 - All selected work is filtered through `SELECTED_CATEGORY`
 - Priority ordering uses `(category = any(PRIORITY_CATEGORY)) desc, tid asc`
-- The scraper only prepares rows for download; node-side job picking and qBittorrent lifecycle are owned by `app/node.py`
+- The scraper only prepares rows for download; downloader-side job picking and qBittorrent lifecycle are owned by `app/downloader.py`
 
 ## Error Handling
 

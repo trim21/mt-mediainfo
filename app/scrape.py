@@ -1,12 +1,9 @@
-import dataclasses
 import enum
 import io
 import os
 import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
-from pathlib import Path
-from typing import LiteralString, cast
 from zoneinfo import ZoneInfo
 
 import orjson
@@ -20,50 +17,13 @@ from app.config import ScrapeConfig
 from app.const import PRIORITY_CATEGORY, SELECTED_CATEGORY
 from app.db import Database
 from app.kv import KVConfig
+from app.migrate import get_expected_schema_version
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
 from app.torrent import find_largest_video_file, parse_torrent
 from app.torrent_store import TorrentStore, _create_operator
 from app.utils import get_info_hash_v1_from_content, parse_obj
 
 TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class Migration:
-    version: int
-    sql: str
-
-
-def run_migrations(db: Database) -> None:
-    migrations_dir = Path(__file__, "../sql/migrations").resolve()
-
-    # Always ensure the config table exists so KV lookups work
-    db.execute("create table if not exists config (key text primary key, value text not null)")
-
-    row = db.fetch_val("select value from config where key = 'schema_version'")
-
-    migrations: list[Migration] = []
-    if migrations_dir.exists():
-        for f in sorted(migrations_dir.iterdir()):
-            if f.is_file() and f.suffix == ".sql":
-                migrations.append(
-                    Migration(
-                        version=int(f.stem.split("_")[0]),
-                        sql=f.read_text(encoding="utf-8"),
-                    )
-                )
-
-    current = int(row) if row is not None else 0
-    for m in migrations:
-        if m.version <= current:
-            continue
-        print(f"running migration {m.version}")
-        db.execute(cast(LiteralString, m.sql))  # type: ignore[redundant-cast]
-        db.execute(
-            "insert into config (key, value) values ('schema_version', $1)"
-            " on conflict (key) do update set value = excluded.value",
-            [str(m.version)],
-        )
 
 
 class RunResult(enum.Enum):
@@ -78,11 +38,11 @@ class Scrape:
 
     def __init__(self, c: ScrapeConfig):
         self.__db = Database(c.pg_dsn())
+        self.__db.wait_schema_version(get_expected_schema_version())
         self.mteam_client = MTeamAPI(c)
         self.__store = TorrentStore(c)
         self.__op = _create_operator(c)
 
-        run_migrations(self.__db)
         self.__kv = KVConfig(self.__db)
 
     def scrape_detail(self, limit: int = 0) -> None:

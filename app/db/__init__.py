@@ -1,11 +1,13 @@
 import contextlib
+import time
 from collections.abc import Iterator, Sequence
-from typing import Any, LiteralString
+from typing import Any, LiteralString, Self
 
 import psycopg.connection
 from pg_dlock import Lock, Locker
 from psycopg import RawCursor
 from psycopg_pool import ConnectionPool
+from sslog import logger
 
 
 class Connection(psycopg.connection.Connection):
@@ -47,6 +49,12 @@ class Database:
             connection_class=Connection,
         )
 
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.db.close()
+
     def connection(self) -> contextlib.AbstractContextManager[Connection]:
         return self.db.connection()
 
@@ -84,3 +92,16 @@ class Database:
     ) -> Iterator[tuple[Any, ...]]:
         with self.connection() as conn, conn.cursor() as cursor:
             yield from cursor.stream(sql, args)
+
+    def wait_schema_version(self, expected: int) -> None:
+        while True:
+            row = self.fetch_val("select value from config where key = 'schema_version'")
+            current = int(row) if row is not None else 0
+            if current >= expected:
+                break
+            logger.warning(
+                "schema version mismatch: expected {}, got {}. sleeping 5s...",
+                expected,
+                current,
+            )
+            time.sleep(5)

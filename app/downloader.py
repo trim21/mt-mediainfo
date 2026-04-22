@@ -18,7 +18,7 @@ from qbittorrentapi import NotFound404Error, TorrentState
 from rich.console import Console
 from sslog import logger
 
-from app.config import NodeConfig
+from app.config import DownloaderConfig
 from app.const import (
     ITEM_STATUS_DONE,
     ITEM_STATUS_DOWNLOADING,
@@ -38,6 +38,7 @@ from app.const import (
 from app.db import Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
+from app.migrate import get_expected_schema_version
 from app.mt import MTeamDomain
 from app.rpc import (
     RPC_DELETE_TORRENT,
@@ -134,18 +135,18 @@ def _pick_query(strategy: PickStrategy) -> LiteralString:
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
-class Node:
+class Downloader:
     db: Database
-    config: NodeConfig
+    config: DownloaderConfig
     qb: qbittorrentapi.Client
     store: TorrentStore
 
     @classmethod
-    def new(cls, cfg: NodeConfig) -> Node:
+    def new(cls, cfg: DownloaderConfig) -> Downloader:
         db = Database(cfg.pg_dsn())
         if not cfg.qb_url:
             raise ValueError("no download client configured: set QB_URL")
-        return Node(
+        return Downloader(
             config=cfg,
             db=db,
             qb=qbittorrentapi.Client(
@@ -169,6 +170,8 @@ class Node:
             sys.exit(1)
 
         logger.info("successfully connect to database")
+
+        self.db.wait_schema_version(get_expected_schema_version())
 
         version = self.qb.app_version()
         logger.info("successfully connect to qBittorrent {}", version)
@@ -201,7 +204,7 @@ class Node:
             time.sleep(timeout)
 
     def __process_commands(self) -> None:
-        """Poll and execute pending RPC commands for this node."""
+        """Poll and execute pending RPC commands for this downloader."""
         process_commands(
             self.db,
             self.config.node_id,

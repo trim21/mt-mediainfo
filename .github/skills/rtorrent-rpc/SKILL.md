@@ -270,5 +270,5 @@ The `_RTorrent` subclass in `app/rt.py` adds dual-protocol support:
 
 - `app/rt.py` — `RTorrentClient` and `_RTorrent` wrapper classes
 - `app/download_client.py` — `DownloadClient` protocol, `TorrentState`, `ClientTorrent`, `ClientFile`
-- `app/node.py` — Node loop that uses `DownloadClient` (selects RTorrent or qBittorrent via config)
+- `app/downloader.py` — Downloader loop that uses `DownloadClient` (selects RTorrent or qBittorrent via config)
 - `app/config.py` — `rt_url` config field for rTorrent address

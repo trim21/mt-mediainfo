@@ -8,7 +8,7 @@ import httpcore
 import httpx
 from pydantic import TypeAdapter
 
-from app.config import ScrapeConfig
+from app.config import ScrapeConfig, load_scrape_config
 from app.utils import parse_obj
 
 MTeamDomain: Final[str] = "kp.m-team.cc"
@@ -222,3 +222,7 @@ class SearchResult:
     total: int
     totalPages: int
     data: list[SearchItem]
+
+
+if __name__ == "__main__":
+    print(MTeamAPI(load_scrape_config()).download_torrent(203098))

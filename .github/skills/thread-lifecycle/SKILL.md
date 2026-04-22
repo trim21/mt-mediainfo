@@ -1,6 +1,6 @@
 ---
 name: thread-lifecycle
-description: "Database thread lifecycle stages and transitions. Use when working on thread state queries, scraping logic, or status filtering in app/scrape.py, app/server.py, app/node.py."
+description: "Database thread lifecycle stages and transitions. Use when working on thread state queries, scraping logic, or status filtering in app/scrape.py, app/server.py, app/downloader.py."
 user-invocable: false
 ---
 
@@ -80,7 +80,7 @@ scrape_search() discovers thread
 ### Stage 3: Pending Download
 
 - **Condition**: `mediainfo = '' AND info_hash != '' AND selected_size > 0`
-- **Action**: `__pick_and_add_jobs()` in `node.py` selects threads ordered by priority category then `tid ASC`, creates a job, adds torrent to qBittorrent
+- **Action**: `__pick_and_add_jobs()` in `app/downloader.py` selects threads ordered by priority category then `tid ASC`, creates a job, adds torrent to qBittorrent
 - **Filters**: Must have `seeders != 0`, `category` in `SELECTED_CATEGORY`, `selected_size < single_torrent_size_limit`, no existing job
 
 ### Stage 4: Downloading
@@ -113,7 +113,7 @@ scrape_search() discovers thread
 ## Related
 
 - `app/scrape.py` — All scraping and fetching logic
-- `app/node.py` — Download and processing logic (Stages 3-5)
+- `app/downloader.py` — Download and processing logic (Stages 3-5)
 - `app/server.py` — Web UI pages for each stage (`/threads/pending-mediainfo`, `/threads/pending-torrent`, `/threads/pending-download`, `/threads/done`, etc.)
 - `app/sql/schema.sql` — Table definitions
 - `scrape-mteam` skill — scraper scheduling, rate limiting, and fetch operations

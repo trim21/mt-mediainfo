@@ -132,7 +132,7 @@ class S3Mixin:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class NodeConfig(BaseConfig, S3Mixin):
+class DownloaderConfig(BaseConfig, S3Mixin):
     node_id: Annotated[
         str,
         Field(
@@ -191,8 +191,8 @@ class ServerConfig(BaseConfig):
     pass
 
 
-def load_node_config() -> NodeConfig:
-    return parse_obj(NodeConfig, dict(os.environ))
+def load_downloader_config() -> DownloaderConfig:
+    return parse_obj(DownloaderConfig, dict(os.environ))
 
 
 def load_scrape_config() -> ScrapeConfig:

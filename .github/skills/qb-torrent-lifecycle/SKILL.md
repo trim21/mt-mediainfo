@@ -1,6 +1,6 @@
 ---
 name: qb-torrent-lifecycle
-description: "qBittorrent torrent lifecycle stages and tag transitions. Use when working on torrent download, processing, or tag logic in app/node.py."
+description: "qBittorrent torrent lifecycle stages and tag transitions. Use when working on torrent download, processing, or tag logic in app/downloader.py."
 user-invocable: false
 ---
 
@@ -98,6 +98,6 @@ In `__process_qb_torrents()`, paused torrents are detected and resumed with tag 
 
 ## Related
 
-- `app/node.py` — All qBittorrent processing logic (`Node.__process_qb_torrents()`)
+- `app/downloader.py` — All qBittorrent processing logic (`Downloader.__process_qb_torrents()`)
 - `app/const.py` — Tag and status constants
 - `thread-lifecycle` skill — Database-side thread state machine

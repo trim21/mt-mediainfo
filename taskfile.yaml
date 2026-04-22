@@ -11,15 +11,22 @@ tasks:
   sync:
     cmd: 'uv sync {{- if eq OS "linux" }} --locked --no-dev {{- end }}'
 
+  run:
+    env:
+      PYTHONPATH: "."
+    dotenv:
+      - .env
+    cmd: python {{ .CLI_ARGS }}
+
   dev:
     dotenv:
       - .env
-    cmd: watchexec -r -e py,sql --delay-run 1s --no-process-group --shell=none --verbose -- python ./main.py node
+    cmd: watchexec -r -e py,sql --delay-run 1s --no-process-group --shell=none --verbose -- python ./main.py downloader
 
-  node:
+  downloader:
     dotenv:
       - .env
-    cmd: python ./main.py node
+    cmd: python ./main.py downloader
 
   scrape:
     dotenv:
