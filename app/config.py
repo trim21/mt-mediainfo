@@ -191,6 +191,15 @@ class ServerConfig(BaseConfig):
     pass
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class S3Config(S3Mixin):
+    pass
+
+
+def load_s3_config() -> S3Config:
+    return parse_obj(S3Config, dict(os.environ))
+
+
 def load_downloader_config() -> DownloaderConfig:
     return parse_obj(DownloaderConfig, dict(os.environ))
 
