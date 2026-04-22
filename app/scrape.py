@@ -17,7 +17,6 @@ from app.config import ScrapeConfig
 from app.const import PRIORITY_CATEGORY, SELECTED_CATEGORY
 from app.db import Database
 from app.kv import KVConfig
-from app.migrate import get_expected_schema_version
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
 from app.torrent import find_largest_video_file, parse_torrent
 from app.torrent_store import TorrentStore, _create_operator
@@ -38,7 +37,7 @@ class Scrape:
 
     def __init__(self, c: ScrapeConfig):
         self.__db = Database(c.pg_dsn())
-        self.__db.wait_schema_version(get_expected_schema_version())
+        self.__db.wait_db_migration()
         self.mteam_client = MTeamAPI(c)
         self.__store = TorrentStore(c)
         self.__op = _create_operator(c)

@@ -10,7 +10,7 @@ This project downloads torrents from M-Team, processes local media files to extr
 - `app/scrape.py` - Thread discovery, API mediainfo fetch, torrent download, and `selected_size` backfill
 - `app/server.py` - FastAPI dashboard, JSON endpoints, daily stats cache, node and RPC views
 - `app/rpc.py` - RPC method definitions, payload validation, queue polling, and enqueue helpers
-- `app/sql/migrations/` - Numbered SQL migrations executed once on scraper startup; version tracked in the `config` table (`schema_version` key). To add a new migration, create a file named `NNN_description.sql` (e.g. `004_add_column.sql`) where `NNN` is the next integer in sequence. The runner in `app/scrape.py` sorts files by name, parses the numeric prefix, and applies any migration whose version exceeds the stored `schema_version`.
+- `app/sql/migrations/` - Numbered SQL migrations executed once on server startup; version tracked in the `config` table (`schema_version` key). To add a new migration, create a file named `NNN_description.sql` (e.g. `004_add_column.sql`) where `NNN` is the next integer in sequence. The runner in `app/db/__init__.py` (`Database.run_migrations`) sorts files by name, parses the numeric prefix, and applies any migration whose version exceeds the stored `schema_version`.
 - `app/const.py` - Status, tag, lock, and category constants
 - `taskfile.yaml` - Standard local commands
 - `pyproject.toml` - Dependency and tooling configuration

@@ -38,7 +38,6 @@ from app.const import (
 from app.db import Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
-from app.migrate import get_expected_schema_version
 from app.mt import MTeamDomain
 from app.rpc import (
     RPC_DELETE_TORRENT,
@@ -171,7 +170,7 @@ class Downloader:
 
         logger.info("successfully connect to database")
 
-        self.db.wait_schema_version(get_expected_schema_version())
+        self.db.wait_db_migration()
 
         version = self.qb.app_version()
         logger.info("successfully connect to qBittorrent {}", version)

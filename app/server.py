@@ -30,7 +30,6 @@ from app.const import (
     PickStrategy,
 )
 from app.db import Database
-from app.migrate import run_migrations
 from app.rpc import PAYLOAD_TYPES, RpcRequest, enqueue_command
 from app.utils import human_readable_byte_rate, human_readable_size, parse_obj
 
@@ -318,7 +317,7 @@ def create_app() -> fastapi.FastAPI:
     async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
         await pool
         with Database(cfg.pg_dsn()) as migration_db:
-            await asyncio.to_thread(run_migrations, migration_db)
+            await asyncio.to_thread(migration_db.run_migrations)
         yield
         await pool.close()
 
