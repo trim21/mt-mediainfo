@@ -321,7 +321,7 @@ def create_app() -> fastapi.FastAPI:
         yield
         await pool.close()
 
-    app = fastapi.FastAPI(debug=cfg.debug, lifespan=lifespan)
+    app = fastapi.FastAPI(debug=True, lifespan=lifespan)
 
     def _fmt_dt(dt: datetime | None) -> str:
         if dt is None:
