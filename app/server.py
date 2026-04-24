@@ -44,6 +44,32 @@ _tz_shanghai = ZoneInfo("Asia/Shanghai")
 templates = Jinja2Templates(directory=str(Path(__file__).parent.joinpath("templates").resolve()))
 
 
+def _fmt_eta(seconds: float) -> str:
+    if seconds <= 0 or seconds > 365 * 24 * 3600:
+        return "∞"
+    return durationpy.to_str(timedelta(seconds=int(seconds)))
+
+
+def _fmt_dt(dt: datetime | None) -> str:
+    if dt is None:
+        return "-"
+    return dt.astimezone(_tz_shanghai).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _timeago(dt: datetime | None) -> str:
+    if dt is None:
+        return "-"
+    delta = datetime.now(tz=_tz_shanghai) - dt.astimezone(_tz_shanghai)
+    seconds = delta.total_seconds()
+    if seconds < 0:
+        return "-"
+    return _fmt_eta(seconds) + " ago"
+
+
+templates.env.filters["fmt_dt"] = _fmt_dt
+templates.env.filters["timeago"] = _timeago
+
+
 @dataclass(slots=True, frozen=True)
 class NodeDownloadStat:
     downloaded_bytes: int
@@ -300,6 +326,262 @@ class ConfigUpsertRequest:
     value: str
 
 
+def _pagination(page: int, total_count: int) -> dict[str, int | bool | None]:
+    total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
+    current_page = min(max(page, 1), total_pages)
+    return {
+        "page": current_page,
+        "page_size": PAGE_SIZE,
+        "total_count": total_count,
+        "total_pages": total_pages,
+        "has_prev": current_page > 1,
+        "has_next": current_page < total_pages,
+        "prev_page": current_page - 1 if current_page > 1 else None,
+        "next_page": current_page + 1 if current_page < total_pages else None,
+        "offset": (current_page - 1) * PAGE_SIZE,
+    }
+
+
+def _thread_row(r: asyncpg.Record, *, show_failed_reason: bool) -> dict[str, Any]:
+    row = dict(r) | {
+        "size_fmt": human_readable_size(r["size"]),
+        "selected_size_fmt": human_readable_size(r["selected_size"])
+        if r["selected_size"] > 0
+        else "-",
+    }
+    if show_failed_reason:
+        failed_reason: str = r["failed_reason"]
+        has_details = "\n" in failed_reason
+        row["failed_reason_preview"] = (
+            failed_reason.partition("\n")[0] if has_details else failed_reason
+        ) or "-"
+        row["failed_reason_has_details"] = has_details
+    return row
+
+
+def _today_start() -> datetime:
+    now = datetime.now(_tz_shanghai)
+    return datetime(now.year, now.month, now.day, tzinfo=_tz_shanghai)
+
+
+def _week_range() -> tuple[int, int]:
+    return -12, -1
+
+
+def _week_label(today: datetime, week_num: int) -> str:
+    ref = today + timedelta(days=1)
+    start = ref + timedelta(weeks=int(week_num))
+    return start.strftime("%Y-%m-%d")
+
+
+def _build_history_daily_stats(history_stats: list[DailyStatsSnapshot]) -> list[DailyStat]:
+    return [DailyStat.from_snapshot(stats) for stats in history_stats]
+
+
+def _build_today_daily_stat(today_stats: DailyStatsSnapshot) -> DailyStat:
+    elapsed_today = max((datetime.now(_tz_shanghai) - _today_start()).total_seconds(), 1.0)
+    return DailyStat.from_snapshot(
+        today_stats,
+        period_seconds=elapsed_today,
+        fetched_byte_rate=_project_today_fetched_byte_rate(today_stats),
+    )
+
+
+def _combine_daily_stats(
+    history_daily_stats: list[DailyStat],
+    today_daily_stat: DailyStat,
+) -> list[DailyStat]:
+    daily_stats = {stats.day: stats for stats in history_daily_stats}
+    daily_stats[today_daily_stat.day] = today_daily_stat
+    return [daily_stats[day] for day in sorted(daily_stats)]
+
+
+def _build_weekly_charts(
+    daily_stats: list[DailyStat],
+) -> WeeklyCharts:
+    days_per_week = 7.0
+    today_date = max((s.day for s in daily_stats), default=_today_start().date())
+    today = datetime(today_date.year, today_date.month, today_date.day, tzinfo=_tz_shanghai)
+    ref_date = today_date + timedelta(days=1)
+    min_week, max_week = _week_range()
+
+    week_days: dict[int, list[DailyStat]] = {w: [] for w in range(min_week, max_week + 1)}
+    for s in daily_stats:
+        d = s.day
+        wn = (d - ref_date).days // 7
+        if min_week <= wn <= max_week:
+            week_days[wn].append(s)
+
+    all_node_ids: set[str] = set()
+    for s in daily_stats:
+        all_node_ids.update(s.node_downloaded.keys())
+    sorted_node_ids = sorted(all_node_ids)
+
+    labels: list[str] = []
+    byte_rate_totals: list[ByteRateTotal] = []
+    done_count_totals: list[int] = []
+    fetched_data: list[LabeledByteRate] = []
+    thread_count_data: list[LabeledCount] = []
+    torrent_count_data: list[LabeledCount] = []
+    mediainfo_count_data: list[LabeledCount] = []
+
+    byte_rate_per_node: dict[str, list[float]] = {nid: [] for nid in sorted_node_ids}
+    done_count_per_node: dict[str, list[int]] = {nid: [] for nid in sorted_node_ids}
+
+    for wn in range(min_week, max_week + 1):
+        label = _week_label(today, wn)
+        labels.append(label)
+        days = week_days[wn]
+
+        total_dl_bytes = sum(s.downloaded_bytes for s in days)
+        total_dl_count = sum(s.downloaded_count for s in days)
+        byte_rate = sum(s.downloaded_byte_rate for s in days) / days_per_week
+        fetched_rate = sum(s.fetched_byte_rate for s in days) / days_per_week
+
+        byte_rate_totals.append(
+            ByteRateTotal(
+                byte_rate=byte_rate,
+                byte_rate_fmt=human_readable_byte_rate(byte_rate),
+                total_size=int(total_dl_bytes),
+                total_size_fmt=human_readable_size(total_dl_bytes),
+            )
+        )
+        done_count_totals.append(total_dl_count)
+
+        fetched_data.append(LabeledByteRate(label=label, byte_rate=fetched_rate))
+
+        thread_count_data.append(LabeledCount(label=label, count=sum(s.thread_count for s in days)))
+        torrent_count_data.append(
+            LabeledCount(label=label, count=sum(s.torrent_count for s in days))
+        )
+        mediainfo_count_data.append(
+            LabeledCount(label=label, count=sum(s.mediainfo_count for s in days))
+        )
+
+        node_totals: dict[str, dict[str, int]] = {}
+        for s in days:
+            for nid, nd in s.node_downloaded.items():
+                if nid not in node_totals:
+                    node_totals[nid] = {"bytes": 0, "count": 0}
+                node_totals[nid]["bytes"] += nd.downloaded_bytes
+                node_totals[nid]["count"] += nd.count
+
+        for nid in sorted_node_ids:
+            nt = node_totals.get(nid, {"bytes": 0, "count": 0})
+            byte_rate_per_node[nid].append(
+                sum(s.node_downloaded_byte_rate.get(nid, 0.0) for s in days) / days_per_week
+            )
+            done_count_per_node[nid].append(nt["count"])
+
+    return WeeklyCharts(
+        weekly_byte_rate=ByteRateChart(
+            labels=labels,
+            totals=byte_rate_totals,
+            per_node=byte_rate_per_node,
+        ),
+        weekly_fetched_size=fetched_data,
+        weekly_thread_count=thread_count_data,
+        weekly_torrent_count=torrent_count_data,
+        weekly_done_count=DoneCountChart(
+            labels=labels,
+            totals=done_count_totals,
+            per_node=done_count_per_node,
+        ),
+        weekly_mediainfo_count=mediainfo_count_data,
+    )
+
+
+def _build_daily_charts(
+    daily_stats: list[DailyStat],
+    start_date: date,
+    end_date: date,
+    known_node_ids: set[str] | None = None,
+) -> DailyCharts:
+    by_day: dict[date, DailyStat] = {s.day: s for s in daily_stats}
+
+    all_node_ids: set[str] = set(known_node_ids) if known_node_ids else set()
+    for v in daily_stats:
+        all_node_ids.update(v.node_downloaded.keys())
+    sorted_node_ids = sorted(all_node_ids)
+
+    labels: list[str] = []
+    byte_rate_totals: list[ByteRateTotal] = []
+    done_count_totals: list[int] = []
+    fetched_data: list[LabeledByteRate] = []
+    thread_count_data: list[LabeledCount] = []
+    torrent_count_data: list[LabeledCount] = []
+    mediainfo_count_data: list[LabeledCount] = []
+
+    byte_rate_per_node: dict[str, list[float]] = {nid: [] for nid in sorted_node_ids}
+    done_count_per_node: dict[str, list[int]] = {nid: [] for nid in sorted_node_ids}
+
+    for i in range((end_date - start_date).days + 1):
+        d = start_date + timedelta(days=i)
+        label = d.strftime("%Y-%m-%d")
+        labels.append(label)
+        s = by_day.get(d)
+
+        if s is None:
+            byte_rate_totals.append(
+                ByteRateTotal(
+                    byte_rate=0.0,
+                    byte_rate_fmt=human_readable_byte_rate(0),
+                    total_size=0,
+                    total_size_fmt=human_readable_size(0),
+                )
+            )
+            done_count_totals.append(0)
+            fetched_data.append(LabeledByteRate(label=label, byte_rate=0.0))
+            thread_count_data.append(LabeledCount(label=label, count=0))
+            torrent_count_data.append(LabeledCount(label=label, count=0))
+            mediainfo_count_data.append(LabeledCount(label=label, count=0))
+            for nid in sorted_node_ids:
+                byte_rate_per_node[nid].append(0.0)
+                done_count_per_node[nid].append(0)
+            continue
+
+        dl_bytes = s.downloaded_bytes
+        byte_rate = s.downloaded_byte_rate
+        byte_rate_totals.append(
+            ByteRateTotal(
+                byte_rate=byte_rate,
+                byte_rate_fmt=human_readable_byte_rate(byte_rate),
+                total_size=int(dl_bytes),
+                total_size_fmt=human_readable_size(dl_bytes),
+            )
+        )
+        done_count_totals.append(s.downloaded_count)
+
+        fetched_data.append(LabeledByteRate(label=label, byte_rate=s.fetched_byte_rate))
+
+        thread_count_data.append(LabeledCount(label=label, count=s.thread_count))
+        torrent_count_data.append(LabeledCount(label=label, count=s.torrent_count))
+        mediainfo_count_data.append(LabeledCount(label=label, count=s.mediainfo_count))
+
+        node_byte_rates = s.node_downloaded_byte_rate
+        for nid in sorted_node_ids:
+            byte_rate_per_node[nid].append(node_byte_rates.get(nid, 0.0))
+            n = s.node_downloaded.get(nid)
+            done_count_per_node[nid].append(0 if n is None else n.count)
+
+    return DailyCharts(
+        daily_byte_rate=ByteRateChart(
+            labels=labels,
+            totals=byte_rate_totals,
+            per_node=byte_rate_per_node,
+        ),
+        daily_fetched_size=fetched_data,
+        daily_thread_count=thread_count_data,
+        daily_torrent_count=torrent_count_data,
+        daily_done_count=DoneCountChart(
+            labels=labels,
+            totals=done_count_totals,
+            per_node=done_count_per_node,
+        ),
+        daily_mediainfo_count=mediainfo_count_data,
+    )
+
+
 def create_app() -> fastapi.FastAPI:
     cfg: ServerConfig = load_server_config()
 
@@ -322,55 +604,6 @@ def create_app() -> fastapi.FastAPI:
         await pool.close()
 
     app = fastapi.FastAPI(debug=True, lifespan=lifespan)
-
-    def _fmt_dt(dt: datetime | None) -> str:
-        if dt is None:
-            return "-"
-        return dt.astimezone(_tz_shanghai).strftime("%Y-%m-%d %H:%M:%S")
-
-    templates.env.filters["fmt_dt"] = _fmt_dt
-
-    def _timeago(dt: datetime | None) -> str:
-        if dt is None:
-            return "-"
-        delta = datetime.now(tz=_tz_shanghai) - dt.astimezone(_tz_shanghai)
-        seconds = delta.total_seconds()
-        if seconds < 0:
-            return "-"
-        return _fmt_eta(seconds) + " ago"
-
-    templates.env.filters["timeago"] = _timeago
-
-    def _pagination(page: int, total_count: int) -> dict[str, int | bool | None]:
-        total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
-        current_page = min(max(page, 1), total_pages)
-        return {
-            "page": current_page,
-            "page_size": PAGE_SIZE,
-            "total_count": total_count,
-            "total_pages": total_pages,
-            "has_prev": current_page > 1,
-            "has_next": current_page < total_pages,
-            "prev_page": current_page - 1 if current_page > 1 else None,
-            "next_page": current_page + 1 if current_page < total_pages else None,
-            "offset": (current_page - 1) * PAGE_SIZE,
-        }
-
-    def _thread_row(r: asyncpg.Record, *, show_failed_reason: bool) -> dict[str, Any]:
-        row = dict(r) | {
-            "size_fmt": human_readable_size(r["size"]),
-            "selected_size_fmt": human_readable_size(r["selected_size"])
-            if r["selected_size"] > 0
-            else "-",
-        }
-        if show_failed_reason:
-            failed_reason: str = r["failed_reason"]
-            has_details = "\n" in failed_reason
-            row["failed_reason_preview"] = (
-                failed_reason.partition("\n")[0] if has_details else failed_reason
-            ) or "-"
-            row["failed_reason_has_details"] = has_details
-        return row
 
     async def _render_thread_list(
         render: Render,
@@ -413,19 +646,6 @@ def create_app() -> fastapi.FastAPI:
         if extra_ctx:
             ctx.update(extra_ctx)
         return render("threads.html.j2", ctx=ctx)
-
-    def _today_start() -> datetime:
-        now = datetime.now(_tz_shanghai)
-        return datetime(now.year, now.month, now.day, tzinfo=_tz_shanghai)
-
-    def _week_range() -> tuple[int, int]:
-        """Return (min_week_num, max_week_num) for last 52 weeks."""
-        return -12, -1
-
-    def _week_label(today: datetime, week_num: int) -> str:
-        ref = today + timedelta(days=1)
-        start = ref + timedelta(weeks=int(week_num))
-        return start.strftime("%Y-%m-%d")
 
     _backfill_lock = asyncio.Lock()
 
@@ -663,211 +883,6 @@ def create_app() -> fastapi.FastAPI:
             torrent_count=int(fetched_row["count"]),
             mediainfo_count=int(mediainfo_count),
             node_downloaded=node_downloaded,
-        )
-
-    def _build_history_daily_stats(history_stats: list[DailyStatsSnapshot]) -> list[DailyStat]:
-        return [DailyStat.from_snapshot(stats) for stats in history_stats]
-
-    def _build_today_daily_stat(today_stats: DailyStatsSnapshot) -> DailyStat:
-        elapsed_today = max((datetime.now(_tz_shanghai) - _today_start()).total_seconds(), 1.0)
-        return DailyStat.from_snapshot(
-            today_stats,
-            period_seconds=elapsed_today,
-            fetched_byte_rate=_project_today_fetched_byte_rate(today_stats),
-        )
-
-    def _combine_daily_stats(
-        history_daily_stats: list[DailyStat],
-        today_daily_stat: DailyStat,
-    ) -> list[DailyStat]:
-        daily_stats = {stats.day: stats for stats in history_daily_stats}
-        daily_stats[today_daily_stat.day] = today_daily_stat
-        return [daily_stats[day] for day in sorted(daily_stats)]
-
-    def _build_weekly_charts(
-        daily_stats: list[DailyStat],
-    ) -> WeeklyCharts:
-        days_per_week = 7.0
-        today_date = max((s.day for s in daily_stats), default=_today_start().date())
-        today = datetime(today_date.year, today_date.month, today_date.day, tzinfo=_tz_shanghai)
-        ref_date = today_date + timedelta(days=1)
-        min_week, max_week = _week_range()
-
-        week_days: dict[int, list[DailyStat]] = {w: [] for w in range(min_week, max_week + 1)}
-        for s in daily_stats:
-            d = s.day
-            wn = (d - ref_date).days // 7
-            if min_week <= wn <= max_week:
-                week_days[wn].append(s)
-
-        all_node_ids: set[str] = set()
-        for s in daily_stats:
-            all_node_ids.update(s.node_downloaded.keys())
-        sorted_node_ids = sorted(all_node_ids)
-
-        labels: list[str] = []
-        byte_rate_totals: list[ByteRateTotal] = []
-        done_count_totals: list[int] = []
-        fetched_data: list[LabeledByteRate] = []
-        thread_count_data: list[LabeledCount] = []
-        torrent_count_data: list[LabeledCount] = []
-        mediainfo_count_data: list[LabeledCount] = []
-
-        byte_rate_per_node: dict[str, list[float]] = {nid: [] for nid in sorted_node_ids}
-        done_count_per_node: dict[str, list[int]] = {nid: [] for nid in sorted_node_ids}
-
-        for wn in range(min_week, max_week + 1):
-            label = _week_label(today, wn)
-            labels.append(label)
-            days = week_days[wn]
-
-            total_dl_bytes = sum(s.downloaded_bytes for s in days)
-            total_dl_count = sum(s.downloaded_count for s in days)
-            byte_rate = sum(s.downloaded_byte_rate for s in days) / days_per_week
-            fetched_rate = sum(s.fetched_byte_rate for s in days) / days_per_week
-
-            byte_rate_totals.append(
-                ByteRateTotal(
-                    byte_rate=byte_rate,
-                    byte_rate_fmt=human_readable_byte_rate(byte_rate),
-                    total_size=int(total_dl_bytes),
-                    total_size_fmt=human_readable_size(total_dl_bytes),
-                )
-            )
-            done_count_totals.append(total_dl_count)
-
-            fetched_data.append(LabeledByteRate(label=label, byte_rate=fetched_rate))
-
-            thread_count_data.append(
-                LabeledCount(label=label, count=sum(s.thread_count for s in days))
-            )
-            torrent_count_data.append(
-                LabeledCount(label=label, count=sum(s.torrent_count for s in days))
-            )
-            mediainfo_count_data.append(
-                LabeledCount(label=label, count=sum(s.mediainfo_count for s in days))
-            )
-
-            node_totals: dict[str, dict[str, int]] = {}
-            for s in days:
-                for nid, nd in s.node_downloaded.items():
-                    if nid not in node_totals:
-                        node_totals[nid] = {"bytes": 0, "count": 0}
-                    node_totals[nid]["bytes"] += nd.downloaded_bytes
-                    node_totals[nid]["count"] += nd.count
-
-            for nid in sorted_node_ids:
-                nt = node_totals.get(nid, {"bytes": 0, "count": 0})
-                byte_rate_per_node[nid].append(
-                    sum(s.node_downloaded_byte_rate.get(nid, 0.0) for s in days) / days_per_week
-                )
-                done_count_per_node[nid].append(nt["count"])
-
-        return WeeklyCharts(
-            weekly_byte_rate=ByteRateChart(
-                labels=labels,
-                totals=byte_rate_totals,
-                per_node=byte_rate_per_node,
-            ),
-            weekly_fetched_size=fetched_data,
-            weekly_thread_count=thread_count_data,
-            weekly_torrent_count=torrent_count_data,
-            weekly_done_count=DoneCountChart(
-                labels=labels,
-                totals=done_count_totals,
-                per_node=done_count_per_node,
-            ),
-            weekly_mediainfo_count=mediainfo_count_data,
-        )
-
-    def _build_daily_charts(
-        daily_stats: list[DailyStat],
-        start_date: date,
-        end_date: date,
-        known_node_ids: set[str] | None = None,
-    ) -> DailyCharts:
-        by_day: dict[date, DailyStat] = {s.day: s for s in daily_stats}
-
-        all_node_ids: set[str] = set(known_node_ids) if known_node_ids else set()
-        for v in daily_stats:
-            all_node_ids.update(v.node_downloaded.keys())
-        sorted_node_ids = sorted(all_node_ids)
-
-        labels: list[str] = []
-        byte_rate_totals: list[ByteRateTotal] = []
-        done_count_totals: list[int] = []
-        fetched_data: list[LabeledByteRate] = []
-        thread_count_data: list[LabeledCount] = []
-        torrent_count_data: list[LabeledCount] = []
-        mediainfo_count_data: list[LabeledCount] = []
-
-        byte_rate_per_node: dict[str, list[float]] = {nid: [] for nid in sorted_node_ids}
-        done_count_per_node: dict[str, list[int]] = {nid: [] for nid in sorted_node_ids}
-
-        for i in range((end_date - start_date).days + 1):
-            d = start_date + timedelta(days=i)
-            label = d.strftime("%Y-%m-%d")
-            labels.append(label)
-            s = by_day.get(d)
-
-            if s is None:
-                byte_rate_totals.append(
-                    ByteRateTotal(
-                        byte_rate=0.0,
-                        byte_rate_fmt=human_readable_byte_rate(0),
-                        total_size=0,
-                        total_size_fmt=human_readable_size(0),
-                    )
-                )
-                done_count_totals.append(0)
-                fetched_data.append(LabeledByteRate(label=label, byte_rate=0.0))
-                thread_count_data.append(LabeledCount(label=label, count=0))
-                torrent_count_data.append(LabeledCount(label=label, count=0))
-                mediainfo_count_data.append(LabeledCount(label=label, count=0))
-                for nid in sorted_node_ids:
-                    byte_rate_per_node[nid].append(0.0)
-                    done_count_per_node[nid].append(0)
-                continue
-
-            dl_bytes = s.downloaded_bytes
-            byte_rate = s.downloaded_byte_rate
-            byte_rate_totals.append(
-                ByteRateTotal(
-                    byte_rate=byte_rate,
-                    byte_rate_fmt=human_readable_byte_rate(byte_rate),
-                    total_size=int(dl_bytes),
-                    total_size_fmt=human_readable_size(dl_bytes),
-                )
-            )
-            done_count_totals.append(s.downloaded_count)
-
-            fetched_data.append(LabeledByteRate(label=label, byte_rate=s.fetched_byte_rate))
-
-            thread_count_data.append(LabeledCount(label=label, count=s.thread_count))
-            torrent_count_data.append(LabeledCount(label=label, count=s.torrent_count))
-            mediainfo_count_data.append(LabeledCount(label=label, count=s.mediainfo_count))
-
-            node_byte_rates = s.node_downloaded_byte_rate
-            for nid in sorted_node_ids:
-                byte_rate_per_node[nid].append(node_byte_rates.get(nid, 0.0))
-                n = s.node_downloaded.get(nid)
-                done_count_per_node[nid].append(0 if n is None else n.count)
-
-        return DailyCharts(
-            daily_byte_rate=ByteRateChart(
-                labels=labels,
-                totals=byte_rate_totals,
-                per_node=byte_rate_per_node,
-            ),
-            daily_fetched_size=fetched_data,
-            daily_thread_count=thread_count_data,
-            daily_torrent_count=torrent_count_data,
-            daily_done_count=DoneCountChart(
-                labels=labels,
-                totals=done_count_totals,
-                per_node=done_count_per_node,
-            ),
-            daily_mediainfo_count=mediainfo_count_data,
         )
 
     @app.get("/")
@@ -1470,11 +1485,6 @@ def create_app() -> fastapi.FastAPI:
         ]
 
         return render("nodes.html.j2", ctx={"nodes": sorted(nodes_data, key=itemgetter("alias"))})
-
-    def _fmt_eta(seconds: float) -> str:
-        if seconds <= 0 or seconds > 365 * 24 * 3600:
-            return "∞"
-        return durationpy.to_str(timedelta(seconds=int(seconds)))
 
     @app.get("/nodes/{node_id}")
     async def node_jobs_page(node_id: str, render: Render) -> HTMLResponse:
