@@ -110,7 +110,7 @@ class Scrape:
                 [
                     tid,
                     r.size,
-                    r.mediainfo or "",
+                    (r.mediainfo or "").replace("\x00", ""),
                     int(r.category),
                     r.status.seeders,
                 ],
@@ -361,7 +361,7 @@ class Scrape:
 
             self.__db.execute(
                 "update thread set mediainfo = $2, mediainfo_at = current_timestamp where tid = $1",
-                [tid, mediainfo or ""],
+                [tid, (mediainfo or "").replace("\x00", "")],
             )
 
     def __run_mediainfo(self, limit: int) -> RunResult:

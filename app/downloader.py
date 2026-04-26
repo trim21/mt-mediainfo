@@ -474,7 +474,7 @@ class Downloader:
                 """
                     update thread set mediainfo = $1, hard_coded_subtitle = $2 where info_hash = $3
                     """,
-                [media_info, hard_code_subtitle, t.hash],
+                [media_info.replace("\x00", ""), hard_code_subtitle, t.hash],
             )
             conn.execute(
                 """update job set status = $1, failed_reason = '', updated_at = current_timestamp,
