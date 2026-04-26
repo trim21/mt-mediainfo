@@ -10,7 +10,7 @@ import durationpy
 import yarl
 from pydantic import BeforeValidator, ByteSize, Field, HttpUrl
 
-from app.const import PickStrategy
+from app.const import PickStrategy, SeederFilter
 from app.utils import parse_obj
 
 
@@ -170,6 +170,18 @@ class DownloaderConfig(BaseConfig, S3Mixin):
     pick_strategy: Annotated[
         PickStrategy,
         Field(alias="PICK_STRATEGY", default=PickStrategy.seeders, validate_default=True),
+    ]
+
+    seeder_filter: Annotated[
+        SeederFilter | None,
+        BeforeValidator(lambda x: x or None),
+        Field(alias="SEEDER_FILTER", default=None),
+    ]
+
+    seeder_threshold: Annotated[
+        int | None,
+        BeforeValidator(lambda x: x or None),
+        Field(alias="SEEDER_THRESHOLD", default=None),
     ]
 
     version: Annotated[

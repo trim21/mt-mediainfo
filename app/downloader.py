@@ -34,6 +34,7 @@ from app.const import (
     QB_TAG_SELECTING_FILES,
     SELECTED_CATEGORY,
     PickStrategy,
+    SeederFilter,
 )
 from app.db import Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
@@ -103,7 +104,19 @@ class QbTorrent:
     seen_complete: int = 0
 
 
-_PICK_QUERY_BASE: LiteralString = """
+def _pick_query(config: DownloaderConfig) -> LiteralString:
+    order_clause = (
+        "order by seeders desc, (category = any($3)) desc, tid asc"
+        if config.pick_strategy == PickStrategy.seeders
+        else "order by (category = any($3)) desc, tid asc"
+    )
+
+    seeder_clause: LiteralString = "seeders != 0"
+    if config.seeder_filter is not None and config.seeder_threshold is not None:
+        op: LiteralString = ">=" if config.seeder_filter == SeederFilter.gte else "<"
+        seeder_clause = f"seeders != 0 and seeders {op} $4"
+
+    return f"""
     select thread.tid, thread.info_hash, thread.selected_size from thread
     left join job on (job.tid = thread.tid)
     where
@@ -113,24 +126,9 @@ _PICK_QUERY_BASE: LiteralString = """
         thread.selected_size < $1 and
         category = any ($2) and
         job.tid is null and
-        seeders != 0
-"""
-
-_PICK_QUERY_TID: LiteralString = f"""
-    {_PICK_QUERY_BASE}
-    order by (category = any($3)) desc, tid asc
-"""
-
-_PICK_QUERY_SEEDERS: LiteralString = f"""
-    {_PICK_QUERY_BASE}
-    order by seeders desc, (category = any($3)) desc, tid asc
-"""
-
-
-def _pick_query(strategy: PickStrategy) -> LiteralString:
-    if strategy == PickStrategy.seeders:
-        return _PICK_QUERY_SEEDERS
-    return _PICK_QUERY_TID
+        {seeder_clause}
+    {order_clause}
+    """
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
@@ -506,13 +504,17 @@ class Downloader:
             conn.transaction() as _,
         ):
             logger.info("get lock")
+            params: list = [
+                self.config.single_torrent_size_limit,
+                SELECTED_CATEGORY,
+                PRIORITY_CATEGORY,
+            ]
+            if self.config.seeder_threshold is not None:
+                params.append(self.config.seeder_threshold)
+
             rows: list[tuple[int, str, int]] = conn.fetch_all(
-                _pick_query(self.config.pick_strategy),
-                [
-                    self.config.single_torrent_size_limit,
-                    SELECTED_CATEGORY,
-                    PRIORITY_CATEGORY,
-                ],
+                _pick_query(self.config),
+                params,
             )
 
             logger.info("fetch {} rows", len(rows))
