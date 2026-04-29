@@ -1016,6 +1016,7 @@ def create_app() -> fastapi.FastAPI:
 
         downloading_nodes = [
             {
+                "node_id": str(r["node_id"]),
                 "node_name": _node_name(str(r["node_id"])),
                 "count": int(r["count"]),
                 "size_fmt": human_readable_size(int(r["size"])),
@@ -1025,6 +1026,7 @@ def create_app() -> fastapi.FastAPI:
 
         done_nodes = [
             {
+                "node_id": str(r["node_id"]),
                 "node_name": _node_name(str(r["node_id"])),
                 "count": int(r["count"]),
                 "size_fmt": human_readable_size(int(r["size"])),

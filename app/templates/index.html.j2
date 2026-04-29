@@ -78,7 +78,7 @@
         </tr>
         {% for n in downloading_nodes %}
         <tr class="table-info">
-          <td class="ps-4 text-muted">{{ n.node_name }}</td>
+          <td class="ps-4"><a href="/nodes/{{ n.node_id }}" class="text-reset text-decoration-none text-muted">{{ n.node_name }}</a></td>
           <td>{{ n.count }}</td>
           <td>{{ n.size_fmt }}</td>
         </tr>
@@ -90,7 +90,7 @@
         </tr>
         {% for n in done_nodes %}
         <tr class="table-success">
-          <td class="ps-4 text-muted">{{ n.node_name }}</td>
+          <td class="ps-4"><a href="/nodes/{{ n.node_id }}" class="text-reset text-decoration-none text-muted">{{ n.node_name }}</a></td>
           <td>{{ n.count }}</td>
           <td>{{ n.size_fmt }}</td>
         </tr>
