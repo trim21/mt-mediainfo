@@ -1508,6 +1508,7 @@ def create_app() -> fastapi.FastAPI:
             select job.tid, job.status, job.progress, job.failed_reason,
                    job.start_download_time, job.updated_at,
                    job.dlspeed, job.eta, job.info_hash,
+                   job.completed_at,
                    thread.size, thread.selected_size, thread.seeders
             from job
             join thread on (thread.tid = job.tid)
@@ -1552,6 +1553,12 @@ def create_app() -> fastapi.FastAPI:
             ],
             key=lambda j: j["eta_seconds"],
         )
+
+        if status == ItemStatus.DONE:
+            jobs.sort(
+                key=lambda j: j["completed_at"] or datetime.min.replace(tzinfo=_tz_shanghai),
+                reverse=True,
+            )
 
         return render(
             "node_jobs.html.j2",
