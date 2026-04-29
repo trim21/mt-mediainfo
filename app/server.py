@@ -1104,7 +1104,7 @@ def create_app() -> fastapi.FastAPI:
         return ORJSONResponse(_build_weekly_charts(daily_stats).to_payload())
 
     @app.get("/detail")
-    async def detail(render: Render, start: str | None = None) -> HTMLResponse:
+    async def detail(render: Render, start: Annotated[str | None, Query()] = None) -> HTMLResponse:
         today = _today_start()
         default_start = (today - timedelta(days=364)).strftime("%Y-%m-%d")
         start_value = start if start is not None else default_start
@@ -1143,7 +1143,9 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/threads/pending-mediainfo")
-    async def threads_pending_mediainfo(render: Render, page: int = 1) -> HTMLResponse:
+    async def threads_pending_mediainfo(
+        render: Render, page: Annotated[int, Query()] = 1
+    ) -> HTMLResponse:
         return await _render_thread_list(
             render,
             title="Pending Fetch Mediainfo",
@@ -1166,7 +1168,9 @@ def create_app() -> fastapi.FastAPI:
         )
 
     @app.get("/threads/pending-torrent")
-    async def threads_pending_torrent(render: Render, page: int = 1) -> HTMLResponse:
+    async def threads_pending_torrent(
+        render: Render, page: Annotated[int, Query()] = 1
+    ) -> HTMLResponse:
         return await _render_thread_list(
             render,
             title="Pending Fetch Torrent",
@@ -1191,7 +1195,7 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/threads/pending-download")
     async def threads_pending_download(
         render: Render,
-        page: int = 1,
+        page: Annotated[int, Query()] = 1,
         strategy: Annotated[PickStrategy, Query()] = PickStrategy.seeders,
     ) -> HTMLResponse:
         if strategy == PickStrategy.seeders:
@@ -1492,6 +1496,7 @@ def create_app() -> fastapi.FastAPI:
         status: Annotated[
             Literal[ItemStatus.DOWNLOADING, ItemStatus.DONE], Query()
         ] = ItemStatus.DOWNLOADING,
+        page: Annotated[int, Query()] = 1,
     ) -> HTMLResponse:
         node_row = await pool.fetchrow(
             "select id, last_seen, alias, version from node where id = $1", node_id
@@ -1503,20 +1508,33 @@ def create_app() -> fastapi.FastAPI:
                 status_code=404,
             )
 
-        rows = await pool.fetch(
-            """
-            select job.tid, job.status, job.progress, job.failed_reason,
-                   job.start_download_time, job.updated_at,
-                   job.dlspeed, job.eta, job.info_hash,
-                   job.completed_at,
-                   thread.size, thread.selected_size, thread.seeders
-            from job
-            join thread on (thread.tid = job.tid)
-            where job.node_id = $1 and job.status = $2
-            """,
-            node_id,
-            status,
+        total_count, rows = await asyncio.gather(
+            pool.fetchval(
+                "select count(1)::int from job where node_id = $1 and status = $2",
+                node_id,
+                status,
+            ),
+            pool.fetch(
+                f"""
+                select job.tid, job.status, job.progress, job.failed_reason,
+                       job.start_download_time, job.updated_at,
+                       job.dlspeed, job.eta, job.info_hash,
+                       job.completed_at,
+                       thread.size, thread.selected_size, thread.seeders
+                from job
+                join thread on (thread.tid = job.tid)
+                where job.node_id = $1 and job.status = $2
+                order by {"job.completed_at desc nulls last" if status == ItemStatus.DONE else "job.eta asc nulls last"}
+                limit $3 offset $4
+                """,
+                node_id,
+                status,
+                PAGE_SIZE,
+                (page - 1) * PAGE_SIZE,
+            ),
         )
+
+        pager = _pagination(page, cast(int, total_count))
 
         now = datetime.now(tz=_tz_shanghai)
 
@@ -1538,27 +1556,18 @@ def create_app() -> fastapi.FastAPI:
                 "eta_seconds": eta_seconds if dlspeed > 2 else float("inf"),
             }
 
-        jobs = sorted(
-            [
-                dict(r)
-                | {
-                    "size_fmt": human_readable_size(r["size"]),
-                    "selected_size_fmt": human_readable_size(r["selected_size"])
-                    if r["selected_size"] > 0
-                    else "-",
-                    "progress_fmt": f"{int(r['progress'] * 1000) / 10:.1f}",
-                }
-                | _calc_speed_eta(r)
-                for r in rows
-            ],
-            key=lambda j: j["eta_seconds"],
-        )
-
-        if status == ItemStatus.DONE:
-            jobs.sort(
-                key=lambda j: j["completed_at"] or datetime.min.replace(tzinfo=_tz_shanghai),
-                reverse=True,
-            )
+        jobs = [
+            dict(r)
+            | {
+                "size_fmt": human_readable_size(r["size"]),
+                "selected_size_fmt": human_readable_size(r["selected_size"])
+                if r["selected_size"] > 0
+                else "-",
+                "progress_fmt": f"{int(r['progress'] * 1000) / 10:.1f}",
+            }
+            | _calc_speed_eta(r)
+            for r in rows
+        ]
 
         return render(
             "node_jobs.html.j2",
@@ -1569,7 +1578,8 @@ def create_app() -> fastapi.FastAPI:
                 "version": node_row["version"],
                 "jobs": jobs,
                 "status": status,
-            },
+            }
+            | {k: v for k, v in pager.items() if k != "offset"},
         )
 
     @app.get("/rpc")

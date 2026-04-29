@@ -29,6 +29,18 @@
     </li>
   </ul>
 
+  {% if total_count is defined and total_count > page_size %}
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <span class="text-muted small">{{ (page - 1) * page_size + 1 }}-{{ [page * page_size, total_count] | min }} of {{ total_count }}</span>
+    <div class="btn-group btn-group-sm">
+      <a class="btn btn-outline-secondary{% if not has_prev %} disabled{% endif %}"
+         href="/nodes/{{ node_id }}?status={{ status }}&page={{ prev_page if prev_page else 1 }}">Previous</a>
+      <a class="btn btn-outline-secondary{% if not has_next %} disabled{% endif %}"
+         href="/nodes/{{ node_id }}?status={{ status }}&page={{ next_page if next_page else total_pages }}">Next</a>
+    </div>
+  </div>
+  {% endif %}
+
   <table class="table table-bordered table-hover table-sm">
     <thead class="table-light">
      <tr>

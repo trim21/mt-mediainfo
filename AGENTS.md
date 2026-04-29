@@ -49,3 +49,4 @@ This project downloads torrents from M-Team, processes local media files to extr
 - When changing qBittorrent processing, keep `app/downloader.py` aligned with `qb-torrent-lifecycle`
 - When adding server-to-downloader actions, update `app/rpc.py`, `app/downloader.py`, and `app/server.py` together
 - Keep subsystem-specific procedures in skills rather than expanding `AGENTS.md`
+- when adding query argument to fastapi handler, prefer to use `Annotated[T, Query()]`.
