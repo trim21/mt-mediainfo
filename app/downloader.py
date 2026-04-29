@@ -9,7 +9,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, LiteralString
+from typing import Annotated, Any, LiteralString
 
 import psycopg
 import qbittorrentapi
@@ -20,11 +20,6 @@ from sslog import logger
 
 from app.config import DownloaderConfig
 from app.const import (
-    ITEM_STATUS_DONE,
-    ITEM_STATUS_DOWNLOADING,
-    ITEM_STATUS_FAILED,
-    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
-    ITEM_STATUS_SKIPPED,
     LOCK_KEY_PICK_RSS_JOB,
     PRIORITY_CATEGORY,
     QB_TAG_DOWNLOADING,
@@ -33,6 +28,7 @@ from app.const import (
     QB_TAG_PROCESSING,
     QB_TAG_SELECTING_FILES,
     SELECTED_CATEGORY,
+    ItemStatus,
     PickStrategy,
     SeederFilter,
 )
@@ -218,7 +214,7 @@ class Downloader:
     def __handle_cmd_delete_torrent(self, payload: DeleteTorrentPayload) -> dict[str, str]:
         self.qb.torrents_delete(torrent_hashes=payload.info_hash, delete_files=True)
         self.__update_job_status(
-            status=ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+            status=ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
             info_hash=payload.info_hash,
         )
         return {"info_hash": payload.info_hash}
@@ -283,10 +279,10 @@ class Downloader:
                 where (not info_hash = any($2)) and node_id = $3 and status = $4
                 """,
             [
-                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+                ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
                 qb_hashes,
                 self.config.node_id,
-                ITEM_STATUS_DOWNLOADING,
+                ItemStatus.DOWNLOADING,
                 now,
             ],
         )
@@ -300,7 +296,7 @@ class Downloader:
             join thread on (thread.tid = job.tid)
             where job.node_id = $1 and job.status = $2
             """,
-            [self.config.node_id, ITEM_STATUS_DOWNLOADING, SELECTED_CATEGORY],
+            [self.config.node_id, ItemStatus.DOWNLOADING, SELECTED_CATEGORY],
         )
         managed_hashes: set[str] = {info_hash for info_hash, _ in job_rows}
         unselected_hashes: set[str] = {
@@ -323,7 +319,7 @@ class Downloader:
                     t.seen_complete,
                 )
                 self.__update_job_status(
-                    status=ITEM_STATUS_FAILED,
+                    status=ItemStatus.FAILED,
                     info_hash=t.hash,
                     failed_reason="no seeders",
                 )
@@ -334,7 +330,7 @@ class Downloader:
             if t.state.is_errored:
                 logger.info("torrent {} in error state", t.name)
                 self.__update_job_status(
-                    status=ITEM_STATUS_FAILED,
+                    status=ItemStatus.FAILED,
                     info_hash=t.hash,
                     failed_reason="torrent error",
                 )
@@ -349,7 +345,7 @@ class Downloader:
             if t.hash in unselected_hashes:
                 logger.info("cleanup unselected category torrent {}", t.hash)
                 self.__update_job_status(
-                    status=ITEM_STATUS_SKIPPED,
+                    status=ItemStatus.SKIPPED,
                     info_hash=t.hash,
                     failed_reason="category no longer selected",
                 )
@@ -363,7 +359,7 @@ class Downloader:
                     self.__process_local_torrent(t)
                 except Exception as e:
                     self.__update_job_status(
-                        status=ITEM_STATUS_FAILED,
+                        status=ItemStatus.FAILED,
                         info_hash=t.hash,
                         failed_reason=format_exc(e),
                     )
@@ -402,7 +398,7 @@ class Downloader:
                     now,
                     t.hash,
                     self.config.node_id,
-                    ITEM_STATUS_DOWNLOADING,
+                    ItemStatus.DOWNLOADING,
                 ],
             )
 
@@ -419,10 +415,10 @@ class Downloader:
             returning info_hash
             """,
             [
-                ITEM_STATUS_DOWNLOADING,
+                ItemStatus.DOWNLOADING,
                 t.hash,
                 self.config.node_id,
-                ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+                ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
             ],
         )
         if restored:
@@ -480,7 +476,7 @@ class Downloader:
                 """update job set status = $1, failed_reason = '', updated_at = current_timestamp,
                    completed_at = current_timestamp
                    where info_hash = $2 and node_id = $3""",
-                [ITEM_STATUS_DONE, t.hash, self.config.node_id],
+                [ItemStatus.DONE, t.hash, self.config.node_id],
             )
         self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
@@ -504,7 +500,7 @@ class Downloader:
             conn.transaction() as _,
         ):
             logger.info("get lock")
-            params: list = [
+            params: list[Any] = [
                 self.config.single_torrent_size_limit,
                 SELECTED_CATEGORY,
                 PRIORITY_CATEGORY,
@@ -530,7 +526,7 @@ class Downloader:
                     insert into job (tid, node_id, info_hash, start_download_time, updated_at, status)
                     VALUES ($1, $2, $3, current_timestamp, current_timestamp, $4)
                     """,
-                    [tid, self.config.node_id, info_hash, ITEM_STATUS_DOWNLOADING],
+                    [tid, self.config.node_id, info_hash, ItemStatus.DOWNLOADING],
                 )
                 left_size -= selected_size
                 picked.append((tid, info_hash))
@@ -544,7 +540,7 @@ class Downloader:
             except Exception as e:
                 logger.error("failed to add torrent tid={}: {}", tid, e)
                 self.__update_job_status(
-                    status=ITEM_STATUS_FAILED, tid=tid, failed_reason=format_exc(e)
+                    status=ItemStatus.FAILED, tid=tid, failed_reason=format_exc(e)
                 )
                 with contextlib.suppress(NotFound404Error):
                     self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
@@ -557,7 +553,7 @@ class Downloader:
         tc = self.store.read(tid)
         if not tc:
             self.__update_job_status(
-                status=ITEM_STATUS_FAILED,
+                status=ItemStatus.FAILED,
                 tid=tid,
                 failed_reason="torrent content not found",
             )
@@ -575,7 +571,7 @@ class Downloader:
         )
         if r != "Ok.":
             self.__update_job_status(
-                status=ITEM_STATUS_FAILED, tid=tid, failed_reason="failed to add"
+                status=ItemStatus.FAILED, tid=tid, failed_reason="failed to add"
             )
             with contextlib.suppress(NotFound404Error):
                 self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)

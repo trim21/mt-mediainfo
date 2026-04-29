@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from operator import itemgetter
 from pathlib import Path
-from typing import Annotated, Any, Protocol, cast
+from typing import Annotated, Any, Literal, Protocol, cast
 from zoneinfo import ZoneInfo
 
 import asyncpg
@@ -21,12 +21,9 @@ from starlette.responses import HTMLResponse, JSONResponse
 
 from app.config import ServerConfig, load_server_config
 from app.const import (
-    ITEM_STATUS_DONE,
-    ITEM_STATUS_DOWNLOADING,
-    ITEM_STATUS_FAILED,
-    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
     PRIORITY_CATEGORY,
     SELECTED_CATEGORY,
+    ItemStatus,
     PickStrategy,
 )
 from app.db import Database
@@ -693,7 +690,7 @@ def create_app() -> fastapi.FastAPI:
                       and coalesce(job.completed_at, job.updated_at) < $3
                     group by day, job.node_id
                     """,
-                    ITEM_STATUS_DONE,
+                    ItemStatus.DONE,
                     start_ts,
                     end_ts,
                 ),
@@ -833,7 +830,7 @@ def create_app() -> fastapi.FastAPI:
                   and coalesce(job.completed_at, job.updated_at) < $3
                 group by job.node_id
                 """,
-                ITEM_STATUS_DONE,
+                ItemStatus.DONE,
                 today,
                 tomorrow,
             ),
@@ -939,10 +936,10 @@ def create_app() -> fastapi.FastAPI:
             """,
                 SELECTED_CATEGORY,
                 [
-                    ITEM_STATUS_DOWNLOADING,
-                    ITEM_STATUS_DONE,
-                    ITEM_STATUS_FAILED,
-                    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+                    ItemStatus.DOWNLOADING,
+                    ItemStatus.DONE,
+                    ItemStatus.FAILED,
+                    ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
                 ],
             ),
             pool.fetch(
@@ -958,7 +955,7 @@ def create_app() -> fastapi.FastAPI:
             order by job.node_id
             """,
                 SELECTED_CATEGORY,
-                ITEM_STATUS_DOWNLOADING,
+                ItemStatus.DOWNLOADING,
             ),
             pool.fetch(
                 """
@@ -973,7 +970,7 @@ def create_app() -> fastapi.FastAPI:
             order by job.node_id
             """,
                 SELECTED_CATEGORY,
-                ITEM_STATUS_DONE,
+                ItemStatus.DONE,
             ),
         )
 
@@ -995,14 +992,14 @@ def create_app() -> fastapi.FastAPI:
             for r in job_status_rows
         }
 
-        downloading = status_stats.get(ITEM_STATUS_DOWNLOADING, {}).get("count", 0)
-        downloading_size = status_stats.get(ITEM_STATUS_DOWNLOADING, {}).get("size", 0)
-        failed = status_stats.get(ITEM_STATUS_FAILED, {}).get("count", 0)
-        failed_size = status_stats.get(ITEM_STATUS_FAILED, {}).get("size", 0)
-        removed_by_client = status_stats.get(ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT, {}).get(
+        downloading = status_stats.get(ItemStatus.DOWNLOADING, {}).get("count", 0)
+        downloading_size = status_stats.get(ItemStatus.DOWNLOADING, {}).get("size", 0)
+        failed = status_stats.get(ItemStatus.FAILED, {}).get("count", 0)
+        failed_size = status_stats.get(ItemStatus.FAILED, {}).get("size", 0)
+        removed_by_client = status_stats.get(ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, {}).get(
             "count", 0
         )
-        removed_by_client_size = status_stats.get(ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT, {}).get(
+        removed_by_client_size = status_stats.get(ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, {}).get(
             "size", 0
         )
 
@@ -1254,7 +1251,7 @@ def create_app() -> fastapi.FastAPI:
             order by job.updated_at desc
             limit $3 offset $4
             """,
-            params=[ITEM_STATUS_DOWNLOADING, SELECTED_CATEGORY],
+            params=[ItemStatus.DOWNLOADING, SELECTED_CATEGORY],
             page=page,
             show_progress=True,
             show_failed_reason=False,
@@ -1304,7 +1301,7 @@ def create_app() -> fastapi.FastAPI:
             order by job.updated_at desc
             limit $3 offset $4
             """,
-            params=[ITEM_STATUS_FAILED, SELECTED_CATEGORY],
+            params=[ItemStatus.FAILED, SELECTED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=True,
@@ -1330,7 +1327,7 @@ def create_app() -> fastapi.FastAPI:
             order by job.updated_at desc
             limit $3 offset $4
             """,
-            params=[ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT, SELECTED_CATEGORY],
+            params=[ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, SELECTED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=False,
@@ -1346,7 +1343,7 @@ def create_app() -> fastapi.FastAPI:
             where tid = $1 and status = any($2)
             """,
             tid,
-            [ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT, ITEM_STATUS_FAILED],
+            [ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, ItemStatus.FAILED],
         )
         return ORJSONResponse({"deleted": result})
 
@@ -1357,7 +1354,7 @@ def create_app() -> fastapi.FastAPI:
             delete from job
             where status = $1
             """,
-            ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT,
+            ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
         )
         return ORJSONResponse({"deleted": result})
 
@@ -1372,7 +1369,7 @@ def create_app() -> fastapi.FastAPI:
             where node_id = $1 and status = $2
             """,
             node_id,
-            ITEM_STATUS_DOWNLOADING,
+            ItemStatus.DOWNLOADING,
         )
         return ORJSONResponse({"deleted": result})
 
@@ -1465,7 +1462,7 @@ def create_app() -> fastapi.FastAPI:
             nid = str(r["node_id"])
             counts.setdefault(nid, {})
             counts[nid][r["status"]] = r["cnt"]
-            if r["status"] == ITEM_STATUS_DOWNLOADING:
+            if r["status"] == ItemStatus.DOWNLOADING:
                 speeds[nid] = r["total_dlspeed"]
 
         nodes_data = [
@@ -1474,12 +1471,12 @@ def create_app() -> fastapi.FastAPI:
                 "alias": n["alias"],
                 "last_seen": n["last_seen"],
                 "version": n["version"],
-                "downloading": counts.get(str(n["id"]), {}).get(ITEM_STATUS_DOWNLOADING, 0),
+                "downloading": counts.get(str(n["id"]), {}).get(ItemStatus.DOWNLOADING, 0),
                 "dlspeed_fmt": human_readable_byte_rate(speeds.get(str(n["id"]), 0)),
-                "done": counts.get(str(n["id"]), {}).get(ITEM_STATUS_DONE, 0),
-                "failed": counts.get(str(n["id"]), {}).get(ITEM_STATUS_FAILED, 0),
+                "done": counts.get(str(n["id"]), {}).get(ItemStatus.DONE, 0),
+                "failed": counts.get(str(n["id"]), {}).get(ItemStatus.FAILED, 0),
                 "removed": counts.get(str(n["id"]), {}).get(
-                    ITEM_STATUS_REMOVED_FROM_DOWNLOAD_CLIENT, 0
+                    ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, 0
                 ),
                 "total": sum(counts.get(str(n["id"]), {}).values()),
             }
@@ -1489,12 +1486,22 @@ def create_app() -> fastapi.FastAPI:
         return render("nodes.html.j2", ctx={"nodes": sorted(nodes_data, key=itemgetter("alias"))})
 
     @app.get("/nodes/{node_id}")
-    async def node_jobs_page(node_id: str, render: Render) -> HTMLResponse:
+    async def node_jobs_page(
+        node_id: str,
+        render: Render,
+        status: Annotated[
+            Literal[ItemStatus.DOWNLOADING, ItemStatus.DONE], Query()
+        ] = ItemStatus.DOWNLOADING,
+    ) -> HTMLResponse:
         node_row = await pool.fetchrow(
             "select id, last_seen, alias, version from node where id = $1", node_id
         )
         if node_row is None:
-            return render("nodes.html.j2", ctx={"nodes": []}, status_code=404)
+            return render(
+                "node_jobs.html.j2",
+                ctx={"node_id": node_id, "node_name": "", "jobs": [], "status": status},
+                status_code=404,
+            )
 
         rows = await pool.fetch(
             """
@@ -1507,7 +1514,7 @@ def create_app() -> fastapi.FastAPI:
             where job.node_id = $1 and job.status = $2
             """,
             node_id,
-            ITEM_STATUS_DOWNLOADING,
+            status,
         )
 
         now = datetime.now(tz=_tz_shanghai)
@@ -1554,6 +1561,7 @@ def create_app() -> fastapi.FastAPI:
                 "last_seen": node_row["last_seen"],
                 "version": node_row["version"],
                 "jobs": jobs,
+                "status": status,
             },
         )
 
