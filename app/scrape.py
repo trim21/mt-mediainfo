@@ -328,7 +328,7 @@ class Scrape:
             return RunResult.error
         return RunResult.ok
 
-    def scrape_mediainfo(self, limit: int = 100) -> None:
+    def scrape_mediainfo(self, limit: int = 10000) -> None:
         """Fetch mediainfo via /torrent/mediaInfo for threads missing it."""
         threads = self.__db.fetch_all(
             """
@@ -431,7 +431,7 @@ class Scrape:
         return RunResult.ok
 
     def __run(self) -> None:
-        limit = parse_obj(int, os.environ.get("SCRAPE_LIMIT", "100"))
+        limit = parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
         cooldown = timedelta(minutes=20)
         interval = 2 * 60  # 2 minutes
 
