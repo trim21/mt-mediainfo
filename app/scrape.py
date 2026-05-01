@@ -116,14 +116,14 @@ class Scrape:
                 ],
             )
 
-    def scrape_search(self) -> None:
+    def scrape_search(self, *, mode: str, cursor_key: str) -> None:
         """Scrape thread list using /torrent/search sorted by CREATED_DATE ASC.
 
-        Resumes from the cursor stored in the config table (key 'search_cursor'),
+        Resumes from the cursor stored in the config table,
         fetches one page at a time. Topped torrents (toppingLevel != "0") appear
         first and are excluded when advancing the cursor.
         """
-        row = self.__kv.get("search_cursor")
+        row = self.__kv.get(cursor_key)
         if row is not None:
             cursor = datetime.strptime(row, "%Y-%m-%d %H:%M:%S").replace(tzinfo=TZ_SHANGHAI)
         else:
@@ -137,13 +137,15 @@ class Scrape:
                 page_size=100,
                 sort_field="CREATED_DATE",
                 sort_direction="ASC",
+                mode=mode,
             )
 
             if not result.data:
                 break
 
             logger.info(
-                "search from {}: {} items (total {})",
+                "search({}) from {}: {} items (total {})",
+                mode,
                 start_str,
                 len(result.data),
                 result.total,
@@ -184,7 +186,7 @@ class Scrape:
                 break
             cursor = new_cursor
 
-            self.__kv.set("search_cursor", last_date)
+            self.__kv.set(cursor_key, last_date)
 
     def fetch_torrent(self) -> bool:
         threads = self.__db.fetch_all(
@@ -316,7 +318,7 @@ class Scrape:
 
     def __run_search(self) -> RunResult:
         try:
-            self.scrape_search()
+            self.scrape_search(mode="normal", cursor_key="search_cursor.normal")
         except httpx_network_errors:
             return RunResult.error
         except MTeamRequestError as e:
@@ -324,6 +326,17 @@ class Scrape:
                 logger.info("operator {!r} get rate limited: {}", e.op, e.message)
                 return RunResult.rate_limited
             logger.exception("failed to search threads")
+            return RunResult.error
+
+        try:
+            self.scrape_search(mode="adult", cursor_key="search_cursor.adult")
+        except httpx_network_errors:
+            return RunResult.error
+        except MTeamRequestError as e:
+            if self.__is_rate_limited(e):
+                logger.info("operator {!r} get rate limited: {}", e.op, e.message)
+                return RunResult.rate_limited
+            logger.exception("failed to search adult threads")
             return RunResult.error
         return RunResult.ok
 
@@ -443,6 +456,7 @@ class Scrape:
         )
 
     def __run(self) -> None:
+        self.__db.execute("delete from scrape_status")
         limit = parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
         cooldown = timedelta(minutes=10)
         interval = 2 * 60  # 2 minutes
