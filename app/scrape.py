@@ -460,16 +460,6 @@ class Scrape:
         cooldown = timedelta(minutes=10)
         interval = 2 * 60  # 2 minutes
 
-        # Earliest time each operation is allowed to run again
-        epoch = datetime.now(TZ_SHANGHAI)
-        next_allowed: dict[str, datetime] = {
-            "search": epoch,
-            "mediainfo": epoch,
-            "fetch-detail": epoch,
-            "fetch-torrent": epoch,
-            "backup": epoch,
-        }
-
         runners: dict[str, Callable[[], RunResult]] = {
             "search": lambda: self.__run_search(),
             "mediainfo": lambda: self.__run_mediainfo(limit),
@@ -477,6 +467,10 @@ class Scrape:
             "fetch-torrent": lambda: self.__run_fetch_torrents(),
             "backup": lambda: self.__run_backup(),
         }
+
+        # Earliest time each operation is allowed to run again
+        epoch = datetime.now(TZ_SHANGHAI)
+        next_allowed: dict[str, datetime] = {key: epoch for key in runners}
 
         self.__db.execute(
             "delete from scrape_status where not name = any($1)", [list(runners.keys())]
