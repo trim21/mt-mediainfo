@@ -478,7 +478,9 @@ class Scrape:
             "backup": lambda: self.__run_backup(),
         }
 
-        self.__db.execute("delete from scrape_status where name != all($1)", [list(runners.keys())])
+        self.__db.execute(
+            "delete from scrape_status where not name = any($1)", [list(runners.keys())]
+        )
 
         while True:
             logger.info("scrape")
