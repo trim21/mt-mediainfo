@@ -973,7 +973,7 @@ def create_app() -> fastapi.FastAPI:
                 SELECTED_CATEGORY,
                 ItemStatus.DONE,
             ),
-            pool.fetch("select * from scrape_status"),
+            pool.fetch("select * from scrape_status order by name"),
         )
 
         thread_stats = cast(asyncpg.Record, thread_stats)
