@@ -456,7 +456,6 @@ class Scrape:
         )
 
     def __run(self) -> None:
-        self.__db.execute("delete from scrape_status")
         limit = parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
         cooldown = timedelta(minutes=10)
         interval = 2 * 60  # 2 minutes
@@ -479,8 +478,10 @@ class Scrape:
             "backup": lambda: self.__run_backup(),
         }
 
+        self.__db.execute("delete from scrape_status where name != all($1)", [list(runners.keys())])
+
         while True:
-            logger.info("fetch torrents")
+            logger.info("scrape")
             now = datetime.now(TZ_SHANGHAI)
 
             for name, run in runners.items():
