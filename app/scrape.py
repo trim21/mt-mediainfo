@@ -287,7 +287,7 @@ class Scrape:
     def __is_rate_limited(e: MTeamRequestError) -> bool:
         return e.message in ("請求過於頻繁", "今日下載配額用盡")
 
-    def __run_fetch(self) -> RunResult:
+    def __run_fetch_torrents(self) -> RunResult:
         """Returns (result, no_pending)."""
         try:
             self.backfill_selected_size()
@@ -438,18 +438,18 @@ class Scrape:
         # Earliest time each operation is allowed to run again
         epoch = datetime.now(TZ_SHANGHAI)
         next_allowed: dict[str, datetime] = {
-            "fetch": epoch,
             "search": epoch,
             "mediainfo": epoch,
-            "scrape": epoch,
+            "fetch-detail": epoch,
+            "fetch-torrent": epoch,
             "backup": epoch,
         }
 
         runners: dict[str, Callable[[], RunResult]] = {
-            "fetch": lambda: self.__run_fetch(),
             "search": lambda: self.__run_search(),
             "mediainfo": lambda: self.__run_mediainfo(limit),
-            "scrape": lambda: self.__run_scrape(limit),
+            "fetch-detail": lambda: self.__run_scrape(limit),
+            "fetch-torrent": lambda: self.__run_fetch_torrents(),
             "backup": lambda: self.__run_backup(),
         }
 
