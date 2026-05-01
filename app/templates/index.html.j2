@@ -30,7 +30,7 @@
 
   <div class="row">
     <div class="col-md-6">
-      <h3>Scraping Progress <small class="text-muted fs-6">{{ search_cursor }}</small></h3>
+      <h3>Scraping Progress</h3>
       <table class="table table-bordered mb-4">
         <tbody>
         <tr>
@@ -125,6 +125,14 @@
       </tr>
     </thead>
     <tbody>
+      <tr>
+        <td>search cursor (normal)</td>
+        <td colspan="3">{{ search_cursor_normal }}</td>
+      </tr>
+      <tr>
+        <td>search cursor (adult)</td>
+        <td colspan="3">{{ search_cursor_adult }}</td>
+      </tr>
     {% for s in scrape_status %}
       <tr class="{% if s.last_result == 'rate_limited' %}table-warning{% elif s.last_result == 'error' %}table-danger{% else %}table-success{% endif %}">
         <td>{{ s.name }}</td>

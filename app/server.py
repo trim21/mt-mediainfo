@@ -886,7 +886,7 @@ def create_app() -> fastapi.FastAPI:
     async def progress(render: Render) -> HTMLResponse:
         (
             thread_stats,
-            search_cursor,
+            config_rows,
             pending_download_stats,
             job_status_rows,
             downloading_node_rows,
@@ -911,7 +911,10 @@ def create_app() -> fastapi.FastAPI:
             """,
                 SELECTED_CATEGORY,
             ),
-            pool.fetchval("select value from config where key = 'search_cursor'"),
+            pool.fetch(
+                "select key, value from config where key = any($1)",
+                ["search_cursor.normal", "search_cursor.adult"],
+            ),
             pool.fetchrow(
                 """
             select count(1) as count, coalesce(sum(thread.selected_size), 0) as size
@@ -988,6 +991,8 @@ def create_app() -> fastapi.FastAPI:
         pending_download_stats = cast(asyncpg.Record, pending_download_stats)
         pending_to_download = cast(int, pending_download_stats["count"])
         pending_to_download_size = cast(int, pending_download_stats["size"])
+
+        config_map = {str(r["key"]): str(r["value"]) for r in config_rows}
 
         job_status_rows = cast(list[asyncpg.Record], job_status_rows)
         status_stats = {
@@ -1071,7 +1076,8 @@ def create_app() -> fastapi.FastAPI:
             "index.html.j2",
             ctx={
                 "scraped_total": scraped_total,
-                "search_cursor": search_cursor or "N/A",
+                "search_cursor_normal": config_map.get("search_cursor.normal", "N/A"),
+                "search_cursor_adult": config_map.get("search_cursor.adult", "N/A"),
                 "total": total,
                 "total_size": human_readable_size(total_size),
                 "done": done,
