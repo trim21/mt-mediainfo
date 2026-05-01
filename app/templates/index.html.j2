@@ -115,6 +115,10 @@
 {% if scrape_status %}
 <div class="container mt-4">
   <h3>Scrape Status</h3>
+  <div class="row mb-2">
+    <div class="col-auto"><strong>Search cursor (normal):</strong> {{ search_cursor_normal }}</div>
+    <div class="col-auto"><strong>Search cursor (adult):</strong> {{ search_cursor_adult }}</div>
+  </div>
   <table class="table table-bordered table-sm" style="max-width: 700px;">
     <thead>
       <tr>
@@ -125,14 +129,6 @@
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td>search cursor (normal)</td>
-        <td colspan="3">{{ search_cursor_normal }}</td>
-      </tr>
-      <tr>
-        <td>search cursor (adult)</td>
-        <td colspan="3">{{ search_cursor_adult }}</td>
-      </tr>
     {% for s in scrape_status %}
       <tr class="{% if s.last_result == 'rate_limited' %}table-warning{% elif s.last_result == 'error' %}table-danger{% else %}table-success{% endif %}">
         <td>{{ s.name }}</td>
