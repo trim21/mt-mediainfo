@@ -891,6 +891,7 @@ def create_app() -> fastapi.FastAPI:
             job_status_rows,
             downloading_node_rows,
             done_node_rows,
+            scrape_status_rows,
         ) = await asyncio.gather(
             pool.fetchrow(
                 """
@@ -972,6 +973,7 @@ def create_app() -> fastapi.FastAPI:
                 SELECTED_CATEGORY,
                 ItemStatus.DONE,
             ),
+            pool.fetch("select * from scrape_status"),
         )
 
         thread_stats = cast(asyncpg.Record, thread_stats)
@@ -987,6 +989,7 @@ def create_app() -> fastapi.FastAPI:
         pending_to_download = cast(int, pending_download_stats["count"])
         pending_to_download_size = cast(int, pending_download_stats["size"])
 
+        job_status_rows = cast(list[asyncpg.Record], job_status_rows)
         status_stats = {
             str(r["status"]): {"count": int(r["count"]), "size": int(r["size"])}
             for r in job_status_rows
@@ -1011,6 +1014,7 @@ def create_app() -> fastapi.FastAPI:
         def _node_name(nid: str) -> str:
             return node_aliases.get(nid, nid[:8])
 
+        downloading_node_rows = cast(list[asyncpg.Record], downloading_node_rows)
         downloading_nodes = [
             {
                 "node_id": str(r["node_id"]),
@@ -1021,6 +1025,7 @@ def create_app() -> fastapi.FastAPI:
             for r in downloading_node_rows
         ]
 
+        done_node_rows = cast(list[asyncpg.Record], done_node_rows)
         done_nodes = [
             {
                 "node_id": str(r["node_id"]),
@@ -1029,6 +1034,17 @@ def create_app() -> fastapi.FastAPI:
                 "size_fmt": human_readable_size(int(r["size"])),
             }
             for r in done_node_rows
+        ]
+
+        scrape_status_rows = cast(list[asyncpg.Record], scrape_status_rows)
+        scrape_status = [
+            {
+                "name": str(r["name"]),
+                "last_run_at": r["last_run_at"],
+                "last_result": str(r["last_result"]),
+                "next_allowed_at": r["next_allowed_at"],
+            }
+            for r in scrape_status_rows
         ]
 
         skipped = (
@@ -1083,6 +1099,7 @@ def create_app() -> fastapi.FastAPI:
                 "skipped_size": human_readable_size(skipped_size),
                 "skipped_pct": pct(skipped),
                 "node_aliases": node_aliases,
+                "scrape_status": scrape_status,
             },
         )
 

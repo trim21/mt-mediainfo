@@ -112,6 +112,32 @@
 </div>
 </div>
 
+{% if scrape_status %}
+<div class="container mt-4">
+  <h3>Scrape Status</h3>
+  <table class="table table-bordered table-sm" style="max-width: 700px;">
+    <thead>
+      <tr>
+        <th>Operation</th>
+        <th>Last Run</th>
+        <th>Result</th>
+        <th>Next Allowed</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for s in scrape_status %}
+      <tr class="{% if s.last_result == 'rate_limited' %}table-warning{% elif s.last_result == 'error' %}table-danger{% else %}table-success{% endif %}">
+        <td>{{ s.name }}</td>
+        <td>{{ s.last_run_at | timeago }}</td>
+        <td>{{ s.last_result }}</td>
+        <td>{{ s.next_allowed_at | fmt_dt }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 <div class="container mt-4">
   <h3>Average Byte Rate per Week</h3>
   <div id="weeklyByteRateLoading" class="text-muted">Loading chart data...</div>

@@ -430,6 +430,19 @@ class Scrape:
             return RunResult.error
         return RunResult.ok
 
+    def __update_status(self, name: str, result: RunResult, next_allowed: datetime | None) -> None:
+        self.__db.execute(
+            """
+            insert into scrape_status (name, last_run_at, last_result, next_allowed_at)
+            values ($1, current_timestamp, $2, $3)
+            on conflict (name) do update set
+              last_run_at = current_timestamp,
+              last_result = excluded.last_result,
+              next_allowed_at = excluded.next_allowed_at
+            """,
+            [name, result.value, next_allowed],
+        )
+
     def __run(self) -> None:
         limit = parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
         cooldown = timedelta(minutes=20)
@@ -468,6 +481,7 @@ class Scrape:
                 result = run()
                 if result == RunResult.rate_limited:
                     next_allowed[name] = datetime.now(TZ_SHANGHAI) + cooldown
+                self.__update_status(name, result, next_allowed[name])
 
             status_parts: list[str] = []
             for name in runners:
