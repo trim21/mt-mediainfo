@@ -199,7 +199,6 @@ class Scrape:
               seeders != 0 and
               category = any($1)
             order by (category = any($2)) desc, tid asc
-            limit 50
             """,
             [SELECTED_CATEGORY, PRIORITY_CATEGORY],
         )
