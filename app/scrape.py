@@ -518,12 +518,9 @@ class Scrape:
         )
 
         while True:
+            self.__kv.cleanup()
             logger.info("scrape")
             now = datetime.now(TZ_SHANGHAI)
-
-            expired = self.__kv.cleanup()
-            if expired:
-                logger.info("cleaned up {} expired config entries", expired)
 
             for name, run in runners.items():
                 if now < next_allowed[name]:
