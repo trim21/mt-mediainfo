@@ -911,7 +911,7 @@ def create_app() -> fastapi.FastAPI:
             """,
                 SELECTED_CATEGORY,
             ),
-            pool.fetch(
+            pool.fetchmany(
                 "select key, value from config where key = any($1)",
                 ["search_cursor.normal", "search_cursor.adult"],
             ),
@@ -992,6 +992,7 @@ def create_app() -> fastapi.FastAPI:
         pending_to_download = cast(int, pending_download_stats["count"])
         pending_to_download_size = cast(int, pending_download_stats["size"])
 
+        config_rows = cast(list[asyncpg.Record], config_rows)
         config_map = {str(r["key"]): str(r["value"]) for r in config_rows}
 
         job_status_rows = cast(list[asyncpg.Record], job_status_rows)
