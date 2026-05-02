@@ -2,19 +2,14 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from sslog import logger
-
-from app.utils import must_find_executable, must_run_command
-
-mediainfo = must_find_executable("mediainfo")
-logger.info("using mediainfo at {!r}", mediainfo)
+from app.utils import must_run_command
 
 
-def extract_mediainfo_from_file(file: Path) -> str:
+def extract_mediainfo_from_file(mediainfo_bin: str, file: Path) -> str:
     with tempfile.TemporaryDirectory(prefix="mt-") as tempdir:
         out_file = Path(tempdir, "mediainfo.txt")
         must_run_command(
-            mediainfo,
+            mediainfo_bin,
             [f"--LogFile={out_file}", file.name],
             cwd=str(file.parent),
             stdout=subprocess.DEVNULL,

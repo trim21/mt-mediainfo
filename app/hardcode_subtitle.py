@@ -11,7 +11,7 @@ import regex
 from rapidocr_onnxruntime import RapidOCR
 from sslog import logger
 
-from app.utils import must_find_executable, must_run_command
+from app.utils import must_run_command
 
 
 class Point(NamedTuple):
@@ -21,18 +21,12 @@ class Point(NamedTuple):
 
 pattern_chinese = regex.compile(r"\p{script=Han}")
 
-ffprobe: str = must_find_executable("ffprobe")
-logger.info("using ffprobe at {}", ffprobe)
-
-ffmpeg: str = must_find_executable("ffmpeg")
-logger.info("using ffmpeg at {}", ffmpeg)
-
 ocr_engine = RapidOCR()
 
 
-def get_video_duration(video_file: Path) -> int:
+def get_video_duration(ffprobe_bin: str, video_file: Path) -> int:
     p = must_run_command(
-        ffprobe,
+        ffprobe_bin,
         [
             "-v",
             "quiet",
@@ -54,6 +48,8 @@ def get_video_duration(video_file: Path) -> int:
 
 
 def generate_images(
+    ffmpeg_bin: str,
+    ffprobe_bin: str,
     video_file: Path,
     tmpdir: Path,
     image_format: str = "png",
@@ -61,7 +57,7 @@ def generate_images(
 ) -> Generator[Path]:
     temp = tmpdir.joinpath("images")
     temp.mkdir(exist_ok=True, parents=True)
-    duration = get_video_duration(video_file)
+    duration = get_video_duration(ffprobe_bin, video_file)
 
     # long enough
     if duration > 20 * 60:
@@ -77,7 +73,7 @@ def generate_images(
         logger.info("screenshot from {} at {}", video_file.name, timedelta(seconds=seek))
         image_file = temp.joinpath(f"{i}.{image_format}")
         must_run_command(
-            ffmpeg,
+            ffmpeg_bin,
             [
                 "-y",
                 "-ss",
@@ -102,9 +98,13 @@ def generate_images(
             yield image_file
 
 
-def check_hardcode_chinese_subtitle(video_file: Path) -> bool:
+def check_hardcode_chinese_subtitle(
+    ffprobe_bin: str,
+    ffmpeg_bin: str,
+    video_file: Path,
+) -> bool:
     with tempfile.TemporaryDirectory(prefix="mt-") as tempdir:
-        for file in generate_images(video_file, Path(tempdir), count=10):
+        for file in generate_images(ffmpeg_bin, ffprobe_bin, video_file, Path(tempdir), count=10):
             with PIL.Image.open(file) as img:
                 size = Point(*img.size)
 

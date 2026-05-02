@@ -46,7 +46,7 @@ from app.rpc import (
 )
 from app.torrent import find_largest_video_file
 from app.torrent_store import TorrentStore
-from app.utils import parse_obj, set_torrent_comment
+from app.utils import must_find_executable, parse_obj, set_torrent_comment
 
 
 def format_exc(e: Exception) -> str:
@@ -133,6 +133,11 @@ class Downloader:
     config: DownloaderConfig
     qb: qbittorrentapi.Client
     store: TorrentStore
+    mediainfo_bin: str = dataclasses.field(
+        default_factory=lambda: must_find_executable("mediainfo")
+    )
+    ffprobe_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("ffprobe"))
+    ffmpeg_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("ffmpeg"))
 
     @classmethod
     def new(cls, cfg: DownloaderConfig) -> Downloader:
@@ -168,6 +173,10 @@ class Downloader:
 
         version = self.qb.app_version()
         logger.info("successfully connect to qBittorrent {}", version)
+
+        logger.info("using mediainfo at {}", self.mediainfo_bin)
+        logger.info("using ffprobe at {}", self.ffprobe_bin)
+        logger.info("using ffmpeg at {}", self.ffmpeg_bin)
 
     def start(self) -> None:
         interval = 1
@@ -458,9 +467,11 @@ class Downloader:
         selected_file = next(f for f in files if f.index == selected_idx)
         path = Path(t.save_path, selected_file.name)
 
-        media_info = extract_mediainfo_from_file(path)
+        media_info = extract_mediainfo_from_file(self.mediainfo_bin, path)
 
-        hard_code_subtitle = check_hardcode_chinese_subtitle(path)
+        hard_code_subtitle = check_hardcode_chinese_subtitle(
+            self.ffprobe_bin, self.ffmpeg_bin, path
+        )
 
         with (
             self.db.connection() as conn,
