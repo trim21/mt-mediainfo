@@ -101,11 +101,10 @@ class QbTorrent:
 
 
 def _pick_query(config: DownloaderConfig) -> LiteralString:
-    order_clause: LiteralString = (
-        "order by seeders desc, (category = any($3)) desc, tid asc"
-        if config.pick_strategy == PickStrategy.seeders
-        else "order by (category = any($3)) desc, tid asc"
-    )
+    if config.pick_strategy == PickStrategy.seeders:
+        order_clause: LiteralString = "order by seeders desc, (category = any($3)) desc, tid asc"
+    else:
+        order_clause: LiteralString = "order by (category = any($3)) desc, tid asc"
 
     seeder_clause: LiteralString = "seeders != 0"
     if config.seeder_filter is not None and config.seeder_threshold is not None:
