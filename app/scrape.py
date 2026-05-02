@@ -189,6 +189,7 @@ class Scrape:
             self.__kv.set(cursor_key, last_date)
 
     TORRENT_DL_LIMIT = 10
+    TORRENT_DL_TTL = timedelta(days=2)
 
     def _torrent_dl_count_key(self, tid: int, today: str) -> str:
         return f"torrent_dl:{tid}:{today}"
@@ -200,7 +201,7 @@ class Scrape:
     def _inc_torrent_dl_count(self, tid: int, today: str) -> None:
         key = self._torrent_dl_count_key(tid, today)
         val = self.__kv.get(key)
-        self.__kv.set(key, str(int(val) + 1) if val else "1")
+        self.__kv.set(key, str(int(val) + 1) if val else "1", ttl=self.TORRENT_DL_TTL)
 
     def fetch_torrent(self) -> bool:
         threads = self.__db.fetch_all(
@@ -241,7 +242,9 @@ class Scrape:
             except MTeamRequestError as e:
                 if "相同種子當天最多下載" in e.message:
                     self.__kv.set(
-                        self._torrent_dl_count_key(tid, today), str(self.TORRENT_DL_LIMIT)
+                        self._torrent_dl_count_key(tid, today),
+                        str(self.TORRENT_DL_LIMIT),
+                        ttl=self.TORRENT_DL_TTL,
                     )
                     logger.warning(
                         "torrent {} hit daily download limit, skipping until tomorrow", tid
@@ -517,6 +520,10 @@ class Scrape:
         while True:
             logger.info("scrape")
             now = datetime.now(TZ_SHANGHAI)
+
+            expired = self.__kv.cleanup()
+            if expired:
+                logger.info("cleaned up {} expired config entries", expired)
 
             for name, run in runners.items():
                 if now < next_allowed[name]:
