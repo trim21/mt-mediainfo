@@ -11,7 +11,10 @@ class KVConfig:
 
     def get(self, key: str, default: str | None = None) -> str | None:
         val = self.__db.fetch_val(
-            "select value from config where key = $1 and (expires_at is null or expires_at > CURRENT_TIMESTAMP)",
+            """
+                select value from config
+                    where key = $1 and (expires_at is null or expires_at > CURRENT_TIMESTAMP)
+                """,
             [key],
         )
         if val is not None:
@@ -32,6 +35,8 @@ class KVConfig:
         """Delete expired config entries. Returns number of rows deleted."""
         with self.__db.connection() as conn:
             cur = conn.execute(
-                "delete from config where expires_at is not null and expires_at <= CURRENT_TIMESTAMP"
+                """
+                delete from config where expires_at is not null and expires_at <= CURRENT_TIMESTAMP
+                """
             )
             return cur.rowcount
