@@ -188,6 +188,20 @@ class Scrape:
 
             self.__kv.set(cursor_key, last_date)
 
+    TORRENT_DL_LIMIT = 10
+
+    def _torrent_dl_count_key(self, tid: int, today: str) -> str:
+        return f"torrent_dl:{tid}:{today}"
+
+    def _get_torrent_dl_count(self, tid: int, today: str) -> int:
+        val = self.__kv.get(self._torrent_dl_count_key(tid, today))
+        return int(val) if val else 0
+
+    def _inc_torrent_dl_count(self, tid: int, today: str) -> None:
+        key = self._torrent_dl_count_key(tid, today)
+        val = self.__kv.get(key)
+        self.__kv.set(key, str(int(val) + 1) if val else "1")
+
     def fetch_torrent(self) -> bool:
         threads = self.__db.fetch_all(
             """
@@ -208,10 +222,32 @@ class Scrape:
         if not threads:
             return True
 
+        today = datetime.now(TZ_SHANGHAI).strftime("%Y-%m-%d")
+
         for (tid,) in threads:
+            count = self._get_torrent_dl_count(tid, today)
+            if count >= self.TORRENT_DL_LIMIT:
+                logger.debug(
+                    "skipping torrent {} (downloaded {}/{} today)",
+                    tid,
+                    count,
+                    self.TORRENT_DL_LIMIT,
+                )
+                continue
+
             logger.info("fetch torrent of thread {}", tid)
             try:
                 tc = self.mteam_client.download_torrent(tid=tid)
+            except MTeamRequestError as e:
+                if "相同種子當天最多下載" in e.message:
+                    self.__kv.set(
+                        self._torrent_dl_count_key(tid, today), str(self.TORRENT_DL_LIMIT)
+                    )
+                    logger.warning(
+                        "torrent {} hit daily download limit, skipping until tomorrow", tid
+                    )
+                    continue
+                raise
             except TorrentFileError:
                 logger.warning("torrent file error for thread {}", tid)
                 self.__db.execute(
@@ -219,6 +255,8 @@ class Scrape:
                     [tid, "file error"],
                 )
                 continue
+
+            self._inc_torrent_dl_count(tid, today)
 
             try:
                 t = parse_torrent(tc)
