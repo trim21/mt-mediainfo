@@ -7,7 +7,7 @@ import io
 import os.path
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, LiteralString
 
@@ -16,6 +16,7 @@ import qbittorrentapi
 from pydantic import BeforeValidator
 from qbittorrentapi import NotFound404Error, TorrentState
 from rich.console import Console
+from scrape import TZ_SHANGHAI
 from sslog import logger
 
 from app.config import DownloaderConfig
@@ -228,7 +229,7 @@ class Downloader:
             insert into node (id, last_seen, version) values ($1, $2, $3)
             on conflict (id) do update set last_seen = excluded.last_seen, version = excluded.version
             """,
-            [self.config.node_id, datetime.now(tz=UTC), self.config.version],
+            [self.config.node_id, datetime.now(tz=TZ_SHANGHAI), self.config.version],
         )
 
     def __set_tags(self, info_hash: str, *, remove: str, add: str) -> None:
@@ -264,7 +265,7 @@ class Downloader:
         """Process all torrents in qBittorrent in a single pass."""
         logger.info("__process_qb_torrents")
         torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
-        now = datetime.now(tz=UTC)
+        now = datetime.now(tz=TZ_SHANGHAI)
         if not torrents:
             logger.info("qb has no torrents")
             return
