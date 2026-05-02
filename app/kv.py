@@ -11,7 +11,7 @@ class KVConfig:
 
     def get(self, key: str, default: str | None = None) -> str | None:
         val = self.__db.fetch_val(
-            "select value from config where key = $1 and (expires_at is null or expires_at > now())",
+            "select value from config where key = $1 and (expires_at is null or expires_at > CURRENT_TIMESTAMP)",
             [key],
         )
         if val is not None:
