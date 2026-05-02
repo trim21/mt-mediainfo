@@ -16,7 +16,6 @@ import qbittorrentapi
 from pydantic import BeforeValidator
 from qbittorrentapi import NotFound404Error, TorrentState
 from rich.console import Console
-from scrape import TZ_SHANGHAI
 from sslog import logger
 
 from app.config import DownloaderConfig
@@ -44,6 +43,7 @@ from app.rpc import (
     PingPayload,
     process_commands,
 )
+from app.scrape import TZ_SHANGHAI
 from app.torrent import find_largest_video_file
 from app.torrent_store import TorrentStore
 from app.utils import must_find_executable, parse_obj, set_torrent_comment
