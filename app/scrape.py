@@ -502,11 +502,11 @@ class Scrape:
         interval = 60  # 2 minutes
 
         runners: dict[str, Callable[[], RunResult]] = {
-            "search": lambda: self.__run_search(),
-            "mediainfo": lambda: self.__run_mediainfo(limit),
-            "fetch-detail": lambda: self.__run_scrape(limit),
-            "fetch-torrent": lambda: self.__run_fetch_torrents(),
-            "backup": lambda: self.__run_backup(),
+            "0-search": lambda: self.__run_search(),
+            "1-mediainfo": lambda: self.__run_mediainfo(limit),
+            "2-fetch-detail": lambda: self.__run_scrape(limit),
+            "3-fetch-torrent": lambda: self.__run_fetch_torrents(),
+            "4-backup": lambda: self.__run_backup(),
         }
 
         # Earliest time each operation is allowed to run again
