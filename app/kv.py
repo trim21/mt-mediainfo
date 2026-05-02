@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from app.db import Database
 
@@ -19,7 +19,7 @@ class KVConfig:
         return default
 
     def set(self, key: str, value: str, ttl: timedelta | None = None) -> None:
-        expires_at = datetime.now(UTC) + ttl if ttl else None
+        expires_at = datetime.now().astimezone() + ttl if ttl else None
         self.__db.execute(
             """
             insert into config (key, value, expires_at) values ($1, $2, $3)
@@ -32,6 +32,6 @@ class KVConfig:
         """Delete expired config entries. Returns number of rows deleted."""
         with self.__db.connection() as conn:
             cur = conn.execute(
-                "delete from config where expires_at is not null and expires_at <= now()"
+                "delete from config where expires_at is not null and expires_at <= CURRENT_TIMESTAMP"
             )
             return cur.rowcount
