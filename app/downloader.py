@@ -32,7 +32,7 @@ from app.const import (
     PickStrategy,
     SeederFilter,
 )
-from app.db import Database
+from app.db import Connection, Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
 from app.mt import MTeamDomain
@@ -246,6 +246,31 @@ class Downloader:
         self.qb.torrents_remove_tags(tags=remove, torrent_hashes=info_hash)
         self.qb.torrents_add_tags(tags=add, torrent_hashes=info_hash)
 
+    @staticmethod
+    def __update_job_on_conn(
+        conn: Connection,
+        node_id: str,
+        *,
+        status: str,
+        info_hash: str = "",
+        tid: int = 0,
+        failed_reason: str = "",
+    ) -> None:
+        if info_hash:
+            conn.execute(
+                """update job set status = $1, failed_reason = $2, updated_at = current_timestamp,
+                   completed_at = case when $1 = 'done' then current_timestamp else completed_at end
+                   where info_hash = $3 and node_id = $4""",
+                [status, failed_reason, info_hash, node_id],
+            )
+        else:
+            conn.execute(
+                """update job set status = $1, failed_reason = $2, updated_at = current_timestamp,
+                   completed_at = case when $1 = 'done' then current_timestamp else completed_at end
+                   where tid = $3 and node_id = $4""",
+                [status, failed_reason, tid, node_id],
+            )
+
     def __update_job_status(
         self,
         *,
@@ -255,19 +280,14 @@ class Downloader:
         failed_reason: str = "",
     ) -> None:
         """Update job status. Identify job by info_hash or tid (plus node_id)."""
-        if info_hash:
-            self.db.execute(
-                """update job set status = $1, failed_reason = $2, updated_at = current_timestamp,
-                   completed_at = case when $1 = 'done' then current_timestamp else completed_at end
-                   where info_hash = $3 and node_id = $4""",
-                [status, failed_reason, info_hash, self.config.node_id],
-            )
-        else:
-            self.db.execute(
-                """update job set status = $1, failed_reason = $2, updated_at = current_timestamp,
-                   completed_at = case when $1 = 'done' then current_timestamp else completed_at end
-                   where tid = $3 and node_id = $4""",
-                [status, failed_reason, tid, self.config.node_id],
+        with self.db.connection() as conn, conn.transaction():
+            self.__update_job_on_conn(
+                conn,
+                self.config.node_id,
+                status=status,
+                info_hash=info_hash,
+                tid=tid,
+                failed_reason=failed_reason,
             )
 
     def __process_qb_torrents(self) -> None:
@@ -391,25 +411,26 @@ class Downloader:
                 continue
 
             # Downloading — update progress
-            self.db.execute(
-                """
-                update job set
-                  progress = $1,
-                  dlspeed = $2,
-                  eta = $3,
-                  updated_at = $4
-                where info_hash = $5 and node_id = $6 and status = $7
-                """,
-                [
-                    t.progress,
-                    t.dlspeed,
-                    t.eta,
-                    now,
-                    t.hash,
-                    self.config.node_id,
-                    ItemStatus.DOWNLOADING,
-                ],
-            )
+            with self.db.connection() as conn, conn.transaction():
+                conn.execute(
+                    """
+                    update job set
+                      progress = $1,
+                      dlspeed = $2,
+                      eta = $3,
+                      updated_at = $4
+                    where info_hash = $5 and node_id = $6 and status = $7
+                    """,
+                    [
+                        t.progress,
+                        t.dlspeed,
+                        t.eta,
+                        now,
+                        t.hash,
+                        self.config.node_id,
+                        ItemStatus.DOWNLOADING,
+                    ],
+                )
 
     def __handle_unmanaged_torrent(self, t: QbTorrent) -> None:
         """Handle a torrent in qB that has no active downloading job.
@@ -417,19 +438,20 @@ class Downloader:
         Try to reclaim if a job exists with removed-by-client status
         (e.g. was prematurely marked due to async qB add), otherwise delete it.
         """
-        restored = self.db.fetch_val(
-            """
-            update job set status = $1, failed_reason = '', updated_at = current_timestamp
-            where info_hash = $2 and node_id = $3 and status = $4
-            returning info_hash
-            """,
-            [
-                ItemStatus.DOWNLOADING,
-                t.hash,
-                self.config.node_id,
-                ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
-            ],
-        )
+        with self.db.connection() as conn, conn.transaction():
+            restored = conn.fetch_val(
+                """
+                update job set status = $1, failed_reason = '', updated_at = current_timestamp
+                where info_hash = $2 and node_id = $3 and status = $4
+                returning info_hash
+                """,
+                [
+                    ItemStatus.DOWNLOADING,
+                    t.hash,
+                    self.config.node_id,
+                    ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
+                ],
+            )
         if restored:
             logger.info("reclaimed job for torrent {}", t.hash)
             return
