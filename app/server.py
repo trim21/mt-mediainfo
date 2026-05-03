@@ -1363,6 +1363,40 @@ def create_app() -> fastapi.FastAPI:
             show_reset_all=True,
         )
 
+    @app.get("/threads/errors")
+    async def threads_errors(render: Render, page: Annotated[int, Query()] = 1) -> HTMLResponse:
+        total_count = cast(
+            int,
+            await pool.fetchval("select count(1)::int from scrape_error") or 0,
+        )
+        pager = _pagination(page, total_count)
+        rows = await pool.fetch(
+            """
+            select id, tid, op, code, message, created_at
+            from scrape_error
+            order by created_at desc
+            limit $1 offset $2
+            """,
+            pager["page_size"],
+            pager["offset"],
+        )
+        errors = [dict(r) for r in rows]
+        return render(
+            "errors.html.j2",
+            ctx={
+                "title": "Scrape Errors",
+                "errors": errors,
+                "page": pager["page"],
+                "page_size": pager["page_size"],
+                "total_count": pager["total_count"],
+                "total_pages": pager["total_pages"],
+                "has_prev": pager["has_prev"],
+                "has_next": pager["has_next"],
+                "prev_page": pager["prev_page"],
+                "next_page": pager["next_page"],
+            },
+        )
+
     @app.post("/api/thread/{tid}/reset")
     async def reset_thread(tid: int) -> ORJSONResponse:
         result = await pool.execute(

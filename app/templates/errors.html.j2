@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>{{ title }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+        crossorigin="anonymous">
+</head>
+<body>
+
+<div class="container-fluid mt-4 px-4">
+  <p><a href="/">&larr; Back to Progress</a></p>
+  <h2>{{ title }} <small class="text-muted fs-6">({{ total_count }})</small></h2>
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="text-muted small">Page {{ page }} / {{ total_pages }}{% if total_count %} · Showing {{ errors | length }} of {{ total_count }}{% endif %}</div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
+      <a class="btn btn-outline-secondary{% if not has_prev %} disabled{% endif %}" href="?page={{ prev_page if prev_page else 1 }}">Previous</a>
+      <a class="btn btn-outline-secondary{% if not has_next %} disabled{% endif %}" href="?page={{ next_page if next_page else total_pages }}">Next</a>
+    </div>
+  </div>
+
+  <table class="table table-bordered table-hover table-sm">
+    <thead class="table-light">
+    <tr>
+      <th>Time</th>
+      <th>TID</th>
+      <th>Operation</th>
+      <th>Code</th>
+      <th>Message</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for e in errors %}
+    <tr>
+      <td>{{ e.created_at | fmt_dt }}</td>
+      <td><a href="https://kp.m-team.cc/detail/{{ e.tid }}" target="_blank">{{ e.tid }}</a></td>
+      <td>{{ e.op }}</td>
+      <td>{{ e.code }}</td>
+      <td>{{ e.message }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>

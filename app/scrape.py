@@ -44,6 +44,12 @@ class Scrape:
 
         self.__kv = KVConfig(self.__db)
 
+    def _log_scrape_error(self, tid: int, op: str, e: MTeamRequestError) -> None:
+        self.__db.execute(
+            """insert into scrape_error (tid, op, code, message) values ($1, $2, $3, $4)""",
+            [tid, op, e.code, e.message],
+        )
+
     def scrape_detail(self, limit: int = 0) -> None:
         """Fetch torrent details for threads missing mediainfo, or fill tid gaps."""
 
@@ -250,7 +256,11 @@ class Scrape:
                         "torrent {} hit daily download limit, skipping until tomorrow", tid
                     )
                     continue
-                raise
+                self._log_scrape_error(tid, "fetch_torrent", e)
+                if self.__is_rate_limited(e):
+                    raise
+                logger.warning("fetch torrent {} failed: {} {}", tid, e.code, e.message)
+                continue
             except TorrentFileError:
                 logger.warning("torrent file error for thread {}", tid)
                 self.__db.execute(
