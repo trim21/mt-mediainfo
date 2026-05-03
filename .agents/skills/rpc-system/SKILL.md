@@ -11,9 +11,10 @@ The RPC system enables the web server to dispatch commands to specific downloade
 ## Architecture
 
 1. **Server** enqueues commands via `POST /api/node/{node_id}/rpc` → inserts into `node_command` table
-2. **Downloader** polls `node_command` for pending commands each iteration (before processing torrents)
-3. **Downloader** executes the handler, writes `result`/`error` and `executed_at` back to the row
-4. **Web UI** at `/rpc` shows command history with status (pending/done/error)
+2. **Server** sends a PG `NOTIFY` on channel `node_rpc_{node_id}` after enqueue
+3. **Downloader** listens on that channel via `LISTEN` and wakes up immediately, then polls `node_command` for pending commands
+4. **Downloader** executes the handler, writes `result`/`error` and `executed_at` back to the row
+5. **Web UI** at `/rpc` shows command history with status (pending/done/error)
 
 ## Database Table
 
@@ -35,21 +36,21 @@ create index if not exists idx_node_command_pending
 
 ## RPC Methods
 
-Defined in `app/rpc.py`:
+Defined in `app/rpc.py`. Method names and payload classes are the source of truth — the server validates against `PAYLOAD_TYPES` (not a separate allowlist).
 
-| Method           | Payload                | Handler                                  | Description                                                                                         |
-| ---------------- | ---------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `delete-torrent` | `{"info_hash": "..."}` | `Downloader.__handle_cmd_delete_torrent` | Deletes torrent from qBittorrent (with files) and marks job as failed with reason "deleted by user" |
-| `ping`           | `{}`                   | `Downloader.__handle_cmd_ping`           | Returns `{"pong": "ok"}`, used for connectivity testing                                             |
+| Method           | Payload                | Handler                                  | Description                                                                        |
+| ---------------- | ---------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| `delete-torrent` | `{"info_hash": "..."}` | `Downloader.__handle_cmd_delete_torrent` | Deletes torrent from qBittorrent (with files) and marks job as `removed-by-client` |
+| `ping`           | `{}`                   | `Downloader.__handle_cmd_ping`           | Returns `{"pong": "ok"}`, used for connectivity testing                            |
 
 ## Key Types (`app/rpc.py`)
 
-- `RPC_DELETE_TORRENT: Final = "delete-torrent"` / `RPC_PING: Final = "ping"` — Method name constants
-- `ALLOWED_METHODS: frozenset[str]` — Whitelist of valid RPC method names; server rejects unknown methods with 400
+- `RPC_DELETE_TORRENT` / `RPC_PING` — Method name constants
 - `DeleteTorrentPayload` / `PingPayload` — Frozen dataclasses for typed payload deserialization
-- `PAYLOAD_TYPES: dict[str, type]` — Maps method name → payload class
+- `PAYLOAD_TYPES: dict[str, type]` — Maps method name → payload class; server uses this for validation
 - `process_commands(db, node_id, handlers)` — Polls and executes pending commands (sync, called by downloader)
-- `enqueue_command(pool, node_id, method, payload)` — Inserts a new command (async, called by server)
+- `enqueue_command(pool, node_id, method, payload)` — Inserts a new command and sends PG notify (async, called by server)
+- `RpcRequest` — Dataclass for the server-side request body (`method` + `payload`)
 
 ## Downloader-Side Handler Registration (`app/downloader.py`)
 
@@ -73,7 +74,7 @@ Body: {"method": "delete-torrent", "payload": {"info_hash": "abc123..."}}
 Response: {"id": 42}
 ```
 
-The server validates the node exists and the method is in `ALLOWED_METHODS` before enqueuing.
+The server validates the node exists and the method is in `PAYLOAD_TYPES` before enqueuing.
 
 ## Adding a New RPC Method
 
@@ -84,7 +85,7 @@ The server validates the node exists and the method is in `ALLOWED_METHODS` befo
        some_field: str
    ```
 2. Add method name constant: `RPC_MY_METHOD: Final = "my-method"`
-3. Add to `ALLOWED_METHODS` frozenset and `PAYLOAD_TYPES` dict
+3. Add to `PAYLOAD_TYPES` dict
 4. Implement handler in `app/downloader.py` `Downloader` class:
    ```python
    def __handle_cmd_my_method(self, payload: MyPayload) -> dict[str, str]:
@@ -105,5 +106,4 @@ The server validates the node exists and the method is in `ALLOWED_METHODS` befo
 - `app/downloader.py` — Handler implementations, command polling in main loop
 - `app/server.py` — HTTP endpoint for dispatching commands
 - `app/templates/rpc.html.j2` — RPC history page template
-- `app/sql/schema.sql` — `node_command` table definition
 - `server-dashboard` skill — broader FastAPI route and template behavior

@@ -7,11 +7,19 @@ This project downloads torrents from M-Team, processes local media files to extr
 ## Code Map
 
 - `app/downloader.py` - Downloader loop, qBittorrent integration, local mediainfo extraction, hardcoded-subtitle detection, RPC polling
-- `app/scrape.py` - Thread discovery, API mediainfo fetch, torrent download, and `selected_size` backfill
+- `app/scrape.py` - Thread discovery, API mediainfo fetch, torrent download, S3 backup, and `selected_size` backfill
 - `app/server.py` - FastAPI dashboard, JSON endpoints, daily stats cache, node and RPC views
 - `app/rpc.py` - RPC method definitions, payload validation, queue polling, and enqueue helpers
-- `app/sql/migrations/` - Numbered SQL migrations executed once on server startup; version tracked in the `config` table (`schema_version` key). To add a new migration, create a file named `NNN_description.sql` (e.g. `004_add_column.sql`) where `NNN` is the next integer in sequence. The runner in `app/db/__init__.py` (`Database.run_migrations`) sorts files by name, parses the numeric prefix, and applies any migration whose version exceeds the stored `schema_version`.
-- `app/const.py` - Status, tag, lock, and category constants
+- `app/config.py` - Pydantic-based config from environment variables for downloader, scraper, and server
+- `app/const.py` - Status, tag, lock, category, and pick-strategy constants
+- `app/mt.py` - M-Team API client and exceptions
+- `app/torrent.py` - Torrent parsing and largest-video-file selection
+- `app/torrent_store.py` - S3-backed torrent content storage
+- `app/mediainfo.py` - Mediainfo extraction from local files
+- `app/hardcode_subtitle.py` - Hardcoded Chinese subtitle detection via ffprobe/ffmpeg
+- `app/kv.py` - KV config store with TTL support (backed by `config` table)
+- `app/db/__init__.py` - `Database` class with psycopg connection pool, advisory locks, and migration runner
+- `app/sql/migrations/` - Numbered SQL migrations executed once on server startup; version tracked in the `config` table (`schema_version` key). To add a new migration, create a file named `NNN_description.sql` (e.g. `009_add_column.sql`) where `NNN` is the next integer in sequence. The runner in `app/db/__init__.py` (`Database.run_migrations`) sorts files by name, parses the numeric prefix, and applies any migration whose version exceeds the stored `schema_version`.
 - `taskfile.yaml` - Standard local commands
 - `pyproject.toml` - Dependency and tooling configuration
 
@@ -19,9 +27,9 @@ This project downloads torrents from M-Team, processes local media files to extr
 
 - Python 3.12 project with environment-driven config in `app/config.py`
 - `app/downloader.py` uses `qbittorrentapi` directly to interact with qBittorrent
-- Downloader loop order matters: heartbeat -> process RPC commands -> process qBittorrent torrents -> pick new jobs
+- Downloader loop order matters: heartbeat -> wait for PG notify or timeout -> process RPC commands -> process qBittorrent torrents -> pick new jobs
 - `app/downloader.py` and `app/scrape.py` use psycopg-based sync DB access; `app/server.py` uses asyncpg
-- `app/sql/migrations/` contains all SQL migrations; `001_initial_schema.sql` creates all tables and indexes; `schema_version` in the `config` table tracks which migrations have run (absent = 0)
+- `app/sql/migrations/` contains all SQL migrations; `001_initial_schema.sql` creates the initial tables; subsequent migrations add columns and indexes; `schema_version` in the `config` table tracks which migrations have run (absent = 0)
 - The service is designed to run continuously; preserve retry, cooldown, and background-loop behavior when refactoring
 
 ## Skills

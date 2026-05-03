@@ -13,6 +13,7 @@ The web server in `app/server.py` is a FastAPI factory that serves Jinja templat
 - `create_app()` loads config, creates an asyncpg pool, and installs a JSONB codec
 - HTML rendering goes through the `Render` dependency and `templates.TemplateResponse`
 - `ORJSONResponse` is the JSON response wrapper used by the API endpoints
+- Migrations run synchronously via `Database.run_migrations()` at startup (in a thread)
 
 ## Data Access Rules
 
@@ -32,33 +33,40 @@ The web server in `app/server.py` is a FastAPI factory that serves Jinja templat
 
 ### Overview and charts
 
-- `/` renders the top-level dashboard with aggregate counts and sizes
-- `/api/weekly-charts` returns 52 weeks of cached history plus live today stats
-- `/detail` renders daily charts from an arbitrary start date
+- `/` renders the top-level dashboard with aggregate counts, sizes, and scrape status
+- `/api/weekly-charts` returns cached weekly history plus live today stats
+- `/detail` renders daily charts from an arbitrary start date (with `?start=YYYY-MM-DD`)
 
 ### Thread lists
 
 - `/threads/pending-mediainfo`
 - `/threads/pending-torrent`
-- `/threads/pending-download`
+- `/threads/pending-download` (supports `?strategy=tid|seeders` for sort order)
 - `/threads/downloading`
 - `/threads/done`
 - `/threads/failed`
 - `/threads/removed`
+- `/threads/errors` (scrape error log from `scrape_error` table)
 
 Each list page maps directly to a lifecycle predicate. If you change these filters, update `thread-lifecycle` too.
 
 ### Node and RPC views
 
-- `/nodes` summarizes job counts per node
-- `/nodes/{node_id}` shows active downloading jobs with speed and ETA formatting
+- `/nodes` summarizes job counts per node with download speed
+- `/nodes/{node_id}` shows jobs with speed and ETA formatting, supports `?status=downloading|done`
 - `/rpc` shows the most recent `node_command` rows with derived status
 - `POST /api/node/{node_id}/rpc` validates the node and method, then enqueues a command
 
 ### Mutations
 
 - `POST /api/thread/{tid}/reset` deletes failed or removed jobs for a thread
+- `POST /api/threads/removed/reset-all` deletes all removed-by-client jobs
+- `POST /api/node/{node_id}/reset-jobs` deletes downloading jobs for a node
+- `POST /api/node/{node_id}/alias` sets a node alias
 - `POST /api/daily-stats/clear` clears cached history
+- `GET /api/config` lists all config entries
+- `POST /api/config` upserts a config entry (blocks `schema_version`)
+- `DELETE /api/config/{key}` deletes a config entry (blocks `schema_version`)
 
 ## Change Guidance
 
@@ -70,7 +78,7 @@ Each list page maps directly to a lifecycle predicate. If you change these filte
 ## Related
 
 - `app/server.py` - FastAPI app factory and all route handlers
-- `app/templates/` - Jinja templates for dashboard, threads, nodes, RPC, and admin pages
+- `app/templates/` - Jinja templates for dashboard, threads, nodes, RPC, errors, detail, and admin pages
 - `app/rpc.py` - RPC enqueue validation and method whitelist
 - `thread-lifecycle` skill - Lifecycle predicates used by page filters
 - `rpc-system` skill - RPC queue behavior and method registration

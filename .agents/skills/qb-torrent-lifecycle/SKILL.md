@@ -23,12 +23,11 @@ Tags are defined in `app/const.py`. They do NOT drive lifecycle logic — they a
 ## Lifecycle Stages
 
 ```
-torrents_add (with download_limit=1, sequential)
-  tag: downloading, need-select
+torrents_add (with tags=[downloading, need-select], download_limit=1, sequential)
        │
        ▼
   Select largest video file (set other files priority=0)
-  Clear download limit, remove need-select tag
+  Clear download limit (set to 0), remove need-select tag
        │
        ▼
   Downloading... (state.is_paused=false, state.is_uploading=false)
@@ -38,7 +37,7 @@ torrents_add (with download_limit=1, sequential)
   Download complete (state.is_uploading=true)
   tag: -downloading +processing
        │
-       ├── Success: extract mediainfo → update DB → torrents_delete
+       ├── Success: extract mediainfo + check hardcoded subtitles → update DB → torrents_delete
        │
        └── Failure: tag: +process-error, job marked failed in DB
 ```
@@ -47,11 +46,15 @@ torrents_add (with download_limit=1, sequential)
 
 The code in `__process_qb_torrents()` determines the stage using torrent state, NOT tags:
 
-1. **Has `process-error` tag**: Skipped entirely (the one exception where a tag affects logic)
-2. **Uploading/seeding** (`state.is_uploading`): Swaps tag to `processing`, runs mediainfo extraction
-3. **Has `need-select` tag**: Selects largest video file, clears download limit, removes tag
-4. **Stopped/paused** (`state.is_paused`): Swaps tag to `downloading`, resumes the torrent
-5. **Downloading** (default): Updates progress/dlspeed/eta in DB
+1. **Not in managed jobs**: Handled by `__handle_unmanaged_torrent()` — tries to reclaim if `removed-by-client`, otherwise deletes
+2. **Old torrents** (`seen_complete` older than 10 days): Deleted, job marked failed with "no seeders"
+3. **Error state** (`state.is_errored`): Deleted, job marked failed with "torrent error"
+4. **Has `process-error` tag**: Skipped entirely (the one exception where a tag affects logic)
+5. **Unselected category**: Deleted, job marked skipped
+6. **Uploading/seeding** (`state.is_uploading`): Swaps tag to `processing`, runs mediainfo extraction
+7. **Has `need-select` tag**: Selects largest video file, clears download limit, removes tag
+8. **Stopped/paused** (`state.is_paused`): Swaps tag to `downloading`, resumes the torrent
+9. **Downloading** (default): Updates progress/dlspeed/eta in DB
 
 ## Stage Details
 
@@ -61,7 +64,7 @@ The code in `__process_qb_torrents()` determines the stage using torrent state, 
 - **Entry**: `__add_to_qb()` adds torrent with download limit of 1 byte/s and sequential download
 - **Action**: `__fix_file_selection()` finds largest video file, sets all other files to priority 0, clears download limit
 - **Exit**: Removes `need-select` tag, torrent continues downloading
-- **Error handling**: If any exception occurs, the torrent is deleted from qb and job is marked failed
+- **Note**: No try/except in `__fix_file_selection()` — exceptions bubble up
 
 ### 2. Downloading (active)
 
@@ -76,7 +79,7 @@ The code in `__process_qb_torrents()` determines the stage using torrent state, 
 - **Entry**: `__process_qb_torrents()` detects upload state
 - **Action**: `__process_local_torrent()` extracts mediainfo, checks hardcoded subtitles
 - **Tags set**: Remove `downloading`, add `processing`
-- **Success exit**: Updates thread with mediainfo, marks job done, deletes torrent from qb
+- **Success exit**: Updates thread with mediainfo and `hard_coded_subtitle`, marks job done, deletes torrent from qb
 - **Failure exit**: Adds `process-error` tag, marks job failed in DB
 
 ### 4. Process Error (terminal)
@@ -92,6 +95,7 @@ In `__process_qb_torrents()`, paused torrents are detected and resumed with tag 
 ## Cleanup
 
 - **Old torrents**: Torrents where `seen_complete` is older than 10 days are deleted, job marked failed with "no seeders"
+- **Torrent error state**: Torrents in `state.is_errored` are deleted, job marked failed with "torrent error"
 - **Unselected category**: Torrents whose thread category is no longer in `SELECTED_CATEGORY` are deleted, job marked skipped
 - **Removed from client**: If a torrent disappears from qb (user deleted), job is marked `removed-by-client`
 - **Unmanaged torrents**: Torrents not in any downloading job are paused (or reclaimed if previously marked `removed-by-client`)

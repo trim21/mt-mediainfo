@@ -10,15 +10,19 @@ A thread represents a torrent page on M-Team. Threads are stored in the `thread`
 
 ## Key Columns
 
-| Column            | Type               | Purpose                                                                                                                                |
-| ----------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `mediainfo_at`    | `timestamptz NULL` | When mediainfo was fetched (NULL = not yet attempted)                                                                                  |
-| `mediainfo`       | `text`             | Mediainfo text (`''` = not yet obtained)                                                                                               |
-| `torrent_invalid` | `text`             | Torrent error reason (`''` = valid or not yet checked, `'file error'` = download failure, `'parse error'` = decode/validation failure) |
-| `info_hash`       | `text`             | Torrent info hash (`''` = torrent file not yet downloaded)                                                                             |
-| `selected_size`   | `int8`             | Size of largest video file (`0` = not computed, `-1` = no video file found)                                                            |
-| `deleted`         | `bool`             | Marked as deleted on M-Team                                                                                                            |
-| `seeders`         | `int8`             | Number of seeders                                                                                                                      |
+| Column                | Type               | Purpose                                                                                                                                |
+| --------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `mediainfo_at`        | `timestamptz NULL` | When mediainfo was fetched (NULL = not yet attempted)                                                                                  |
+| `mediainfo`           | `text`             | Mediainfo text (`''` = not yet obtained)                                                                                               |
+| `torrent_invalid`     | `text`             | Torrent error reason (`''` = valid or not yet checked, `'file error'` = download failure, `'parse error'` = decode/validation failure) |
+| `info_hash`           | `text`             | Torrent info hash (`''` = torrent file not yet downloaded)                                                                             |
+| `selected_size`       | `int8`             | Size of largest video file (`0` = not computed, `-1` = no video file found)                                                            |
+| `deleted`             | `bool`             | Marked as deleted on M-Team                                                                                                            |
+| `seeders`             | `int8`             | Number of seeders                                                                                                                      |
+| `hard_coded_subtitle` | `bool`             | Whether hardcoded Chinese subtitles were detected in the video file                                                                    |
+| `torrent_fetched_at`  | `timestamptz NULL` | When the .torrent file was downloaded                                                                                                  |
+| `created_at`          | `timestamptz`      | When the thread row was first created                                                                                                  |
+| `upload_at`           | `timestamptz`      | When the torrent was uploaded to M-Team                                                                                                |
 
 ## Lifecycle Stages
 
@@ -45,14 +49,14 @@ scrape_search() discovers thread
   │
   └─ selected_size > 0 ──► Stage 3: Pending Download
        │
-       ├── pick_job() in node.py
+       ├── pick_job() in downloader.py
        │   creates job, adds to qBittorrent
        │
        ▼
   Stage 4: Downloading (tracked by job table)
        │
        ├── __process_local_torrent()
-       │   extracts mediainfo from downloaded file
+       │   extracts mediainfo and checks hardcoded subtitles
        │
        ▼
   Stage 5: Done (local mediainfo)
@@ -62,16 +66,16 @@ scrape_search() discovers thread
 
 ### Stage 1: Pending Fetch Mediainfo
 
-- **Condition**: `mediainfo_at IS NULL AND deleted = false`
+- **Condition**: `mediainfo_at IS NULL AND deleted = false AND seeders != 0`
 - **Action**: `scrape_mediainfo()` calls M-Team `/api/torrent/mediaInfo` API
 - **Transition**: Sets `mediainfo_at = current_timestamp`. If API returns mediainfo text, sets `mediainfo` → Done. If empty, → Stage 2.
 - **Alternative**: `scrape_detail()` also sets `mediainfo_at` and `mediainfo` via `/api/torrent/detail`
 
 ### Stage 2: Pending Fetch Torrent
 
-- **Condition**: `mediainfo_at IS NOT NULL AND mediainfo = '' AND info_hash = '' AND torrent_invalid = ''`
-- **Action**: `fetch_torrent()` downloads the `.torrent` file via M-Team API, parses it to extract `info_hash`, computes `selected_size`
-- **Transition**: Sets `info_hash`, stores torrent content in `torrent` table, sets `selected_size`
+- **Condition**: `mediainfo_at IS NOT NULL AND mediainfo = '' AND info_hash = '' AND torrent_invalid = '' AND seeders != 0`
+- **Action**: `fetch_torrent()` downloads the `.torrent` file via M-Team API, parses it to extract `info_hash`, computes `selected_size`, stores content via `TorrentStore`
+- **Transition**: Sets `info_hash`, `selected_size`, `torrent_fetched_at`
 - **Edge cases**:
   - Torrent file download error → sets `torrent_invalid = 'file error'` (terminal)
   - Torrent file parse error → sets `torrent_invalid = 'parse error'` (terminal)
@@ -94,8 +98,8 @@ scrape_search() discovers thread
 - **Condition**: `mediainfo_at IS NOT NULL AND mediainfo != ''`
 - **Two paths**:
   - **API mediainfo**: Obtained directly from M-Team API in Stage 1 (no download needed, `info_hash` may be `''`)
-  - **Local mediainfo**: Extracted from downloaded file by `__process_local_torrent()` (has `info_hash`)
-- **Web UI**: Done page filters by `info_hash != ''` to show only locally processed threads
+  - **Local mediainfo**: Extracted from downloaded file by `__process_local_torrent()` (has `info_hash`, also sets `hard_coded_subtitle`)
+- **Web UI**: Done page filters by `info_hash != ''` and joins `job` with `status = 'done'` to show only locally processed threads
 
 ## Terminal States
 
@@ -115,6 +119,7 @@ scrape_search() discovers thread
 - `app/scrape.py` — All scraping and fetching logic
 - `app/downloader.py` — Download and processing logic (Stages 3-5)
 - `app/server.py` — Web UI pages for each stage (`/threads/pending-mediainfo`, `/threads/pending-torrent`, `/threads/pending-download`, `/threads/done`, etc.)
-- `app/sql/schema.sql` — Table definitions
+- `app/torrent_store.py` — S3-backed torrent content storage
+- `app/sql/migrations/` — Table definitions (see `001_initial_schema.sql` and later migrations)
 - `scrape-mteam` skill — scraper scheduling, rate limiting, and fetch operations
 - `server-dashboard` skill — page groupings and server-side route behavior
