@@ -586,15 +586,3 @@ class Downloader:
             )
             with contextlib.suppress(NotFound404Error):
                 self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
-
-
-@dataclasses.dataclass(kw_only=True, slots=True, frozen=True)
-class Pick:
-    title: str
-    guid: str
-    website: str
-    link: str
-    released_at: datetime
-    size: int
-    imdb_id: str = ""
-    douban_id: str = ""

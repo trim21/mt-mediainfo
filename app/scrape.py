@@ -526,7 +526,7 @@ class Scrape:
     def __run(self) -> None:
         limit = parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
         cooldown = timedelta(minutes=5)
-        interval = 60  # 2 minutes
+        interval = 60  # 1 minute
 
         runners: dict[str, Callable[[], RunResult]] = {
             "0-search": lambda: self.__run_search(),

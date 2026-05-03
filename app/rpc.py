@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Final
 
+import asyncpg
 import orjson
 from sslog import logger
 
@@ -12,8 +13,6 @@ from app.utils import parse_obj
 # RPC method names
 RPC_DELETE_TORRENT: Final = "delete-torrent"
 RPC_PING: Final = "ping"
-
-ALLOWED_METHODS: frozenset[str] = frozenset({RPC_DELETE_TORRENT, RPC_PING})
 
 
 # --- Payload dataclasses ---
@@ -87,7 +86,7 @@ class RpcRequest:
 
 
 async def enqueue_command(
-    pool: Any,
+    pool: asyncpg.Pool,  # type: ignore[reportUnusedImport]
     node_id: str,
     method: str,
     payload: Any,

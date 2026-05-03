@@ -1,32 +1,16 @@
 from __future__ import annotations
 
 import dataclasses
-from contextvars import ContextVar
 from typing import Any, Final, Self
 
 import httpcore
 import httpx
-from pydantic import TypeAdapter
 
 from app.config import ScrapeConfig, load_scrape_config
 from app.utils import parse_obj
 
 MTeamDomain: Final[str] = "kp.m-team.cc"
 MTeamApiDomain: Final[str] = "api.m-team.cc"
-
-
-@dataclasses.dataclass(slots=True, kw_only=True, frozen=True)
-class Torrent:
-    createdDate: str
-    id: int
-    infoHash: str | None
-    name: str
-    size: int
-
-
-TT = TypeAdapter[list[tuple[Any, Torrent]]](list[tuple[Any, Torrent]])
-
-nested_depth = ContextVar("nested_depth", default=0)
 
 
 class MTeamRequestError(Exception):
@@ -102,7 +86,7 @@ class MTeamAPI:
                 raise MTeamRequestError.from_req(data, "download torrent")
             return rr.content
 
-        raise Exception("too much retry")
+        raise TorrentFileError("too many retries")
 
     def torrent_detail(self, tid: int) -> TorrentDetail:
         r = self._httpx.post(

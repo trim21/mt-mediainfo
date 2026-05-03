@@ -29,8 +29,6 @@ QB_TAG_DOWNLOADING: Final = "downloading"
 QB_TAG_PROCESSING: Final = "processing"
 QB_TAG_NEED_SELECT: Final = "need-select"
 
-MOVIE_CATEGORY = {401, 419, 420, 421, 439}
-
 
 class PickStrategy(str, enum.Enum):
     tid = "tid"  # priority category first, then tid asc

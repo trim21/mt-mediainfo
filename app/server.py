@@ -179,6 +179,11 @@ class ByteRateTotal:
 
 
 @dataclass(slots=True, frozen=True)
+class SetAliasBody:
+    alias: str = ""
+
+
+@dataclass(slots=True, frozen=True)
 class LabeledByteRate:
     label: str
     byte_rate: float
@@ -1454,9 +1459,8 @@ def create_app() -> fastapi.FastAPI:
         return ORJSONResponse({"id": cmd_id})
 
     @app.post("/api/node/{node_id}/alias")
-    async def set_node_alias(node_id: str, request: Request) -> ORJSONResponse:
-        body = await request.json()
-        alias = (body.get("alias") or "").strip()
+    async def set_node_alias(node_id: str, body: SetAliasBody) -> ORJSONResponse:
+        alias = (body.alias or "").strip()
         node_row = await pool.fetchrow("select id from node where id = $1", node_id)
         if node_row is None:
             return ORJSONResponse({"error": "node not found"}, status_code=404)
