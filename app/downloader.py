@@ -186,13 +186,13 @@ class Downloader:
             interval = 60 * 5
             try:
                 self.__process_commands()
-            except Exception as e:
-                print("failed to process commands", format_exc(e))
+            except Exception:
+                logger.exception("failed to process commands")
 
             try:
                 self.__run_at_interval()
-            except Exception as e:
-                print("failed to run", format_exc(e))
+            except Exception:
+                logger.exception("failed to run")
 
     def __wait_for_notify(self, timeout: float) -> None:
         """Wait for a PG notification or until timeout expires."""

@@ -82,7 +82,7 @@ class CommandExecutionError(RuntimeError):
 def must_find_executable(executable: str) -> str:
     tool = which(executable)
     if tool is None:
-        raise RuntimeError("can't find {e}")
+        raise RuntimeError(f"can't find {executable}")
     return tool
 
 

@@ -5,7 +5,6 @@ from typing import Annotated, Any, cast
 import annotated_types
 import bencode2
 import pydantic
-import six
 from pydantic import Field
 
 from app.const import VIDEO_FILE_EXT
@@ -47,7 +46,7 @@ def _transform_torrent(obj: dict[bytes, Any]) -> dict[str, Any]:
         elif key in {b"created rd", b"piece layers"}:
             d[key.decode()] = value
         else:
-            d[six.ensure_str(key)] = _transform_value(value)
+            d[key.decode()] = _transform_value(value)
 
     return d
 

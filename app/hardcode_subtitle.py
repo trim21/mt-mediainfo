@@ -68,8 +68,7 @@ def generate_images(
         step = (duration - 60) // count
 
     for i in range(count):
-        seek = start + step * i - 5
-        seek = seek + 5
+        seek = start + step * i
         logger.info("screenshot from {} at {}", video_file.name, timedelta(seconds=seek))
         image_file = temp.joinpath(f"{i}.{image_format}")
         must_run_command(
@@ -116,6 +115,8 @@ def check_hardcode_chinese_subtitle(
                 if points[0].y <= size.y / 2:
                     continue
 
+                if not s:
+                    continue
                 chinese_ratio = len(pattern_chinese.findall(s)) / len(s)
                 if chinese_ratio > 0.5:
                     return True
