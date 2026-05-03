@@ -48,7 +48,7 @@ class Scrape:
 
     def _record_quota_exhausted(self) -> None:
         key = self.KV_QUOTA_EXHAUSTED + "." + datetime.now(TZ_SHANGHAI).isoformat()
-        self.__kv.set(key, "1", ttl=timedelta(hours=48))
+        self.__kv.set(key, "1", ttl=timedelta(hours=4))
 
     def _is_quota_exhausted_today(self) -> bool:
         key = self.KV_QUOTA_EXHAUSTED + "." + datetime.now(TZ_SHANGHAI).isoformat()
