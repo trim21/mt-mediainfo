@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import time
 from typing import Any, Final, Self
 
 import httpcore
@@ -72,11 +73,17 @@ class MTeamAPI:
     def download_torrent(self, tid: int) -> bytes:
         url = self.get_download_url(str(tid))
 
-        for _ in range(4):
+        for attempt in range(4):
             try:
                 rr = self._httpx.get(url, follow_redirects=True).raise_for_status()
             except httpx.TooManyRedirects:
                 raise TorrentFileError
+            except (*httpx_network_errors, httpx.HTTPStatusError):
+                if attempt == 3:
+                    raise
+                time.sleep(2**attempt)
+                continue
+
             if rr.content == b"file error.":
                 raise TorrentFileError
             if rr.content[0] == 123:  # "{"
