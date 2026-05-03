@@ -35,6 +35,8 @@ class Scrape:
     mteam_client: MTeamAPI
     __db: Database
 
+    KV_QUOTA_EXHAUSTED = "quota_exhausted.today"
+
     def __init__(self, c: ScrapeConfig):
         self.__db = Database(c.pg_dsn())
         self.__db.wait_db_migration()
@@ -43,6 +45,14 @@ class Scrape:
         self.__op = _create_operator(c)
 
         self.__kv = KVConfig(self.__db)
+
+    def _record_quota_exhausted(self) -> None:
+        key = self.KV_QUOTA_EXHAUSTED + "." + datetime.now(TZ_SHANGHAI).isoformat()
+        self.__kv.set(key, "1", ttl=timedelta(hours=48))
+
+    def _is_quota_exhausted_today(self) -> bool:
+        key = self.KV_QUOTA_EXHAUSTED + "." + datetime.now(TZ_SHANGHAI).isoformat()
+        return self.__kv.get(key) is not None
 
     def _log_scrape_error(self, tid: int, op: str, e: MTeamRequestError) -> None:
         self.__db.execute(
@@ -337,16 +347,23 @@ class Scrape:
 
     @staticmethod
     def __is_rate_limited(e: MTeamRequestError) -> bool:
-        return e.message in ("請求過於頻繁", "今日下載配額用盡")
+        return e.message == "請求過於頻繁"
 
     def __run_fetch_torrents(self) -> RunResult:
         """Returns (result, no_pending)."""
+        if self._is_quota_exhausted_today():
+            logger.info("daily download quota exhausted for today, skipping fetch_torrent")
+            return RunResult.rate_limited
         try:
             self.backfill_selected_size()
             self.fetch_torrent()
         except httpx_network_errors:
             return RunResult.error
         except MTeamRequestError as e:
+            if e.message == "今日下載配額用盡":
+                self._record_quota_exhausted()
+                logger.info("daily download quota exhausted for today")
+                return RunResult.rate_limited
             if self.__is_rate_limited(e):
                 logger.info("operator {!r} get rate limited: {}", e.op, e.message)
                 return RunResult.rate_limited
