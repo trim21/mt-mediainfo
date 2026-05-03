@@ -911,7 +911,7 @@ def create_app() -> fastapi.FastAPI:
             """,
                 SELECTED_CATEGORY,
             ),
-            pool.fetchmany(
+            pool.fetch(
                 "select key, value from config where key = any($1)",
                 [["search_cursor.normal", "search_cursor.adult"]],
             ),
