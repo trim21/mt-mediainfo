@@ -913,7 +913,7 @@ def create_app() -> fastapi.FastAPI:
             ),
             pool.fetchmany(
                 "select key, value from config where key = any($1)",
-                ["search_cursor.normal", "search_cursor.adult"],
+                [["search_cursor.normal", "search_cursor.adult"]],
             ),
             pool.fetchrow(
                 """
