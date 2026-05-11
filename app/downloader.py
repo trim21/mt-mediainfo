@@ -9,15 +9,18 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, LiteralString
+from typing import Any, LiteralString
 
 import psycopg
-import qbittorrentapi
-from pydantic import BeforeValidator
-from qbittorrentapi import NotFound404Error, TorrentState
 from rich.console import Console
 from sslog import logger
 
+from app.bt_client import (
+    BTClient,
+    Torrent,
+    TorrentNotFoundError,
+    TorrentState,
+)
 from app.config import DownloaderConfig
 from app.const import (
     LOCK_KEY_PICK_RSS_JOB,
@@ -36,6 +39,7 @@ from app.db import Connection, Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
 from app.mt import MTeamDomain
+from app.qb_client import QBittorrentClient
 from app.rpc import (
     RPC_DELETE_TORRENT,
     RPC_PING,
@@ -43,10 +47,11 @@ from app.rpc import (
     PingPayload,
     process_commands,
 )
+from app.rt_client import RTorrentClient
 from app.scrape import TZ_SHANGHAI
 from app.torrent import find_largest_video_file
 from app.torrent_store import TorrentStore
-from app.utils import must_find_executable, parse_obj, set_torrent_comment
+from app.utils import must_find_executable, set_torrent_comment
 
 
 def format_exc(e: Exception) -> str:
@@ -61,44 +66,6 @@ class Status(enum.IntEnum):
     unknown = 0
     downloading = 1
     done = 3
-
-
-def _parse_str_tags(v: str) -> frozenset[str]:
-    if not v:
-        return frozenset()
-    return frozenset({x.strip() for x in v.split(",")})
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class QbFile:
-    index: int
-    name: str
-    size: int
-    priority: int
-    progress: float
-
-
-@dataclasses.dataclass(kw_only=True, frozen=True)
-class QbTorrent:
-    name: str
-    hash: str
-    state: TorrentState
-
-    save_path: str  # final download path
-    completed: int
-
-    uploaded: int
-
-    total_size: int  # total file size
-    size: int  # select file size
-    amount_left: int
-
-    num_seeds: int
-    progress: float
-    dlspeed: int  # bytes/s
-    eta: int  # seconds, 8640000 = infinity
-    tags: Annotated[frozenset[str], BeforeValidator(_parse_str_tags)]
-    seen_complete: int = 0
 
 
 def _pick_query(config: DownloaderConfig) -> LiteralString:
@@ -131,7 +98,7 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
 class Downloader:
     db: Database
     config: DownloaderConfig
-    qb: qbittorrentapi.Client
+    client: BTClient
     store: TorrentStore
     mediainfo_bin: str = dataclasses.field(
         default_factory=lambda: must_find_executable("mediainfo")
@@ -142,21 +109,32 @@ class Downloader:
     @classmethod
     def new(cls, cfg: DownloaderConfig) -> Downloader:
         db = Database(cfg.pg_dsn())
-        if not cfg.qb_url:
-            raise ValueError("no download client configured: set QB_URL")
+        if cfg.rt_url:
+            from rtorrent_rpc import RTorrent
+
+            client: BTClient = RTorrentClient(RTorrent(cfg.rt_url))
+        elif cfg.qb_url:
+            import qbittorrentapi
+
+            client = QBittorrentClient(
+                qbittorrentapi.Client(
+                    host=str(cfg.qb_url),
+                    password=cfg.qb_url.password,
+                    username=cfg.qb_url.username,
+                    SIMPLE_RESPONSES=True,
+                    FORCE_SCHEME_FROM_HOST=True,
+                    VERBOSE_RESPONSE_LOGGING=False,
+                    RAISE_NOTIMPLEMENTEDERROR_FOR_UNIMPLEMENTED_API_ENDPOINTS=True,
+                    REQUESTS_ARGS={"timeout": 10},
+                ),
+            )
+        else:
+            raise ValueError("no download client configured: set RT_URL or QB_URL")
+
         return Downloader(
             config=cfg,
             db=db,
-            qb=qbittorrentapi.Client(
-                host=str(cfg.qb_url),
-                password=cfg.qb_url.password,
-                username=cfg.qb_url.username,
-                SIMPLE_RESPONSES=True,
-                FORCE_SCHEME_FROM_HOST=True,
-                VERBOSE_RESPONSE_LOGGING=False,
-                RAISE_NOTIMPLEMENTEDERROR_FOR_UNIMPLEMENTED_API_ENDPOINTS=True,
-                REQUESTS_ARGS={"timeout": 10},
-            ),
+            client=client,
             store=TorrentStore(cfg),
         )
 
@@ -171,8 +149,8 @@ class Downloader:
 
         self.db.wait_db_migration()
 
-        version = self.qb.app_version()
-        logger.info("successfully connect to qBittorrent {}", version)
+        version = self.client.app_version()
+        logger.info("successfully connect to download client {}", version)
 
         logger.info("using mediainfo at {}", self.mediainfo_bin)
         logger.info("using ffprobe at {}", self.ffprobe_bin)
@@ -221,7 +199,7 @@ class Downloader:
         return {"pong": "ok"}
 
     def __handle_cmd_delete_torrent(self, payload: DeleteTorrentPayload) -> dict[str, str]:
-        self.qb.torrents_delete(torrent_hashes=payload.info_hash, delete_files=True)
+        self.client.torrents_delete(torrent_hashes=payload.info_hash, delete_files=True)
         self.__update_job_status(
             status=ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
             info_hash=payload.info_hash,
@@ -243,8 +221,8 @@ class Downloader:
 
     def __set_tags(self, info_hash: str, *, remove: str, add: str) -> None:
         """Swap informational tags on a torrent."""
-        self.qb.torrents_remove_tags(tags=remove, torrent_hashes=info_hash)
-        self.qb.torrents_add_tags(tags=add, torrent_hashes=info_hash)
+        self.client.torrents_remove_tags(tags=remove, torrent_hashes=info_hash)
+        self.client.torrents_add_tags(tags=add, torrent_hashes=info_hash)
 
     @staticmethod
     def __update_job_on_conn(
@@ -293,7 +271,7 @@ class Downloader:
     def __process_qb_torrents(self) -> None:
         """Process all torrents in qBittorrent in a single pass."""
         logger.info("__process_qb_torrents")
-        torrents = parse_obj(list[QbTorrent], self.qb.torrents_info())
+        torrents = self.client.torrents_info()
         now = datetime.now(tz=TZ_SHANGHAI)
         if not torrents:
             logger.info("qb has no torrents")
@@ -352,18 +330,18 @@ class Downloader:
                     info_hash=t.hash,
                     failed_reason="no seeders",
                 )
-                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+                self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
 
             # Torrent in error state → mark failed and delete
-            if t.state.is_errored:
+            if t.state == TorrentState.ERRORED:
                 logger.info("torrent {} in error state", t.name)
                 self.__update_job_status(
                     status=ItemStatus.FAILED,
                     info_hash=t.hash,
                     failed_reason="torrent error",
                 )
-                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+                self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
 
             # Skip torrents that failed processing
@@ -378,11 +356,11 @@ class Downloader:
                     info_hash=t.hash,
                     failed_reason="category no longer selected",
                 )
-                self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+                self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
 
             # Upload complete → process mediainfo
-            if t.state.is_uploading:
+            if t.state == TorrentState.UPLOADING:
                 self.__set_tags(t.hash, remove=QB_TAG_DOWNLOADING, add=QB_TAG_PROCESSING)
                 try:
                     self.__process_local_torrent(t)
@@ -392,22 +370,22 @@ class Downloader:
                         info_hash=t.hash,
                         failed_reason=format_exc(e),
                     )
-                    self.qb.torrents_add_tags(tags=QB_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
+                    self.client.torrents_add_tags(tags=QB_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
                     logger.error("failed to process local torrent {}", e)
                 continue
 
             # Newly added torrent → select files, clear limit, remove tag
             if QB_TAG_NEED_SELECT in t.tags:
                 self.__fix_file_selection(t)
-                self.qb.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
-                self.qb.torrents_remove_tags(tags=QB_TAG_NEED_SELECT, torrent_hashes=t.hash)
+                self.client.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
+                self.client.torrents_remove_tags(tags=QB_TAG_NEED_SELECT, torrent_hashes=t.hash)
                 continue
 
             # Paused → resume
-            if t.state.is_paused:
+            if t.state == TorrentState.PAUSED:
                 logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
                 self.__set_tags(t.hash, remove=QB_TAG_SELECTING_FILES, add=QB_TAG_DOWNLOADING)
-                self.qb.torrents_resume(torrent_hashes=t.hash)
+                self.client.torrents_resume(torrent_hashes=t.hash)
                 continue
 
             # Downloading — update progress
@@ -432,7 +410,7 @@ class Downloader:
                     ],
                 )
 
-    def __handle_unmanaged_torrent(self, t: QbTorrent) -> None:
+    def __handle_unmanaged_torrent(self, t: Torrent) -> None:
         """Handle a torrent in qB that has no active downloading job.
 
         Try to reclaim if a job exists with removed-by-client status
@@ -457,11 +435,11 @@ class Downloader:
             return
 
         logger.info("{} not managed, deleting from qb", t.hash)
-        self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+        self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
-    def __fix_file_selection(self, t: QbTorrent) -> None:
+    def __fix_file_selection(self, t: Torrent) -> None:
         """Fix file priorities for torrents that are downloading all files."""
-        files = parse_obj(list[QbFile], self.qb.torrents_files(torrent_hash=t.hash))
+        files = self.client.torrents_files(torrent_hash=t.hash)
         if len(files) <= 1:
             return
         files_data = [(f.index, f.name, f.size) for f in files]
@@ -471,19 +449,19 @@ class Downloader:
         file_ids = [f.index for f in files if f.index != keep_idx and f.priority != 0]
         if file_ids:
             logger.info("fixing file selection for torrent {}", t.name)
-            self.qb.torrents_file_priority(
+            self.client.torrents_file_priority(
                 torrent_hash=t.hash,
                 file_ids=file_ids,
                 priority=0,
             )
 
-    def __process_local_torrent(self, t: QbTorrent) -> None:
-        files = parse_obj(list[QbFile], self.qb.torrents_files(torrent_hash=t.hash))
+    def __process_local_torrent(self, t: Torrent) -> None:
+        files = self.client.torrents_files(torrent_hash=t.hash)
         active_files = [(f.index, f.name, f.size) for f in files if f.priority != 0]
         selected_idx = find_largest_video_file(active_files)
 
         if selected_idx is None:
-            self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+            self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
             return
 
         selected_file = next(f for f in files if f.index == selected_idx)
@@ -511,14 +489,12 @@ class Downloader:
                    where info_hash = $2 and node_id = $3""",
                 [ItemStatus.DONE, t.hash, self.config.node_id],
             )
-        self.qb.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+        self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
     def __pick_and_add_jobs(self) -> None:
         logger.info("__pick_and_add_jobs")
 
-        current_total_size = sum(
-            t.size for t in parse_obj(list[QbTorrent], self.qb.torrents_info())
-        )
+        current_total_size = sum(t.size for t in self.client.torrents_info())
         left_size = int(self.config.total_process_size) - current_total_size
         if left_size <= 0:
             logger.info("no left size, skipping")
@@ -575,8 +551,8 @@ class Downloader:
                 self.__update_job_status(
                     status=ItemStatus.FAILED, tid=tid, failed_reason=format_exc(e)
                 )
-                with contextlib.suppress(NotFound404Error):
-                    self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+                with contextlib.suppress(TorrentNotFoundError):
+                    self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
 
     def __add_torrent(
         self,
@@ -594,7 +570,7 @@ class Downloader:
 
         tc = set_torrent_comment(tc, f"https://{MTeamDomain}/detail/{tid}")
 
-        r = self.qb.torrents_add(
+        r = self.client.torrents_add(
             torrent_files=[tc],
             save_path=os.path.join(self.config.download_path, info_hash),
             use_auto_torrent_management=False,
@@ -606,5 +582,5 @@ class Downloader:
             self.__update_job_status(
                 status=ItemStatus.FAILED, tid=tid, failed_reason="failed to add"
             )
-            with contextlib.suppress(NotFound404Error):
-                self.qb.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+            with contextlib.suppress(TorrentNotFoundError):
+                self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)

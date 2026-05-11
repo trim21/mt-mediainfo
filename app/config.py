@@ -148,6 +148,12 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         Field(alias="QB_URL", default=None, validate_default=True),
     ]
 
+    rt_url: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(alias="RT_URL", default=None, validate_default=True),
+    ]
+
     download_path: Annotated[
         str,
         Field(

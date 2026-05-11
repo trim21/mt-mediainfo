@@ -8,6 +8,7 @@ dependencies = [
   'rich==15.0.0',
   'xxhash==3.7.0',
   'qbittorrent-api==2025.11.1',
+  'rtorrent-rpc==0.9.6',
   'click==8.3.3',
   'pydantic==2.13.3',
   'httpx==0.28.1',
@@ -72,5 +73,5 @@ preview = true
 [tool.ruff.lint]
 preview = true
 extend-select = ['I', 'PLW1514']
-ignore = ['BLE001', 'TRY002', 'PLW1510']
+ignore = ['BLE001', 'TRY002', 'PLW1510', 'FLY002']
 unfixable = ['F401']
