@@ -38,7 +38,6 @@ class RTorrentClient(BTClient):
             "d.multicall2",
             [
                 "",
-                "default",
                 "d.name=",
                 "d.hash=",
                 "d.directory_base=",
@@ -187,7 +186,6 @@ class RTorrentClient(BTClient):
     ) -> str:
         for content in torrent_files:
             params: list[str | bytes] = [
-                "",
                 content,
                 'd.tied_to_file.set=""',
                 f'd.directory.set="{save_path}"',
