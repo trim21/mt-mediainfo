@@ -26,12 +26,12 @@ class MTeamRequestError(Exception):
         return cls(data["code"], data["message"], op=op)
 
 
-network_errors: Final[tuple[type[Exception], ...]] = (
+network_errors: Final = (
     ConnectionError,
     TimeoutError,
 )
 
-httpx_network_errors: Final[tuple[type[Exception], ...]] = (
+httpx_network_errors: Final = (
     *network_errors,
     httpcore.TimeoutException,
     httpx.NetworkError,
@@ -78,7 +78,7 @@ class MTeamAPI:
                 rr = self._httpx.get(url, follow_redirects=True).raise_for_status()
             except httpx.TooManyRedirects:
                 raise TorrentFileError
-            except (*httpx_network_errors, httpx.HTTPStatusError):
+            except (httpx.HTTPStatusError, *httpx_network_errors):
                 if attempt == 3:
                     raise
                 time.sleep(2**attempt)
