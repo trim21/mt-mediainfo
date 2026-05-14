@@ -11,7 +11,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, LiteralString
 
+import jinja2
 import psycopg
+from psycopg.rows import dict_row
 from rich.console import Console
 from sslog import logger
 
@@ -80,7 +82,7 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
         seeder_clause = f"seeders != 0 and seeders {op} $4"
 
     return f"""
-    select thread.tid, thread.info_hash, thread.selected_size from thread
+    select thread.* from thread
     left join job on (job.tid = thread.tid)
     where
         mediainfo = '' and
@@ -105,6 +107,7 @@ class Downloader:
     )
     ffprobe_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("ffprobe"))
     ffmpeg_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("ffmpeg"))
+    thread_filter_template: jinja2.Template | None = None
 
     @classmethod
     def new(cls, cfg: DownloaderConfig) -> Downloader:
@@ -131,11 +134,16 @@ class Downloader:
         else:
             raise ValueError("no download client configured: set RT_URL or QB_URL")
 
+        thread_filter_template: jinja2.Template | None = None
+        if cfg.thread_filter:
+            thread_filter_template = jinja2.Environment().from_string(cfg.thread_filter)
+
         return Downloader(
             config=cfg,
             db=db,
             client=client,
             store=TorrentStore(cfg),
+            thread_filter_template=thread_filter_template,
         )
 
     def __post_init__(self) -> None:
@@ -517,16 +525,25 @@ class Downloader:
             if self.config.seeder_threshold is not None:
                 params.append(self.config.seeder_threshold)
 
-            rows: list[tuple[int, str, int]] = conn.fetch_all(
-                _pick_query(self.config),
-                params,
-            )
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(_pick_query(self.config), params)
+                rows: list[dict[str, Any]] = cur.fetchall()
 
             logger.info("fetch {} rows", len(rows))
             if not rows:
                 return
 
-            for tid, info_hash, selected_size in rows:
+            if self.thread_filter_template is not None:
+                rows = [
+                    row
+                    for row in rows
+                    if self.thread_filter_template.render(thread=row).strip() == "true"
+                ]
+
+            for row in rows:
+                tid = row["tid"]
+                info_hash = row["info_hash"]
+                selected_size = row["selected_size"]
                 if left_size - selected_size <= 0:
                     break
 

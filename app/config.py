@@ -190,6 +190,12 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         Field(alias="SEEDER_THRESHOLD", default=None),
     ]
 
+    thread_filter: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(alias="THREAD_FILTER", default=None),
+    ]
+
     version: Annotated[
         str,
         Field(alias="APP_VERSION", default="", validate_default=True),
