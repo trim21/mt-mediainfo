@@ -9,7 +9,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, LiteralString
+from typing import Any, LiteralString, cast
 
 import jinja2
 import psycopg
@@ -35,7 +35,6 @@ from app.const import (
     SELECTED_CATEGORY,
     ItemStatus,
     PickStrategy,
-    SeederFilter,
 )
 from app.db import Connection, Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
@@ -76,10 +75,7 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
     else:
         order_clause = "order by (category = any($3)) desc, tid asc"
 
-    seeder_clause: LiteralString = "seeders != 0"
-    if config.seeder_filter is not None and config.seeder_threshold is not None:
-        op: LiteralString = ">=" if config.seeder_filter == SeederFilter.gte else "<"
-        seeder_clause = f"seeders != 0 and seeders {op} $4"
+    seeder_clause: LiteralString = cast(LiteralString, config.seeder_condition)  # type: ignore[redundant-cast]
 
     return f"""
     select thread.* from thread
@@ -91,7 +87,8 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
         thread.selected_size < $1 and
         category = any ($2) and
         job.tid is null and
-        {seeder_clause}
+        seeders != 0 and
+        ({seeder_clause})
     {order_clause}
     """
 
@@ -522,8 +519,6 @@ class Downloader:
                 SELECTED_CATEGORY,
                 PRIORITY_CATEGORY,
             ]
-            if self.config.seeder_threshold is not None:
-                params.append(self.config.seeder_threshold)
 
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(_pick_query(self.config), params)

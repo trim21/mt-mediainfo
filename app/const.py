@@ -35,11 +35,6 @@ class PickStrategy(str, enum.Enum):
     seeders = "seeders"  # seeders desc, then priority category, then tid asc
 
 
-class SeederFilter(str, enum.Enum):
-    gte = "gte"
-    lt = "lt"
-
-
 SELECTED_CATEGORY = [
     401,
     419,
