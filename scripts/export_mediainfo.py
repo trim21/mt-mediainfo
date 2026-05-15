@@ -96,31 +96,29 @@ def main() -> None:
     output_path = Path(f"data/mediainfo_export-{backup_date}.zip")
     count = 0
 
-    with (
-        io.BytesIO() as f,
-        zipfile.ZipFile(
+    with io.BytesIO() as f:
+        with zipfile.ZipFile(
             f,
             "w",
             compression=zipfile.ZIP_DEFLATED,
             compresslevel=9,
-        ) as zf,
-    ):
-        for line in tqdm(iter_jsonl_lines(compressed), ascii=True):
-            if not line.strip():
-                continue
-            row = orjson.loads(line)
-            mediainfo = row["mediainfo"]
-            if not mediainfo:
-                continue
-            tid = row["tid"]
-            entry = {
-                "id": tid,
-                "mediainfo": mediainfo,
-                "hardcoded_subtitle": row["hard_coded_subtitle"],
-            }
-            name = f"{bucket_dir(tid)}/{tid}.json"
-            zf.writestr(name, orjson.dumps(entry))
-            count += 1
+        ) as zf:
+            for line in tqdm(iter_jsonl_lines(compressed), ascii=True):
+                if not line.strip():
+                    continue
+                row = orjson.loads(line)
+                mediainfo = row["mediainfo"]
+                if not mediainfo:
+                    continue
+                tid = row["tid"]
+                entry = {
+                    "id": tid,
+                    "mediainfo": mediainfo,
+                    "hardcoded_subtitle": row["hard_coded_subtitle"],
+                }
+                name = f"{bucket_dir(tid)}/{tid}.json"
+                zf.writestr(name, orjson.dumps(entry))
+                count += 1
 
         output_path.write_bytes(f.getvalue())
 
