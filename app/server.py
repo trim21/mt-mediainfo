@@ -852,7 +852,7 @@ def create_app() -> fastapi.FastAPI:
                 SELECTED_CATEGORY,
             ),
             pool.fetchval(
-                "select count(1)::int from thread where created_at >= $1 and created_at < $2",
+                "select count(1)::int from thread where created_at >= $1 and created_at < $2 and not deleted",
                 today,
                 tomorrow,
             ),
