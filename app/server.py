@@ -1402,6 +1402,24 @@ def create_app() -> fastapi.FastAPI:
             },
         )
 
+    @app.get("/threads/all")
+    async def threads_all(render: Render, page: Annotated[int, Query()] = 1) -> HTMLResponse:
+        return await _render_thread_list(
+            render,
+            title="Threads discovered (all categories)",
+            count_sql="select count(1)::int from thread where deleted = false",
+            rows_sql="""
+            select tid, category, size, selected_size, seeders, created_at from thread
+            where deleted = false
+            order by created_at desc
+            limit $1 offset $2
+            """,
+            params=[],
+            page=page,
+            show_progress=False,
+            show_failed_reason=False,
+        )
+
     @app.post("/api/thread/{tid}/reset")
     async def reset_thread(tid: int) -> ORJSONResponse:
         result = await pool.execute(
