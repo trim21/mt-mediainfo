@@ -46,7 +46,7 @@ def download_backup(op: opendal.Operator, backup_date: date) -> bytes:
     with tqdm(total=total_size, unit_scale=True, unit_divisor=1024, ascii=True) as bar:
         chunk_size = 1024 * 1024
         chunks = []
-        with op.open(key, "rb") as f:
+        with op.open(key, "rb") as f:  # type: ignore
             while chunk := f.read(chunk_size):
                 chunks.append(chunk)
                 bar.update(len(chunk))
