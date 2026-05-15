@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import json
+import io
 import math
 import zipfile
 from datetime import date
 from pathlib import Path
 
 import opendal
+import orjson
 import zstandard
 from tqdm import tqdm
 
@@ -61,16 +62,20 @@ def download_backup(op: opendal.Operator, backup_date: date) -> bytes:
     return data
 
 
-def decompress(data: bytes) -> bytes:
+def iter_jsonl_lines(compressed: bytes):
     dctx = zstandard.ZstdDecompressor()
-    reader = dctx.stream_reader(data)
-    chunks: list[bytes] = []
+    reader = dctx.stream_reader(compressed)
+    buf = b""
     while True:
         chunk = reader.read(1024 * 1024)
         if not chunk:
             break
-        chunks.append(chunk)
-    return b"".join(chunks)
+        buf += chunk
+        while b"\n" in buf:
+            line_bytes, buf = buf.split(b"\n", 1)
+            yield line_bytes
+    if buf:
+        yield buf
 
 
 def bucket_dir(tid: int) -> str:
@@ -86,22 +91,24 @@ def main() -> None:
     print(f"latest backup: {backup_date}")
 
     compressed = download_backup(op, backup_date)
-    raw = decompress(compressed)
-    print(f"decompressed {human_readable_size(len(raw))} bytes")
+    print("streaming decompression...")
 
-    output_path = Path("data/mediainfo_export.zip")
+    output_path = Path(f"data/mediainfo_export-{backup_date}.zip")
     count = 0
 
-    with zipfile.ZipFile(
-        output_path,
-        "w",
-        zipfile.ZIP_DEFLATED,
-        compresslevel=9,
-    ) as zf:
-        for line in raw.splitlines():
+    with (
+        io.BytesIO() as f,
+        zipfile.ZipFile(
+            f,
+            "w",
+            compression=zipfile.ZIP_DEFLATED,
+            compresslevel=9,
+        ) as zf,
+    ):
+        for line in tqdm(iter_jsonl_lines(compressed), ascii=True):
             if not line.strip():
                 continue
-            row = json.loads(line)
+            row = orjson.loads(line)
             mediainfo = row.get("mediainfo", "")
             if not mediainfo:
                 continue
@@ -111,9 +118,11 @@ def main() -> None:
                 "mediainfo": mediainfo,
                 "hardcoded_subtitle": bool(row.get("hard_coded_subtitle", False)),
             }
-            arcname = f"{bucket_dir(tid)}/{tid}.json"
-            zf.writestr(arcname, json.dumps(entry, ensure_ascii=False))
+            name = f"{bucket_dir(tid)}/{tid}.json"
+            zf.writestr(name, orjson.dumps(entry))
             count += 1
+
+        output_path.write_bytes(f.getvalue())
 
     print(f"exported {count} threads to {output_path}")
 
