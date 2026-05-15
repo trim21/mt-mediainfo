@@ -718,7 +718,7 @@ def create_app() -> fastapi.FastAPI:
                     select (created_at at time zone 'Asia/Shanghai')::date as day,
                            count(1)::int as count
                     from thread
-                    where created_at >= $1 and created_at < $2
+                    where created_at >= $1 and created_at < $2 and deleted = true
                     group by day
                     """,
                     start_ts,
