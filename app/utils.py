@@ -112,7 +112,7 @@ def must_run_command(
         ) from e
 
 
-def human_readable_size(size: float, decimal_places: int = 2) -> str:
+def human_readable_size(size: float, decimal_places: int = 1) -> str:
     size = float(size)
     unit = "B"
     for unit in ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]:

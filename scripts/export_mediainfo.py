@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import io
-import math
-import zipfile
 from datetime import date
 from pathlib import Path
 
@@ -78,12 +75,6 @@ def iter_jsonl_lines(compressed: bytes):
         yield buf
 
 
-def bucket_dir(tid: int) -> str:
-    up = math.ceil(tid / 1000) * 1000
-    lower = up - 999
-    return f"{lower}-{up}"
-
-
 def main() -> None:
     op = create_operator(load_s3_config())
 
@@ -93,34 +84,25 @@ def main() -> None:
     compressed = download_backup(op, backup_date)
     print("streaming decompression...")
 
-    output_path = Path(f"data/mediainfo_export-{backup_date}.zip")
+    output_path = Path(f"data/mediainfo_export-{backup_date}.jsonl.zst")
     count = 0
 
-    with io.BytesIO() as f:
-        with zipfile.ZipFile(
-            f,
-            "w",
-            compression=zipfile.ZIP_DEFLATED,
-            compresslevel=9,
-        ) as zf:
-            for line in tqdm(iter_jsonl_lines(compressed), ascii=True):
-                if not line.strip():
-                    continue
-                row = orjson.loads(line)
-                mediainfo = row["mediainfo"]
-                if not mediainfo:
-                    continue
-                tid = row["tid"]
-                entry = {
-                    "id": tid,
-                    "mediainfo": mediainfo,
-                    "hardcoded_subtitle": row["hard_coded_subtitle"],
-                }
-                name = f"{bucket_dir(tid)}/{tid}.json"
-                zf.writestr(name, orjson.dumps(entry))
-                count += 1
-
-        output_path.write_bytes(f.getvalue())
+    cctx = zstandard.ZstdCompressor(level=3)
+    with output_path.open("wb") as f_out, cctx.stream_writer(f_out) as writer:
+        for line in tqdm(iter_jsonl_lines(compressed), ascii=True):
+            if not line.strip():
+                continue
+            row = orjson.loads(line)
+            mediainfo = row["mediainfo"]
+            if not mediainfo:
+                continue
+            entry = {
+                "id": row["tid"],
+                "mediainfo": mediainfo,
+                "hardcoded_subtitle": row["hard_coded_subtitle"],
+            }
+            writer.write(orjson.dumps(entry) + b"\n")
+            count += 1
 
     print(f"exported {count} threads to {output_path}")
 
