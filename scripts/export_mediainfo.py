@@ -109,14 +109,14 @@ def main() -> None:
             if not line.strip():
                 continue
             row = orjson.loads(line)
-            mediainfo = row.get("mediainfo", "")
+            mediainfo = row["mediainfo"]
             if not mediainfo:
                 continue
             tid = row["tid"]
             entry = {
                 "id": tid,
                 "mediainfo": mediainfo,
-                "hardcoded_subtitle": bool(row.get("hard_coded_subtitle", False)),
+                "hardcoded_subtitle": row["hard_coded_subtitle"],
             }
             name = f"{bucket_dir(tid)}/{tid}.json"
             zf.writestr(name, orjson.dumps(entry))
