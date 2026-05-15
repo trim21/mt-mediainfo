@@ -12,7 +12,7 @@ def _s3_key(tid: int) -> str:
     return f"torrents/{h[:2]}/{h[2:4]}/{tid}.torrent"
 
 
-def _create_operator(c: S3Mixin) -> opendal.Operator:
+def create_operator(c: S3Mixin) -> opendal.Operator:
     kwargs: dict[str, str] = {
         "bucket": c.s3_bucket,
         "region": c.s3_region,
@@ -28,7 +28,7 @@ def _create_operator(c: S3Mixin) -> opendal.Operator:
 
 class TorrentStore:
     def __init__(self, config: S3Mixin):
-        self.__op = _create_operator(config)
+        self.__op = create_operator(config)
 
     def write(self, tid: int, content: bytes) -> None:
         key = _s3_key(tid)

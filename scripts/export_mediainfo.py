@@ -2,35 +2,17 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import zipfile
 from datetime import date
 from pathlib import Path
 
 import opendal
 import zstandard
+from tqdm import tqdm
 
 from app.config import load_s3_config
-from app.torrent_store import _create_operator
+from app.torrent_store import create_operator
 from app.utils import human_readable_size
-
-
-def load_dotenv(path: str = ".env") -> None:
-    """Load simple KEY=VALUE lines into os.environ (no new deps)."""
-    p = Path(path)
-    if not p.exists():
-        return
-    for line in p.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.strip().strip("\"'")
-        if key and key not in os.environ:
-            os.environ[key] = value
 
 
 def find_latest_backup_date(op: opendal.Operator) -> date:
@@ -52,15 +34,25 @@ CACHE_DIR = Path("data/backups")
 
 
 def download_backup(op: opendal.Operator, backup_date: date) -> bytes:
+    key = f"backups/{backup_date}/thread.jsonl.zst"
+    total_size = op.stat(key).content_length
+
     cache_path = CACHE_DIR / f"{backup_date}.jsonl.zst"
     if cache_path.exists():
         data = cache_path.read_bytes()
-        print(f"using cached {cache_path} ({human_readable_size(len(data))})")
-        return data
+        if len(data) == total_size:
+            print(f"using cached {cache_path} ({human_readable_size(len(data))})")
+            return data
 
-    key = f"backups/{backup_date}/thread.jsonl.zst"
     print(f"downloading {key} ...")
-    data = op.read(key)
+    with tqdm(total=total_size, unit_scale=True, unit_divisor=1024, ascii=True) as bar:
+        chunk_size = 1024 * 1024
+        chunks = []
+        with op.open(key, "rb") as f:
+            while chunk := f.read(chunk_size):
+                chunks.append(chunk)
+                bar.update(len(chunk))
+    data = b"".join(chunks)
     print(f"downloaded {human_readable_size(len(data))}")
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -88,8 +80,7 @@ def bucket_dir(tid: int) -> str:
 
 
 def main() -> None:
-    load_dotenv()
-    op = _create_operator(load_s3_config())
+    op = create_operator(load_s3_config())
 
     backup_date = find_latest_backup_date(op)
     print(f"latest backup: {backup_date}")
@@ -101,7 +92,12 @@ def main() -> None:
     output_path = Path("data/mediainfo_export.zip")
     count = 0
 
-    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(
+        output_path,
+        "w",
+        zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as zf:
         for line in raw.splitlines():
             if not line.strip():
                 continue

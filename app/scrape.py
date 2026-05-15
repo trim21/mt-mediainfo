@@ -19,7 +19,7 @@ from app.db import Database
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
 from app.torrent import find_largest_video_file, parse_torrent
-from app.torrent_store import TorrentStore, _create_operator
+from app.torrent_store import TorrentStore, create_operator
 from app.utils import get_info_hash_v1_from_content, parse_obj
 
 TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -42,7 +42,7 @@ class Scrape:
         self.__db.wait_db_migration()
         self.mteam_client = MTeamAPI(c)
         self.__store = TorrentStore(c)
-        self.__op = _create_operator(c)
+        self.__op = create_operator(c)
 
         self.__kv = KVConfig(self.__db)
 
