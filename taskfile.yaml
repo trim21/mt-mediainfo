@@ -12,6 +12,8 @@ tasks:
     cmd: 'uv sync {{- if eq OS "linux" }} --locked --no-dev {{- end }}'
 
   run:
+    env:
+      PYTHONPATH: "."
     dotenv:
       - .env
     cmd: python {{ .CLI_ARGS }}
