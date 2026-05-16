@@ -1,86 +1,38 @@
 from __future__ import annotations
 
-from typing import Any
+import dataclasses
+from collections.abc import Sequence
+from typing import Annotated, Any
 
 import qbittorrentapi
+from pydantic import BeforeValidator
 from qbittorrentapi import NotFound404Error
 
 from app.bt_client import BTClient, Torrent, TorrentFile, TorrentNotFoundError, TorrentState
+from app.utils import parse_obj
 
 
-def _convert_state(state: Any) -> TorrentState:
-    if isinstance(state, str):
-        state = state.lower()
-        if "uploading" in state:
-            return TorrentState.UPLOADING
-        if "paused" in state:
-            return TorrentState.PAUSED
-        if "error" in state or "missing" in state:
-            return TorrentState.ERRORED
-        return TorrentState.DOWNLOADING
-    if state.is_uploading:
+def _normalize_state(v: Any) -> TorrentState:
+    s = str(v).lower()
+    if "uploading" in s or ("up" in s and "paused" not in s):
         return TorrentState.UPLOADING
-    if state.is_paused:
+    if "paused" in s:
         return TorrentState.PAUSED
-    if state.is_errored:
+    if s in ("error", "missingfiles", "unknown"):
         return TorrentState.ERRORED
     return TorrentState.DOWNLOADING
 
 
-def _convert_torrent(t: Any) -> Torrent:
-    if isinstance(t, dict):
-        return Torrent(
-            name=t["name"],
-            hash=t["hash"],
-            state=_convert_state(t["state"]),
-            save_path=t["save_path"],
-            completed=t["completed"],
-            uploaded=t["uploaded"],
-            total_size=t["total_size"],
-            size=t["size"],
-            amount_left=t["amount_left"],
-            num_seeds=t["num_seeds"],
-            progress=t["progress"],
-            dlspeed=t["dlspeed"],
-            eta=t["eta"],
-            tags=t.get("tags", ""),
-            seen_complete=t.get("seen_complete") or 0,
-        )
-    return Torrent(
-        name=t.name,
-        hash=t.hash,
-        state=_convert_state(t.state),
-        save_path=t.save_path,
-        completed=t.completed,
-        uploaded=t.uploaded,
-        total_size=t.total_size,
-        size=t.size,
-        amount_left=t.amount_left,
-        num_seeds=t.num_seeds,
-        progress=t.progress,
-        dlspeed=t.dlspeed,
-        eta=t.eta,
-        tags=t.tags,
-        seen_complete=t.seen_complete or 0,
-    )
+def _parse_str_tags(v: str) -> frozenset[str]:
+    if not v:
+        return frozenset()
+    return frozenset({x.strip() for x in v.split(",")})
 
 
-def _convert_file(f: Any) -> TorrentFile:
-    if isinstance(f, dict):
-        return TorrentFile(
-            index=f["index"],
-            name=f["name"],
-            size=f["size"],
-            priority=f["priority"],
-            progress=f["progress"],
-        )
-    return TorrentFile(
-        index=f.index,
-        name=f.name,
-        size=f.size,
-        priority=f.priority,
-        progress=f.progress,
-    )
+@dataclasses.dataclass(kw_only=True, frozen=True)
+class QbTorrent(Torrent):
+    state: Annotated[TorrentState, BeforeValidator(_normalize_state)]
+    tags: Annotated[frozenset[str], BeforeValidator(_parse_str_tags)]
 
 
 class QBittorrentClient(BTClient):
@@ -90,11 +42,11 @@ class QBittorrentClient(BTClient):
     def app_version(self) -> str:
         return self._client.app_version()
 
-    def torrents_info(self) -> list[Torrent]:
-        return [_convert_torrent(t) for t in self._client.torrents_info()]
+    def torrents_info(self) -> Sequence[Torrent]:
+        return parse_obj(list[QbTorrent], self._client.torrents_info())
 
     def torrents_files(self, torrent_hash: str) -> list[TorrentFile]:
-        return [_convert_file(f) for f in self._client.torrents_files(torrent_hash=torrent_hash)]
+        return parse_obj(list[TorrentFile], self._client.torrents_files(torrent_hash=torrent_hash))
 
     def torrents_delete(self, torrent_hashes: str, *, delete_files: bool = True) -> None:
         try:

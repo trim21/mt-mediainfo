@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 
@@ -59,7 +60,7 @@ def download_backup(op: opendal.Operator, backup_date: date) -> bytes:
     return data
 
 
-def iter_jsonl_lines(compressed: bytes):
+def iter_jsonl_lines(compressed: bytes) -> Iterator[bytes]:
     dctx = zstandard.ZstdDecompressor()
     reader = dctx.stream_reader(compressed)
     buf = b""

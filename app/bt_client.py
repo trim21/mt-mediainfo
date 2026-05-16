@@ -3,9 +3,7 @@ from __future__ import annotations
 import abc
 import dataclasses
 import enum
-from typing import Annotated
-
-from pydantic import BeforeValidator
+from collections.abc import Sequence
 
 
 class TorrentState(enum.StrEnum):
@@ -13,12 +11,6 @@ class TorrentState(enum.StrEnum):
     PAUSED = "paused"
     DOWNLOADING = "downloading"
     ERRORED = "errored"
-
-
-def _parse_str_tags(v: str) -> frozenset[str]:
-    if not v:
-        return frozenset()
-    return frozenset({x.strip() for x in v.split(",")})
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -49,7 +41,7 @@ class Torrent:
     progress: float
     dlspeed: int
     eta: int
-    tags: Annotated[frozenset[str], BeforeValidator(_parse_str_tags)]
+    tags: frozenset[str]
     seen_complete: int = 0
 
 
@@ -62,7 +54,7 @@ class BTClient(abc.ABC):
     def app_version(self) -> str: ...
 
     @abc.abstractmethod
-    def torrents_info(self) -> list[Torrent]: ...
+    def torrents_info(self) -> Sequence[Torrent]: ...
 
     @abc.abstractmethod
     def torrents_files(self, torrent_hash: str) -> list[TorrentFile]: ...
