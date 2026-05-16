@@ -9,6 +9,15 @@ from app.bt_client import BTClient, Torrent, TorrentFile, TorrentNotFoundError, 
 
 
 def _convert_state(state: Any) -> TorrentState:
+    if isinstance(state, str):
+        state = state.lower()
+        if "uploading" in state:
+            return TorrentState.UPLOADING
+        if "paused" in state:
+            return TorrentState.PAUSED
+        if "error" in state or "missing" in state:
+            return TorrentState.ERRORED
+        return TorrentState.DOWNLOADING
     if state.is_uploading:
         return TorrentState.UPLOADING
     if state.is_paused:
@@ -19,6 +28,24 @@ def _convert_state(state: Any) -> TorrentState:
 
 
 def _convert_torrent(t: Any) -> Torrent:
+    if isinstance(t, dict):
+        return Torrent(
+            name=t["name"],
+            hash=t["hash"],
+            state=_convert_state(t["state"]),
+            save_path=t["save_path"],
+            completed=t["completed"],
+            uploaded=t["uploaded"],
+            total_size=t["total_size"],
+            size=t["size"],
+            amount_left=t["amount_left"],
+            num_seeds=t["num_seeds"],
+            progress=t["progress"],
+            dlspeed=t["dlspeed"],
+            eta=t["eta"],
+            tags=t.get("tags", ""),
+            seen_complete=t.get("seen_complete") or 0,
+        )
     return Torrent(
         name=t.name,
         hash=t.hash,
@@ -39,6 +66,14 @@ def _convert_torrent(t: Any) -> Torrent:
 
 
 def _convert_file(f: Any) -> TorrentFile:
+    if isinstance(f, dict):
+        return TorrentFile(
+            index=f["index"],
+            name=f["name"],
+            size=f["size"],
+            priority=f["priority"],
+            progress=f["progress"],
+        )
     return TorrentFile(
         index=f.index,
         name=f.name,
