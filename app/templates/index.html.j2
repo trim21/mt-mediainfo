@@ -130,7 +130,7 @@
     </thead>
     <tbody>
     {% for s in scrape_status %}
-      <tr class="{% if s.last_result == 'rate_limited' %}table-warning{% elif s.last_result == 'error' %}table-danger{% else %}table-success{% endif %}">
+      <tr class="{% if s.last_result == 'running' %}table-info{% elif s.last_result == 'rate_limited' %}table-warning{% elif s.last_result == 'error' %}table-danger{% else %}table-success{% endif %}">
         <td>{{ s.name }}</td>
         <td>{{ s.last_run_at | timeago }}</td>
         <td>{{ s.last_result }}</td>

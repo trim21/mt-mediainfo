@@ -611,10 +611,11 @@ class Scrape:
                         next_allowed[name].strftime("%H:%M:%S"),
                     )
                     continue
+                self.__update_status(name, RunStatus.running, next_allowed[name])
                 result = run()
                 if result == RunResult.rate_limited:
                     next_allowed[name] = datetime.now(TZ_SHANGHAI) + cooldown
-                self.__update_status(name, result, next_allowed[name])
+                self.__update_status(name, RunStatus(result.value), next_allowed[name])
 
             status_parts: list[str] = []
             for name in runners:
