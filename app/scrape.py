@@ -320,12 +320,12 @@ class Scrape:
         return False
 
     def backfill_selected_size(self) -> None:
-        """Backfill selected_size and selected_files for threads that have a torrent but are missing data."""
+        """Backfill selected_size and selected_files for threads that have a torrent but selected_size=0."""
         while True:
             tids: list[tuple[int]] = self.__db.fetch_all(
                 """
                 select tid from thread
-                where (selected_size = 0 or selected_files = '[]'::jsonb) and info_hash != ''
+                where selected_size = 0 and info_hash != ''
                 limit 200
                 """,
             )
@@ -336,10 +336,18 @@ class Scrape:
             for (tid,) in tids:
                 tc = self.__store.read(tid)
                 if tc is None:
+                    self.__db.execute(
+                        """update thread set info_hash = '', selected_size = 0, selected_files = '[]'::jsonb where tid = $1""",
+                        [tid],
+                    )
                     continue
                 try:
                     t = parse_torrent(tc)
                 except (pydantic.ValidationError, BencodeDecodeError):
+                    self.__db.execute(
+                        """update thread set selected_size = -1, selected_files = '[]'::jsonb where tid = $1""",
+                        [tid],
+                    )
                     continue
 
                 files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
