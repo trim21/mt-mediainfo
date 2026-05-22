@@ -1,6 +1,7 @@
 import enum
 import io
 import os
+import threading
 import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
@@ -377,7 +378,6 @@ class Scrape:
             logger.info("daily download quota exhausted for today, skipping fetch_torrent")
             return RunResult.rate_limited
         try:
-            self.backfill_selected_size()
             self.fetch_torrent()
         except httpx_network_errors:
             return RunResult.error
@@ -597,4 +597,5 @@ class Scrape:
             time.sleep(interval)
 
     def start(self) -> None:
+        threading.Thread(target=self.backfill_selected_size, daemon=True).start()
         self.__run()

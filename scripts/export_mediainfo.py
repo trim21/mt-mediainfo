@@ -89,7 +89,10 @@ def main() -> None:
     count = 0
 
     cctx = zstandard.ZstdCompressor(level=3)
-    with output_path.open("wb") as f_out, cctx.stream_writer(f_out) as writer:
+    with (
+        output_path.open("wb") as f_out,
+        cctx.stream_writer(f_out) as writer,
+    ):
         for line in tqdm(iter_jsonl_lines(compressed), ascii=True):
             if not line.strip():
                 continue

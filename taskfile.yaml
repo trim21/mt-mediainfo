@@ -16,7 +16,7 @@ tasks:
       PYTHONPATH: "."
     dotenv:
       - .env
-    cmd: python {{ .CLI_ARGS }}
+    cmd: uv run python {{ .CLI_ARGS }}
 
   dev:
     dotenv:
