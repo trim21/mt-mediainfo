@@ -5,7 +5,6 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
 
 import orjson
 import psycopg.rows
@@ -15,15 +14,13 @@ from bencode2 import BencodeDecodeError
 from sslog import logger
 
 from app.config import ScrapeConfig
-from app.const import PRIORITY_CATEGORY, SELECTED_CATEGORY
+from app.const import PRIORITY_CATEGORY, SELECTED_CATEGORY, TZ_SHANGHAI, search_cursor_key
 from app.db import Database
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
 from app.torrent import find_largest_video_file, parse_torrent
 from app.torrent_store import TorrentStore, create_operator
 from app.utils import get_info_hash_v1_from_content, parse_obj
-
-TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 
 class RunResult(enum.Enum):
@@ -133,13 +130,14 @@ class Scrape:
                 ],
             )
 
-    def scrape_search(self, *, mode: str, cursor_key: str) -> None:
+    def scrape_search(self, *, mode: str) -> None:
         """Scrape thread list using /torrent/search sorted by CREATED_DATE ASC.
 
         Resumes from the cursor stored in the config table,
         fetches one page at a time. Topped torrents (toppingLevel != "0") appear
         first and are excluded when advancing the cursor.
         """
+        cursor_key = search_cursor_key(mode)
         row = self.__kv.get(cursor_key)
         if row is not None:
             cursor = datetime.strptime(row, "%Y-%m-%d %H:%M:%S").replace(tzinfo=TZ_SHANGHAI)
@@ -432,10 +430,8 @@ class Scrape:
         return RunResult.ok
 
     def __run_search(self) -> RunResult:
-        now = datetime.now(TZ_SHANGHAI)
-        bucket = f"{now.year}.{now.month % 4}"
         try:
-            self.scrape_search(mode="normal", cursor_key=f"search_cursor:{bucket}:normal")
+            self.scrape_search(mode="normal")
         except httpx_network_errors:
             return RunResult.error
         except MTeamRequestError as e:
@@ -446,7 +442,7 @@ class Scrape:
             return RunResult.error
 
         try:
-            self.scrape_search(mode="adult", cursor_key=f"search_cursor:{bucket}:adult")
+            self.scrape_search(mode="adult")
         except httpx_network_errors:
             return RunResult.error
         except MTeamRequestError as e:

@@ -10,7 +10,6 @@ from math import inf
 from operator import itemgetter
 from pathlib import Path
 from typing import Annotated, Any, Literal, Protocol, cast
-from zoneinfo import ZoneInfo
 
 import asyncpg
 import durationpy
@@ -24,8 +23,10 @@ from app.config import ServerConfig, load_server_config
 from app.const import (
     PRIORITY_CATEGORY,
     SELECTED_CATEGORY,
+    TZ_SHANGHAI,
     ItemStatus,
     PickStrategy,
+    search_cursor_key,
 )
 from app.db import Database
 from app.rpc import PAYLOAD_TYPES, RpcRequest, enqueue_command
@@ -36,8 +37,6 @@ class ORJSONResponse(JSONResponse):
     def render(self, content: Any) -> bytes:
         return orjson.dumps(content, option=orjson.OPT_INDENT_2, default=str)
 
-
-_tz_shanghai = ZoneInfo("Asia/Shanghai")
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent.joinpath("templates").resolve()))
 
@@ -51,13 +50,13 @@ def _fmt_eta(seconds: float) -> str:
 def _fmt_dt(dt: datetime | None) -> str:
     if dt is None:
         return "-"
-    return dt.astimezone(_tz_shanghai).strftime("%Y-%m-%d %H:%M:%S")
+    return dt.astimezone(TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _timeago(dt: datetime | None) -> str:
     if dt is None:
         return "-"
-    delta = datetime.now(tz=_tz_shanghai) - dt.astimezone(_tz_shanghai)
+    delta = datetime.now(tz=TZ_SHANGHAI) - dt.astimezone(TZ_SHANGHAI)
     seconds = delta.total_seconds()
     if seconds < 0:
         return "-"
@@ -368,8 +367,8 @@ def _thread_row(r: asyncpg.Record, *, show_failed_reason: bool) -> dict[str, Any
 
 
 def _today_start() -> datetime:
-    now = datetime.now(_tz_shanghai)
-    return datetime(now.year, now.month, now.day, tzinfo=_tz_shanghai)
+    now = datetime.now(TZ_SHANGHAI)
+    return datetime(now.year, now.month, now.day, tzinfo=TZ_SHANGHAI)
 
 
 def _week_range() -> tuple[int, int]:
@@ -387,7 +386,7 @@ def _build_history_daily_stats(history_stats: list[DailyStatsSnapshot]) -> list[
 
 
 def _build_today_daily_stat(today_stats: DailyStatsSnapshot) -> DailyStat:
-    elapsed_today = max((datetime.now(_tz_shanghai) - _today_start()).total_seconds(), 1.0)
+    elapsed_today = max((datetime.now(TZ_SHANGHAI) - _today_start()).total_seconds(), 1.0)
     return DailyStat.from_snapshot(
         today_stats,
         period_seconds=elapsed_today,
@@ -409,7 +408,7 @@ def _build_weekly_charts(
 ) -> WeeklyCharts:
     days_per_week = 7.0
     today_date = max((s.day for s in daily_stats), default=_today_start().date())
-    today = datetime(today_date.year, today_date.month, today_date.day, tzinfo=_tz_shanghai)
+    today = datetime(today_date.year, today_date.month, today_date.day, tzinfo=TZ_SHANGHAI)
     ref_date = today_date + timedelta(days=1)
     min_week, max_week = _week_range()
 
@@ -719,10 +718,10 @@ def create_app() -> fastapi.FastAPI:
             first_missing = target_days[0]
             last_missing = target_days[-1]
             start_ts = datetime(
-                first_missing.year, first_missing.month, first_missing.day, tzinfo=_tz_shanghai
+                first_missing.year, first_missing.month, first_missing.day, tzinfo=TZ_SHANGHAI
             )
             end_ts = datetime(
-                last_missing.year, last_missing.month, last_missing.day, tzinfo=_tz_shanghai
+                last_missing.year, last_missing.month, last_missing.day, tzinfo=TZ_SHANGHAI
             ) + timedelta(days=1)
 
             (
@@ -939,6 +938,8 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/")
     async def progress(render: Render) -> HTMLResponse:
+        cursor_key_normal = search_cursor_key("normal")
+        cursor_key_adult = search_cursor_key("adult")
         (
             thread_stats,
             config_rows,
@@ -968,7 +969,7 @@ def create_app() -> fastapi.FastAPI:
             ),
             pool.fetch(
                 "select key, value from config where key = any($1)",
-                [["search_cursor.normal", "search_cursor.adult"]],
+                [[cursor_key_normal, cursor_key_adult]],
             ),
             pool.fetchrow(
                 """
@@ -1132,8 +1133,8 @@ def create_app() -> fastapi.FastAPI:
             "index.html.j2",
             ctx={
                 "scraped_total": scraped_total,
-                "search_cursor_normal": config_map.get("search_cursor.normal", "N/A"),
-                "search_cursor_adult": config_map.get("search_cursor.adult", "N/A"),
+                "search_cursor_normal": config_map.get(cursor_key_normal, "N/A"),
+                "search_cursor_adult": config_map.get(cursor_key_adult, "N/A"),
                 "total": total,
                 "total_size": human_readable_size(total_size),
                 "done": done,
@@ -1190,11 +1191,11 @@ def create_app() -> fastapi.FastAPI:
 
         start_dt: datetime | None = None
         if start_value:
-            start_dt = datetime.strptime(start_value, "%Y-%m-%d").replace(tzinfo=_tz_shanghai)
+            start_dt = datetime.strptime(start_value, "%Y-%m-%d").replace(tzinfo=TZ_SHANGHAI)
 
         if start_dt is None:
             start_dt = today - timedelta(days=364)
-        start_dt = start_dt.replace(tzinfo=_tz_shanghai) if start_dt.tzinfo is None else start_dt
+        start_dt = start_dt.replace(tzinfo=TZ_SHANGHAI) if start_dt.tzinfo is None else start_dt
 
         await _backfill_daily_stats(start_dt.date())
         history_rows, today_stats, alias_rows, all_node_rows = await asyncio.gather(
@@ -1713,7 +1714,7 @@ def create_app() -> fastapi.FastAPI:
 
         pager = _pagination(page, cast(int, total_count))
 
-        now = datetime.now(tz=_tz_shanghai)
+        now = datetime.now(tz=TZ_SHANGHAI)
 
         def _calc_speed_eta(r: asyncpg.Record) -> dict[str, Any]:
             dlspeed: int = r["dlspeed"]

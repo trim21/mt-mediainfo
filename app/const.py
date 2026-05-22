@@ -1,5 +1,9 @@
 import enum
+from datetime import datetime
 from typing import Final
+from zoneinfo import ZoneInfo
+
+TZ_SHANGHAI: Final = ZoneInfo("Asia/Shanghai")
 
 LOCK_KEY_SCHEDULE_RSS: Final = "schedule"
 LOCK_KEY_PICK_RSS_JOB: Final = "pick-job"
@@ -59,3 +63,8 @@ PRIORITY_CATEGORY = [
     # 421,
     # 439,
 ]
+
+
+def search_cursor_key(mode: str) -> str:
+    now = datetime.now(TZ_SHANGHAI)
+    return f"search_cursor:{now.year}.{now.month % 4}:{mode}"

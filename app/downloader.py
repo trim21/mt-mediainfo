@@ -35,6 +35,7 @@ from app.const import (
     QB_TAG_PROCESSING,
     QB_TAG_SELECTING_FILES,
     SELECTED_CATEGORY,
+    TZ_SHANGHAI,
     ItemStatus,
     PickStrategy,
 )
@@ -51,7 +52,6 @@ from app.rpc import (
     process_commands,
 )
 from app.rt_client import RTorrentClient
-from app.scrape import TZ_SHANGHAI
 from app.torrent import find_largest_video_file
 from app.torrent_store import TorrentStore
 from app.utils import must_find_executable, set_torrent_comment
