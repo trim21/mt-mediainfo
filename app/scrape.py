@@ -145,7 +145,7 @@ class Scrape:
             cursor = datetime(1970, 1, 1, tzinfo=TZ_SHANGHAI)
 
         pages = 0
-        while pages < 10:
+        while pages < 5:
             start_str = cursor.strftime("%Y-%m-%d %H:%M:%S")
 
             result = self.mteam_client.search(
