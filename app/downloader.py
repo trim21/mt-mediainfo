@@ -18,6 +18,7 @@ from rich.console import Console
 from sslog import logger
 
 from app.bt_client import (
+    ETA_INF,
     BTClient,
     Torrent,
     TorrentNotFoundError,
@@ -575,10 +576,10 @@ class Downloader:
 
                 conn.execute(
                     """
-                    insert into job (tid, node_id, info_hash, start_download_time, updated_at, status)
-                    VALUES ($1, $2, $3, current_timestamp, current_timestamp, $4)
+                    insert into job (tid, node_id, info_hash, start_download_time, updated_at, status, eta)
+                    VALUES ($1, $2, $3, current_timestamp, current_timestamp, $4, $5)
                     """,
-                    [tid, self.config.node_id, info_hash, ItemStatus.DOWNLOADING],
+                    [tid, self.config.node_id, info_hash, ItemStatus.DOWNLOADING, ETA_INF],
                 )
                 left_size -= selected_size
                 picked.append((tid, info_hash))
