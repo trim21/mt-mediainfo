@@ -63,7 +63,7 @@
     <tbody>
     {% for j in jobs %}
     <tr id="job-{{ j.info_hash }}">
-      <td>{{ j.tid }}</td>
+       <td><a href="/thread/{{ j.tid }}">{{ j.tid }}</a></td>
       <td>
         {% if j.status == 'downloading' %}<span class="badge bg-info text-dark">{{ j.status }}</span>
         {% elif j.status == 'done' %}<span class="badge bg-success">{{ j.status }}</span>
