@@ -7,7 +7,7 @@ import io
 import os.path
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, LiteralString, cast
 
@@ -253,6 +253,10 @@ class Downloader:
                    where tid = $3 and node_id = $4""",
                 [status, failed_reason, tid, node_id],
             )
+            conn.execute(
+                "delete from job_download_size where info_hash = (select job.info_hash from job where job.tid = $1 and job.node_id = $2) and node_id = $2",
+                [tid, node_id],
+            )
 
     def __update_job_status(
         self,
@@ -315,7 +319,20 @@ class Downloader:
             info_hash for info_hash, unselected in job_rows if unselected
         }
 
-        cutoff = time.time() - 10 * 86400
+        stale_cutoff = now - timedelta(days=3)
+
+        stalled_rows = self.db.fetch_all(
+            """
+            select info_hash
+            from job_download_size
+            where node_id = $1
+              and info_hash = any($2)
+            group by info_hash
+            having max(recorded_at) < $3
+            """,
+            [self.config.node_id, list(managed_hashes), stale_cutoff],
+        )
+        stalled_hashes: set[str] = {r[0] for r in stalled_rows}
 
         for t in torrents:
             # Torrent not in managed (downloading) jobs — check if it has a job at all
@@ -323,17 +340,13 @@ class Downloader:
                 self.__handle_unmanaged_torrent(t)
                 continue
 
-            # Cleanup old torrents (no seeders for 10+ days)
-            if 0 < t.seen_complete < cutoff:
-                logger.info(
-                    "cleanup old torrent {} (last seen complete: {})",
-                    t.name,
-                    t.seen_complete,
-                )
+            # Cleanup stalled torrents (no download size recorded for 3+ days)
+            if t.hash in stalled_hashes:
+                logger.info("cleanup stalled torrent {}", t.name)
                 self.__update_job_status(
                     status=ItemStatus.FAILED,
                     info_hash=t.hash,
-                    failed_reason="no seeders",
+                    failed_reason="stalled",
                 )
                 self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
@@ -414,6 +427,20 @@ class Downloader:
                         ItemStatus.DOWNLOADING,
                     ],
                 )
+                conn.execute(
+                    """
+                    insert into job_download_size (info_hash, node_id, size)
+                    select $1, $2, $3
+                    where (
+                        select size
+                        from job_download_size
+                        where info_hash = $1 and node_id = $2
+                        order by recorded_at desc
+                        limit 1
+                    ) is distinct from $3
+                    """,
+                    [t.hash, self.config.node_id, t.completed],
+                )
 
     def __handle_unmanaged_torrent(self, t: Torrent) -> None:
         """Handle a torrent in qB that has no active downloading job.
@@ -493,6 +520,10 @@ class Downloader:
                    completed_at = current_timestamp
                    where info_hash = $2 and node_id = $3""",
                 [ItemStatus.DONE, t.hash, self.config.node_id],
+            )
+            conn.execute(
+                "delete from job_download_size where info_hash = $1 and node_id = $2",
+                [t.hash, self.config.node_id],
             )
         self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
