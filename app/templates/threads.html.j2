@@ -116,7 +116,7 @@
     <tbody>
     {% for t in threads %}
     <tr id="row-{{ t.tid }}">
-      <td>{{ t.tid }}</td>
+      <td><a href="/thread/{{ t.tid }}">{{ t.tid }}</a></td>
       <td>{{ t.category }}</td>
       <td>{{ t.size_fmt }}</td>
       <td>{{ t.selected_size_fmt }}</td>

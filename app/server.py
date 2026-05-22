@@ -1421,6 +1421,38 @@ def create_app() -> fastapi.FastAPI:
             show_failed_reason=False,
         )
 
+    @app.get("/thread/{tid}")
+    async def thread_detail(render: Render, tid: int) -> HTMLResponse:
+        row = await pool.fetchrow(
+            """
+            select tid, category, size, selected_size, selected_files, seeders, mediainfo,
+                   info_hash, hard_coded_subtitle, created_at, upload_at, mediainfo_at,
+                   torrent_fetched_at, torrent_invalid
+            from thread
+            where tid = $1
+            """,
+            tid,
+        )
+        if row is None:
+            return HTMLResponse("thread not found", status_code=404)
+
+        thread = dict(row)
+        thread["size_fmt"] = human_readable_size(thread["size"])
+        thread["selected_size_fmt"] = (
+            human_readable_size(thread["selected_size"]) if thread["selected_size"] > 0 else "-"
+        )
+
+        selected_files = thread.get("selected_files") or []
+        thread["selected_files"] = selected_files
+
+        return render(
+            "thread_detail.html.j2",
+            ctx={
+                "thread": thread,
+                "title": f"Thread {tid}",
+            },
+        )
+
     @app.post("/api/thread/{tid}/reset")
     async def reset_thread(tid: int) -> ORJSONResponse:
         result = await pool.execute(
