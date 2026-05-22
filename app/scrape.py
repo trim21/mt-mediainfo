@@ -209,6 +209,8 @@ class Scrape:
 
     TORRENT_DL_LIMIT = 10
     TORRENT_DL_TTL = timedelta(days=2)
+    DAILY_TORRENT_LIMIT = 2500
+    DAILY_TORRENT_TTL = timedelta(days=2)
 
     def _torrent_dl_count_key(self, tid: int, today: str) -> str:
         return f"torrent_dl:{today}:{tid}"
@@ -221,6 +223,18 @@ class Scrape:
         key = self._torrent_dl_count_key(tid, today)
         val = self.__kv.get(key)
         self.__kv.set(key, str(int(val) + 1) if val else "1", ttl=self.TORRENT_DL_TTL)
+
+    def _daily_torrent_count_key(self, today: str) -> str:
+        return f"daily_torrent_dl:{today}"
+
+    def _get_daily_torrent_count(self, today: str) -> int:
+        val = self.__kv.get(self._daily_torrent_count_key(today))
+        return int(val) if val else 0
+
+    def _inc_daily_torrent_count(self, today: str) -> None:
+        key = self._daily_torrent_count_key(today)
+        val = self.__kv.get(key)
+        self.__kv.set(key, str(int(val) + 1) if val else "1", ttl=self.DAILY_TORRENT_TTL)
 
     def fetch_torrent(self) -> bool:
         threads = self.__db.fetch_all(
@@ -245,6 +259,14 @@ class Scrape:
         today = datetime.now(TZ_SHANGHAI).strftime("%Y-%m-%d")
 
         for (tid,) in threads:
+            if self._get_daily_torrent_count(today) >= self.DAILY_TORRENT_LIMIT:
+                logger.info(
+                    "daily torrent download limit reached ({}/{}), stopping",
+                    self._get_daily_torrent_count(today),
+                    self.DAILY_TORRENT_LIMIT,
+                )
+                return False
+
             count = self._get_torrent_dl_count(tid, today)
             if count >= self.TORRENT_DL_LIMIT:
                 logger.debug(
@@ -283,6 +305,7 @@ class Scrape:
                 continue
 
             self._inc_torrent_dl_count(tid, today)
+            self._inc_daily_torrent_count(today)
 
             try:
                 t = parse_torrent(tc)
