@@ -10,6 +10,12 @@
         rel="stylesheet"
         integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
         crossorigin="anonymous">
+  <style>
+    .tree-group .group-toggle { cursor: pointer; user-select: none; display: inline-block; width: 16px; }
+    .tree-group .group-path { font-weight: 500; }
+    .tree-leaf[data-depth] > td:first-child { padding-left: calc(8px + var(--tree-depth) * 16px); }
+    .tree-leaf[data-depth="0"] > td:first-child { padding-left: 8px; }
+  </style>
 </head>
 <body>
 
@@ -39,22 +45,45 @@
           </tr>
         </thead>
         <tbody id="configBody">
-          {% if config %}
-            {% for row in config %}
-            <tr data-key="{{ row.key | e }}">
-              <td><code>{{ row.key | e }}</code></td>
-              {% if row.key == 'schema_version' %}
-              <td>{{ row.value | e }}</td>
-              <td><span class="badge bg-secondary">protected</span></td>
+          {% macro render_rows(nodes, depth=0) %}
+            {% for node in nodes %}
+              {% if node.type == 'group' %}
+                <tr class="tree-group" data-depth="{{ depth }}">
+                  <td colspan="3">
+                    <span class="group-toggle me-1" onclick="toggleGroup(this)">&#x25B6;</span>
+                    <code class="group-path">{{ node.name }}</code>
+                  </td>
+                </tr>
+                {{ render_rows(node.children, depth + 1) }}
               {% else %}
-              <td class="value-cell">{{ row.value | e }}</td>
-              <td>
-                <button class="btn btn-sm btn-outline-secondary me-1" onclick="startEdit(this)">Edit</button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteConfig('{{ row.key | e }}')">Delete</button>
-              </td>
+                {% set extra_style = 'style="--tree-depth:' ~ depth ~ '"' %}
+                <tr class="tree-leaf {% if node.type == 'leaf' %}config-row{% endif %}" data-key="{{ node.key | e }}" {{ extra_style }} data-depth="{{ depth }}">
+                  <td><code>{{ node.key | e }}</code></td>
+                  {% if node.key == 'schema_version' %}
+                  <td>{{ node.value | e }}</td>
+                  <td><span class="badge bg-secondary">protected</span></td>
+                  {% else %}
+                  <td class="value-cell">{{ node.value | e }}</td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-secondary me-1" onclick="startEdit(this)">Edit</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteConfig('{{ node.key | e }}')">Delete</button>
+                  </td>
+                  {% endif %}
+                </tr>
               {% endif %}
-            </tr>
+              {% if node.type == 'group' %}
+                <script>
+                  (function() {
+                    var rows = document.querySelectorAll('[data-depth="{{ depth + 1 }}"]');
+                    rows.forEach(function(r) { r.style.display = 'none'; });
+                  })();
+                </script>
+              {% endif %}
             {% endfor %}
+          {% endmacro %}
+
+          {% if config %}
+            {{ render_rows(config) }}
           {% else %}
           <tr><td colspan="3" class="text-muted">No config entries.</td></tr>
           {% endif %}
@@ -81,48 +110,86 @@
 </div>
 
 <script>
+  function toggleGroup(el) {
+    var depth = parseInt(el.closest('tr').dataset.depth);
+    var expanded = el.dataset.expanded === 'true';
+    var nextDepth = expanded ? null : depth + 1;
+    var collecting = false;
+
+    var rows = document.querySelectorAll('#configBody > tr');
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      if (row === el.closest('tr')) {
+        collecting = true;
+        continue;
+      }
+      if (!collecting) continue;
+      var rd = parseInt(row.dataset.depth || '0');
+      if (rd <= depth) break;
+
+      if (expanded) {
+        if (rd === depth + 1) row.style.display = 'none';
+      } else {
+        if (rd === depth + 1) row.style.display = '';
+        if (rd > depth + 1 && prevVisible(row)) row.style.display = '';
+      }
+    }
+
+    el.dataset.expanded = expanded ? 'false' : 'true';
+    el.innerHTML = expanded ? '&#x25B6;' : '&#x25BC;';
+  }
+
+  function prevVisible(row) {
+    var prev = row.previousElementSibling;
+    while (prev) {
+      if (prev.style.display !== 'none' && prev.classList.contains('tree-group')) return true;
+      prev = prev.previousElementSibling;
+    }
+    return false;
+  }
+
   function startEdit(btn) {
-    const row = btn.closest('tr');
-    const cell = row.querySelector('.value-cell');
-    const currentValue = cell.textContent.trim();
-    cell.innerHTML = `<input type="text" class="form-control form-control-sm" value="${currentValue.replace(/"/g, '&quot;')}">`;
+    var row = btn.closest('tr');
+    var cell = row.querySelector('.value-cell');
+    var currentValue = cell.textContent.trim();
+    cell.innerHTML = '<input type="text" class="form-control form-control-sm" value="' + currentValue.replace(/"/g, '&quot;') + '">';
     btn.textContent = 'Save';
-    btn.onclick = () => saveEdit(btn);
-    const cancelBtn = btn.nextElementSibling;
+    btn.onclick = function() { saveEdit(btn); };
+    var cancelBtn = btn.nextElementSibling;
     cancelBtn.textContent = 'Cancel';
     cancelBtn.className = 'btn btn-sm btn-outline-secondary';
-    cancelBtn.onclick = () => location.reload();
+    cancelBtn.onclick = function() { location.reload(); };
   }
 
   async function saveEdit(btn) {
-    const row = btn.closest('tr');
-    const key = row.dataset.key;
-    const value = row.querySelector('input').value.trim();
+    var row = btn.closest('tr');
+    var key = row.dataset.key;
+    var value = row.querySelector('input').value.trim();
     if (!value) { alert('Value cannot be empty.'); return; }
-    const res = await fetch('/api/config', {
+    var res = await fetch('/api/config', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({key, value}),
+      body: JSON.stringify({key: key, value: value}),
     });
     if (res.ok) { location.reload(); } else { alert((await res.json()).error); }
   }
 
   async function deleteConfig(key) {
-    if (!confirm(`Delete config key "${key}"?`)) return;
-    const res = await fetch(`/api/config/${encodeURIComponent(key)}`, {method: 'DELETE'});
+    if (!confirm('Delete config key "' + key + '"?')) return;
+    var res = await fetch('/api/config/' + encodeURIComponent(key), {method: 'DELETE'});
     if (res.ok) { location.reload(); } else { alert((await res.json()).error); }
   }
 
-  document.getElementById('addConfigForm').addEventListener('submit', async e => {
+  document.getElementById('addConfigForm').addEventListener('submit', async function(e) {
     e.preventDefault();
-    const key = document.getElementById('newKey').value.trim();
-    const value = document.getElementById('newValue').value.trim();
-    const errEl = document.getElementById('addConfigError');
+    var key = document.getElementById('newKey').value.trim();
+    var value = document.getElementById('newValue').value.trim();
+    var errEl = document.getElementById('addConfigError');
     errEl.style.display = 'none';
-    const res = await fetch('/api/config', {
+    var res = await fetch('/api/config', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({key, value}),
+      body: JSON.stringify({key: key, value: value}),
     });
     if (res.ok) {
       location.reload();
@@ -135,11 +202,11 @@
   function clearDailyStats() {
     if (!confirm('Clear daily stats cache? Charts will recompute on next load.')) return;
     fetch('/api/daily-stats/clear', {method: 'POST'})
-      .then(r => r.json())
-      .then(() => {
-        const el = document.getElementById('clearResult');
+      .then(function(r) { return r.json(); })
+      .then(function() {
+        var el = document.getElementById('clearResult');
         el.style.display = 'inline';
-        setTimeout(() => el.style.display = 'none', 3000);
+        setTimeout(function() { el.style.display = 'none'; }, 3000);
       });
   }
 </script>

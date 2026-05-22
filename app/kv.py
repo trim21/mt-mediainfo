@@ -31,6 +31,9 @@ class KVConfig:
             [key, value, expires_at],
         )
 
+    def delete(self, key: str) -> None:
+        self.__db.execute("delete from config where key = $1", [key])
+
     def cleanup(self) -> int:
         """Delete expired config entries. Returns number of rows deleted."""
         with self.__db.connection() as conn:

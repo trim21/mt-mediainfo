@@ -203,13 +203,13 @@ class Scrape:
                 break
             cursor = new_cursor
 
-            self.__kv.set(cursor_key, last_date)
+            self.__kv.set(cursor_key, last_date, ttl=timedelta(days=100))
 
     TORRENT_DL_LIMIT = 10
     TORRENT_DL_TTL = timedelta(days=2)
 
     def _torrent_dl_count_key(self, tid: int, today: str) -> str:
-        return f"torrent_dl:{tid}:{today}"
+        return f"torrent_dl:{today}:{tid}"
 
     def _get_torrent_dl_count(self, tid: int, today: str) -> int:
         val = self.__kv.get(self._torrent_dl_count_key(tid, today))
@@ -407,8 +407,10 @@ class Scrape:
         return RunResult.ok
 
     def __run_search(self) -> RunResult:
+        now = datetime.now(TZ_SHANGHAI)
+        bucket = f"{now.year}.{now.month % 4}"
         try:
-            self.scrape_search(mode="normal", cursor_key="search_cursor.normal")
+            self.scrape_search(mode="normal", cursor_key=f"search_cursor:{bucket}:normal")
         except httpx_network_errors:
             return RunResult.error
         except MTeamRequestError as e:
@@ -419,7 +421,7 @@ class Scrape:
             return RunResult.error
 
         try:
-            self.scrape_search(mode="adult", cursor_key="search_cursor.adult")
+            self.scrape_search(mode="adult", cursor_key=f"search_cursor:{bucket}:adult")
         except httpx_network_errors:
             return RunResult.error
         except MTeamRequestError as e:

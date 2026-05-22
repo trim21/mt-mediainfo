@@ -585,6 +585,42 @@ def _build_daily_charts(
     )
 
 
+def _build_config_tree(rows: list[dict[str, str]]) -> list[dict]:
+    """Build a tree from config keys separated by ':'. Keys without ':' stay as leaves."""
+
+    roots: list[dict] = []
+    index: dict[str, dict] = {}
+
+    def leaf(key: str, value: str) -> dict:
+        return {"key": key, "value": value, "type": "leaf"}
+
+    def ensure_group(name: str, parent: dict | None) -> dict:
+        full = f"{parent['full_key']}:{name}" if parent else name
+        if full in index:
+            return index[full]
+        group: dict = {"name": name, "full_key": full, "children": [], "type": "group"}
+        if parent is None:
+            roots.append(group)
+        else:
+            parent["children"].append(group)
+        index[full] = group
+        return group
+
+    for row in rows:
+        key = row["key"]
+        parts = key.split(":")
+        if len(parts) < 2:
+            roots.append(leaf(key, row["value"]))
+            continue
+
+        cur: dict | None = None
+        for segment in parts:
+            cur = ensure_group(segment, cur)
+        cur["children"].append(leaf(key, row["value"]))
+
+    return roots
+
+
 def create_app() -> fastapi.FastAPI:
     cfg: ServerConfig = load_server_config()
 
@@ -1562,7 +1598,9 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/admin")
     async def admin_page(render: Render) -> HTMLResponse:
         config_rows = await pool.fetch("select key, value from config order by key")
-        return render("admin.html.j2", ctx={"config": [dict(r) for r in config_rows]})
+        return render(
+            "admin.html.j2", ctx={"config": _build_config_tree([dict(r) for r in config_rows])}
+        )
 
     @app.get("/nodes")
     async def nodes_page(render: Render) -> HTMLResponse:
