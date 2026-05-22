@@ -300,12 +300,22 @@ class Scrape:
                 if keep_idx is not None
                 else -1
             )
+            selected_files = [
+                {"index": i, "name": name, "size": size, "selected": i == keep_idx}
+                for i, name, size in files_data
+            ]
 
             with self.__db.connection() as conn, conn.transaction():
                 self.__store.write(tid, tc)
                 conn.execute(
-                    """update thread set info_hash = $2, size = $3, selected_size = $4, torrent_fetched_at = current_timestamp where tid = $1""",
-                    [tid, info_hash, t.total_length, selected_size],
+                    """update thread set info_hash = $2, size = $3, selected_size = $4, selected_files = $5, torrent_fetched_at = current_timestamp where tid = $1""",
+                    [
+                        tid,
+                        info_hash,
+                        t.total_length,
+                        selected_size,
+                        orjson.dumps(selected_files).decode(),
+                    ],
                 )
         return False
 
@@ -339,10 +349,14 @@ class Scrape:
                     if keep_idx is not None
                     else -1
                 )
+                selected_files = [
+                    {"index": i, "name": name, "size": size, "selected": i == keep_idx}
+                    for i, name, size in files_data
+                ]
 
                 self.__db.execute(
-                    """update thread set size = $2, selected_size = $3 where tid = $1""",
-                    [tid, t.total_length, selected_size],
+                    """update thread set size = $2, selected_size = $3, selected_files = $4 where tid = $1""",
+                    [tid, t.total_length, selected_size, orjson.dumps(selected_files).decode()],
                 )
 
     @staticmethod

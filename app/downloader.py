@@ -4,6 +4,7 @@ import contextlib
 import dataclasses
 import enum
 import io
+import json
 import os.path
 import sys
 import time
@@ -510,11 +511,25 @@ class Downloader:
             self.db.connection() as conn,
             conn.transaction(),
         ):
+            selected_files = [
+                {
+                    "index": f.index,
+                    "name": f.name,
+                    "size": f.size,
+                    "selected": f.index == selected_idx,
+                }
+                for f in files
+            ]
             conn.execute(
                 """
-                    update thread set mediainfo = $1, hard_coded_subtitle = $2 where info_hash = $3
+                    update thread set mediainfo = $1, hard_coded_subtitle = $2, selected_files = $3 where info_hash = $4
                     """,
-                [media_info.replace("\x00", ""), hard_code_subtitle, t.hash],
+                [
+                    media_info.replace("\x00", ""),
+                    hard_code_subtitle,
+                    json.dumps(selected_files),
+                    t.hash,
+                ],
             )
             conn.execute(
                 """update job set status = $1, failed_reason = '', updated_at = current_timestamp,
