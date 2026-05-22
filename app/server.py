@@ -625,9 +625,10 @@ def _build_config_tree(rows: list[dict[str, str]]) -> list[dict]:
             continue
 
         parent_key: str | None = None
-        for segment in parts:
-            group = ensure_group(segment, parent_key)
+        group = ensure_group(parts[0], parent_key)
+        for segment in parts[1:]:
             parent_key = group["key"]
+            group = ensure_group(segment, parent_key)
         group["children"].append(leaf_node(key, row["value"]))
 
     return roots
