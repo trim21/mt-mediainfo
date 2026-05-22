@@ -1,7 +1,6 @@
 import enum
 import io
 import os
-import threading
 import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
@@ -24,6 +23,13 @@ from app.utils import get_info_hash_v1_from_content, parse_obj
 
 
 class RunResult(enum.Enum):
+    ok = "ok"
+    rate_limited = "rate_limited"
+    error = "error"
+
+
+class RunStatus(str, enum.Enum):
+    running = "running"
     ok = "ok"
     rate_limited = "rate_limited"
     error = "error"
@@ -344,53 +350,54 @@ class Scrape:
                 )
         return False
 
-    def backfill_selected_size(self) -> None:
+    def backfill_selected_size(self) -> RunResult:
         """Backfill selected_size and selected_files for threads that have a torrent but selected_size=0."""
-        while True:
-            tids: list[tuple[int]] = self.__db.fetch_all(
-                """
-                select tid from thread
-                where selected_size = 0 and info_hash != ''
-                limit 200
-                """,
+        tids: list[tuple[int]] = self.__db.fetch_all(
+            """
+            select tid from thread
+            where selected_size = 0 and info_hash != ''
+            limit 1000
+            """,
+        )
+
+        if not tids:
+            return RunResult.ok
+
+        for (tid,) in tids:
+            tc = self.__store.read(tid)
+            if tc is None:
+                self.__db.execute(
+                    """update thread set info_hash = '', selected_size = 0, selected_files = '[]'::jsonb where tid = $1""",
+                    [tid],
+                )
+                continue
+            try:
+                t = parse_torrent(tc)
+            except (pydantic.ValidationError, BencodeDecodeError):
+                self.__db.execute(
+                    """update thread set selected_size = -1, selected_files = '[]'::jsonb where tid = $1""",
+                    [tid],
+                )
+                continue
+
+            files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
+            keep_idx = find_largest_video_file(files_data)
+            selected_size = (
+                next((size for i, _, size in files_data if i == keep_idx), -1)
+                if keep_idx is not None
+                else -1
+            )
+            selected_files = [
+                {"index": i, "name": name, "size": size, "selected": i == keep_idx}
+                for i, name, size in files_data
+            ]
+
+            self.__db.execute(
+                """update thread set size = $2, selected_size = $3, selected_files = $4 where tid = $1""",
+                [tid, t.total_length, selected_size, orjson.dumps(selected_files).decode()],
             )
 
-            if not tids:
-                return
-
-            for (tid,) in tids:
-                tc = self.__store.read(tid)
-                if tc is None:
-                    self.__db.execute(
-                        """update thread set info_hash = '', selected_size = 0, selected_files = '[]'::jsonb where tid = $1""",
-                        [tid],
-                    )
-                    continue
-                try:
-                    t = parse_torrent(tc)
-                except (pydantic.ValidationError, BencodeDecodeError):
-                    self.__db.execute(
-                        """update thread set selected_size = -1, selected_files = '[]'::jsonb where tid = $1""",
-                        [tid],
-                    )
-                    continue
-
-                files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
-                keep_idx = find_largest_video_file(files_data)
-                selected_size = (
-                    next((size for i, _, size in files_data if i == keep_idx), -1)
-                    if keep_idx is not None
-                    else -1
-                )
-                selected_files = [
-                    {"index": i, "name": name, "size": size, "selected": i == keep_idx}
-                    for i, name, size in files_data
-                ]
-
-                self.__db.execute(
-                    """update thread set size = $2, selected_size = $3, selected_files = $4 where tid = $1""",
-                    [tid, t.total_length, selected_size, orjson.dumps(selected_files).decode()],
-                )
+        return RunResult.ok
 
     @staticmethod
     def __is_rate_limited(e: MTeamRequestError) -> bool:
@@ -556,7 +563,7 @@ class Scrape:
             return RunResult.error
         return RunResult.ok
 
-    def __update_status(self, name: str, result: RunResult, next_allowed: datetime | None) -> None:
+    def __update_status(self, name: str, result: RunStatus, next_allowed: datetime | None) -> None:
         self.__db.execute(
             """
             insert into scrape_status (name, last_run_at, last_result, next_allowed_at)
@@ -580,6 +587,7 @@ class Scrape:
             "2-fetch-detail": lambda: self.__run_scrape(limit),
             "3-fetch-torrent": lambda: self.__run_fetch_torrents(),
             "4-backup": lambda: self.__run_backup(),
+            "5-backup": lambda: self.backfill_selected_size(),
         }
 
         # Earliest time each operation is allowed to run again
@@ -621,5 +629,4 @@ class Scrape:
             time.sleep(interval)
 
     def start(self) -> None:
-        threading.Thread(target=self.backfill_selected_size, daemon=True).start()
         self.__run()
