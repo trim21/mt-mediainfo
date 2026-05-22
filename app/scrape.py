@@ -146,7 +146,8 @@ class Scrape:
         else:
             cursor = datetime(1970, 1, 1, tzinfo=TZ_SHANGHAI)
 
-        while True:
+        pages = 0
+        while pages < 10:
             start_str = cursor.strftime("%Y-%m-%d %H:%M:%S")
 
             result = self.mteam_client.search(
@@ -160,6 +161,7 @@ class Scrape:
             if not result.data:
                 break
 
+            pages += 1
             logger.info(
                 "search({}) from {}: {} items (total {})",
                 mode,
