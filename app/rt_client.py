@@ -12,7 +12,14 @@ import bencode2
 from rtorrent_rpc import RTorrent
 from rtorrent_rpc.helper import get_torrent_info_hash, parse_tags
 
-from app.bt_client import BTClient, Torrent, TorrentFile, TorrentNotFoundError, TorrentState
+from app.bt_client import (
+    ETA_INF,
+    BTClient,
+    Torrent,
+    TorrentFile,
+    TorrentNotFoundError,
+    TorrentState,
+)
 
 
 def _encode_rt_tags(tags: Iterable[str] | None) -> str:
@@ -93,9 +100,11 @@ class RTorrentClient(BTClient):
             if left_bytes > 0 and down_rate > 0:
                 eta = int(left_bytes / down_rate)
             elif left_bytes > 0:
-                eta = 8640000
+                eta = ETA_INF
             else:
                 eta = 0
+
+            eta = min(ETA_INF, eta)
 
             torrents.append(
                 Torrent(

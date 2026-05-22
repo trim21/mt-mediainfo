@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from math import inf
 from operator import itemgetter
 from pathlib import Path
 from typing import Annotated, Any, Literal, Protocol, cast
@@ -1622,18 +1623,24 @@ def create_app() -> fastapi.FastAPI:
             dlspeed: int = r["dlspeed"]
             eta: int = r["eta"]
             updated: datetime | None = r["updated_at"]
-            if eta < 0:
+            if dlspeed <= 2:
                 return {
                     "speed_fmt": "-" if dlspeed <= 0 else human_readable_byte_rate(dlspeed),
-                    "eta_fmt": "-",
-                    "eta_seconds": float("inf"),
+                    "eta_fmt": "∞",
+                    "eta_seconds": inf,
                 }
             elapsed_since = (now - updated).total_seconds() if updated else 0
             eta_seconds = max(0.0, float(eta) - elapsed_since)
+            if eta_seconds <= 0:
+                return {
+                    "speed_fmt": human_readable_byte_rate(dlspeed),
+                    "eta_fmt": "-",
+                    "eta_seconds": inf,
+                }
             return {
-                "speed_fmt": human_readable_byte_rate(dlspeed) if dlspeed > 2 else "-",
-                "eta_fmt": _fmt_eta(eta_seconds) if dlspeed > 2 else "-",
-                "eta_seconds": eta_seconds if dlspeed > 2 else float("inf"),
+                "speed_fmt": human_readable_byte_rate(dlspeed),
+                "eta_fmt": _fmt_eta(eta_seconds),
+                "eta_seconds": eta_seconds,
             }
 
         jobs = [

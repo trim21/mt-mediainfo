@@ -5,6 +5,8 @@ import dataclasses
 import enum
 from collections.abc import Sequence
 
+ETA_INF = (1 << 31) - 1
+
 
 class TorrentState(enum.StrEnum):
     UPLOADING = "uploading"

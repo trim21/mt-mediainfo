@@ -8,8 +8,22 @@ import qbittorrentapi
 from pydantic import BeforeValidator
 from qbittorrentapi import NotFound404Error
 
-from app.bt_client import BTClient, Torrent, TorrentFile, TorrentNotFoundError, TorrentState
+from app.bt_client import (
+    ETA_INF,
+    BTClient,
+    Torrent,
+    TorrentFile,
+    TorrentNotFoundError,
+    TorrentState,
+)
 from app.utils import parse_obj
+
+
+def _normalize_eta(v: Any) -> int:
+    n = int(v)
+    if n < 0 or n >= ETA_INF:
+        return ETA_INF
+    return n
 
 
 def _normalize_state(v: Any) -> TorrentState:
@@ -31,6 +45,7 @@ def _parse_str_tags(v: str) -> frozenset[str]:
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
 class QbTorrent(Torrent):
+    eta: Annotated[int, BeforeValidator(_normalize_eta)]
     state: Annotated[TorrentState, BeforeValidator(_normalize_state)]
     tags: Annotated[frozenset[str], BeforeValidator(_parse_str_tags)]
 
