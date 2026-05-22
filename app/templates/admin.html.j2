@@ -10,11 +10,13 @@
         rel="stylesheet"
         integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
         crossorigin="anonymous">
+  <link href="https://cdn.jsdelivr.net/npm/jquery.fancytree@2.38.3/dist/skin-lion/ui.fancytree.min.css"
+        rel="stylesheet">
   <style>
-    .tree-group .group-toggle { cursor: pointer; user-select: none; display: inline-block; width: 16px; }
-    .tree-group .group-path { font-weight: 500; }
-    .tree-leaf[data-depth] > td:first-child { padding-left: calc(8px + var(--tree-depth) * 16px); }
-    .tree-leaf[data-depth="0"] > td:first-child { padding-left: 8px; }
+    #configTree .fancytree-node { line-height: 32px; }
+    #configTree .fancytree-title { font-family: monospace; font-size: 0.875rem; }
+    .value-cell { word-break: break-all; }
+    .value-edit > input { width: 100%; font-size: 0.875rem; }
   </style>
 </head>
 <body>
@@ -36,58 +38,11 @@
   <div class="card mt-3">
     <div class="card-body">
       <h5 class="card-title">Config</h5>
-      <table class="table table-sm table-bordered mb-3" id="configTable">
-        <thead class="table-light">
-          <tr>
-            <th style="width:35%">Key</th>
-            <th>Value</th>
-            <th style="width:130px"></th>
-          </tr>
+      <table id="configTree" class="table table-sm table-bordered mb-3">
+        <thead>
+          <tr><th style="width:35%">Key</th><th>Value</th><th style="width:130px"></th></tr>
         </thead>
-        <tbody id="configBody">
-          {% macro render_rows(nodes, depth=0) %}
-            {% for node in nodes %}
-              {% if node.type == 'group' %}
-                <tr class="tree-group" data-depth="{{ depth }}">
-                  <td colspan="3">
-                    <span class="group-toggle me-1" onclick="toggleGroup(this)">&#x25B6;</span>
-                    <code class="group-path">{{ node.name }}</code>
-                  </td>
-                </tr>
-                {{ render_rows(node.children, depth + 1) }}
-              {% else %}
-                {% set extra_style = 'style="--tree-depth:' ~ depth ~ '"' %}
-                <tr class="tree-leaf {% if node.type == 'leaf' %}config-row{% endif %}" data-key="{{ node.key | e }}" {{ extra_style }} data-depth="{{ depth }}">
-                  <td><code>{{ node.key | e }}</code></td>
-                  {% if node.key == 'schema_version' %}
-                  <td>{{ node.value | e }}</td>
-                  <td><span class="badge bg-secondary">protected</span></td>
-                  {% else %}
-                  <td class="value-cell">{{ node.value | e }}</td>
-                  <td>
-                    <button class="btn btn-sm btn-outline-secondary me-1" onclick="startEdit(this)">Edit</button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteConfig('{{ node.key | e }}')">Delete</button>
-                  </td>
-                  {% endif %}
-                </tr>
-              {% endif %}
-              {% if node.type == 'group' %}
-                <script>
-                  (function() {
-                    var rows = document.querySelectorAll('[data-depth="{{ depth + 1 }}"]');
-                    rows.forEach(function(r) { r.style.display = 'none'; });
-                  })();
-                </script>
-              {% endif %}
-            {% endfor %}
-          {% endmacro %}
-
-          {% if config %}
-            {{ render_rows(config) }}
-          {% else %}
-          <tr><td colspan="3" class="text-muted">No config entries.</td></tr>
-          {% endif %}
-        </tbody>
+        <tbody></tbody>
       </table>
       <form class="row g-2 align-items-end" id="addConfigForm">
         <div class="col-auto">
@@ -109,62 +64,37 @@
   </div>
 </div>
 
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery.fancytree@2.38.3/dist/jquery.fancytree-all-deps.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery.fancytree@2.38.3/dist/modules/jquery.fancytree.table.min.js"></script>
+
 <script>
-  function toggleGroup(el) {
-    var depth = parseInt(el.closest('tr').dataset.depth);
-    var expanded = el.dataset.expanded === 'true';
-    var nextDepth = expanded ? null : depth + 1;
-    var collecting = false;
+  var TREE_DATA = {{ config | tojson | safe }};
 
-    var rows = document.querySelectorAll('#configBody > tr');
-    for (var i = 0; i < rows.length; i++) {
-      var row = rows[i];
-      if (row === el.closest('tr')) {
-        collecting = true;
-        continue;
-      }
-      if (!collecting) continue;
-      var rd = parseInt(row.dataset.depth || '0');
-      if (rd <= depth) break;
+  function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(s));
+    return div.innerHTML;
+  }
 
-      if (expanded) {
-        if (rd === depth + 1) row.style.display = 'none';
-      } else {
-        if (rd === depth + 1) row.style.display = '';
-        if (rd > depth + 1 && prevVisible(row)) row.style.display = '';
-      }
+  function renderActions(key, value) {
+    if (key === 'schema_version') {
+      return '<span class="badge bg-secondary">protected</span>';
     }
-
-    el.dataset.expanded = expanded ? 'false' : 'true';
-    el.innerHTML = expanded ? '&#x25B6;' : '&#x25BC;';
+    return '<button class="btn btn-sm btn-outline-secondary me-1" onclick="startEdit(\'' + key + '\')">Edit</button>' +
+           '<button class="btn btn-sm btn-outline-danger" onclick="deleteConfig(\'' + key + '\')">Delete</button>';
   }
 
-  function prevVisible(row) {
-    var prev = row.previousElementSibling;
-    while (prev) {
-      if (prev.style.display !== 'none' && prev.classList.contains('tree-group')) return true;
-      prev = prev.previousElementSibling;
-    }
-    return false;
+  function startEdit(key) {
+    var node = $('#configTree').fancytree('getTree').getNodeByKey(key);
+    if (!node) return;
+    var col1 = $(node.tr).find('>td').eq(1);
+    col1.html('<div class="value-edit"><input type="text" value="' + escapeHtml(node.data.value || '') + '"><button class="btn btn-sm btn-primary ms-1" onclick="saveEdit(\'' + key + '\')">Save</button><button class="btn btn-sm btn-outline-secondary ms-1" onclick="location.reload()">Cancel</button></div>');
   }
 
-  function startEdit(btn) {
-    var row = btn.closest('tr');
-    var cell = row.querySelector('.value-cell');
-    var currentValue = cell.textContent.trim();
-    cell.innerHTML = '<input type="text" class="form-control form-control-sm" value="' + currentValue.replace(/"/g, '&quot;') + '">';
-    btn.textContent = 'Save';
-    btn.onclick = function() { saveEdit(btn); };
-    var cancelBtn = btn.nextElementSibling;
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.className = 'btn btn-sm btn-outline-secondary';
-    cancelBtn.onclick = function() { location.reload(); };
-  }
-
-  async function saveEdit(btn) {
-    var row = btn.closest('tr');
-    var key = row.dataset.key;
-    var value = row.querySelector('input').value.trim();
+  async function saveEdit(key) {
+    var tr = $('#configTree').fancytree('getTree').getNodeByKey(key).tr;
+    var value = $(tr).find('input').val().trim();
     if (!value) { alert('Value cannot be empty.'); return; }
     var res = await fetch('/api/config', {
       method: 'POST',
@@ -178,6 +108,40 @@
     if (!confirm('Delete config key "' + key + '"?')) return;
     var res = await fetch('/api/config/' + encodeURIComponent(key), {method: 'DELETE'});
     if (res.ok) { location.reload(); } else { alert((await res.json()).error); }
+  }
+
+  $(function() {
+    $('#configTree').fancytree({
+      extensions: ['table'],
+      table: {
+        indentation: 20,
+        nodeColumnIdx: 0,
+      },
+      source: TREE_DATA,
+      renderColumns: function(event, data) {
+        var node = data.node;
+        var $tds = $(node.tr).find('>td');
+        $tds.eq(0).find('.fancytree-title').text(node.title);
+        if (node.folder) {
+          $tds.eq(1).text('');
+          $tds.eq(2).html('<span class="badge bg-light text-dark">' + (node.children ? node.children.length : 0) + ' entries</span>');
+        } else {
+          $tds.eq(1).html('<span class="value-cell">' + escapeHtml(node.data.value || '') + '</span>');
+          $tds.eq(2).html(renderActions(node.key, node.data.value));
+        }
+      }
+    });
+  });
+
+  function clearDailyStats() {
+    if (!confirm('Clear daily stats cache? Charts will recompute on next load.')) return;
+    fetch('/api/daily-stats/clear', {method: 'POST'})
+      .then(function(r) { return r.json(); })
+      .then(function() {
+        var el = document.getElementById('clearResult');
+        el.style.display = 'inline';
+        setTimeout(function() { el.style.display = 'none'; }, 3000);
+      });
   }
 
   document.getElementById('addConfigForm').addEventListener('submit', async function(e) {
@@ -198,17 +162,6 @@
       errEl.style.display = 'inline';
     }
   });
-
-  function clearDailyStats() {
-    if (!confirm('Clear daily stats cache? Charts will recompute on next load.')) return;
-    fetch('/api/daily-stats/clear', {method: 'POST'})
-      .then(function(r) { return r.json(); })
-      .then(function() {
-        var el = document.getElementById('clearResult');
-        el.style.display = 'inline';
-        setTimeout(function() { el.style.display = 'none'; }, 3000);
-      });
-  }
 </script>
 </body>
 </html>

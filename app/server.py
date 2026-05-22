@@ -586,23 +586,29 @@ def _build_daily_charts(
 
 
 def _build_config_tree(rows: list[dict[str, str]]) -> list[dict]:
-    """Build a tree from config keys separated by ':'. Keys without ':' stay as leaves."""
+    """Build a FancyTree-compatible tree from config keys separated by ':'."""
 
     roots: list[dict] = []
     index: dict[str, dict] = {}
 
-    def leaf(key: str, value: str) -> dict:
-        return {"key": key, "value": value, "type": "leaf"}
+    def leaf_node(key: str, value: str) -> dict:
+        return {"title": key, "key": key, "data": {"value": value}}
 
-    def ensure_group(name: str, parent: dict | None) -> dict:
-        full = f"{parent['full_key']}:{name}" if parent else name
+    def ensure_group(name: str, parent_key: str | None) -> dict:
+        full = f"{parent_key}:{name}" if parent_key else name
         if full in index:
             return index[full]
-        group: dict = {"name": name, "full_key": full, "children": [], "type": "group"}
-        if parent is None:
+        group: dict = {
+            "title": name,
+            "key": full,
+            "folder": True,
+            "expanded": False,
+            "children": [],
+        }
+        if parent_key is None:
             roots.append(group)
         else:
-            parent["children"].append(group)
+            index[parent_key]["children"].append(group)
         index[full] = group
         return group
 
@@ -610,13 +616,14 @@ def _build_config_tree(rows: list[dict[str, str]]) -> list[dict]:
         key = row["key"]
         parts = key.split(":")
         if len(parts) < 2:
-            roots.append(leaf(key, row["value"]))
+            roots.append(leaf_node(key, row["value"]))
             continue
 
-        cur: dict | None = None
+        parent_key: str | None = None
         for segment in parts:
-            cur = ensure_group(segment, cur)
-        cur["children"].append(leaf(key, row["value"]))
+            group = ensure_group(segment, parent_key)
+            parent_key = group["key"]
+        group["children"].append(leaf_node(key, row["value"]))
 
     return roots
 
