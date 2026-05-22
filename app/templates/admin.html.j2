@@ -110,6 +110,16 @@
     if (res.ok) { location.reload(); } else { alert((await res.json()).error); }
   }
 
+  async function deleteConfigGroup(prefix) {
+    if (!confirm('Delete all config keys under "' + prefix + '"?')) return;
+    var res = await fetch('/api/config/delete-group', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prefix: prefix}),
+    });
+    if (res.ok) { location.reload(); } else { alert((await res.json()).error); }
+  }
+
   $(function() {
     $('#configTree').fancytree({
       extensions: ['table'],
@@ -124,7 +134,10 @@
         $tds.eq(0).find('.fancytree-title').text(node.title);
         if (node.folder) {
           $tds.eq(1).text('');
-          $tds.eq(2).html('<span class="badge bg-light text-dark">' + (node.children ? node.children.length : 0) + ' entries</span>');
+          $tds.eq(2).html(
+            '<span class="badge bg-light text-dark me-2">' + (node.children ? node.children.length : 0) + ' entries</span>' +
+            '<button class="btn btn-sm btn-outline-danger" onclick="deleteConfigGroup(\'' + node.key + '\')">Delete group</button>'
+          );
         } else {
           $tds.eq(1).html('<span class="value-cell">' + escapeHtml(node.data.value || '') + '</span>');
           $tds.eq(2).html(renderActions(node.key, node.data.value));

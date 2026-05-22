@@ -329,6 +329,10 @@ class ConfigUpsertRequest:
     value: str
 
 
+class DeleteConfigGroupRequest:
+    prefix: str
+
+
 def _pagination(page: int, total_count: int) -> dict[str, int | bool | None]:
     total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
     current_page = min(max(page, 1), total_pages)
@@ -1601,6 +1605,19 @@ def create_app() -> fastapi.FastAPI:
         if result == "DELETE 0":
             return ORJSONResponse({"error": "key not found"}, status_code=404)
         return ORJSONResponse({"ok": True})
+
+    @app.post("/api/config/delete-group")
+    async def delete_config_group(body: DeleteConfigGroupRequest) -> ORJSONResponse:
+        prefix = body.prefix.strip()
+        if not prefix:
+            return ORJSONResponse({"error": "prefix is required"}, status_code=422)
+        if "schema_version".startswith(prefix):
+            return ORJSONResponse({"error": "prefix is protected"}, status_code=403)
+        result = await pool.execute(
+            "delete from config where starts_with(key, $1)",
+            prefix + ":",
+        )
+        return ORJSONResponse({"deleted": result})
 
     @app.get("/admin")
     async def admin_page(render: Render) -> HTMLResponse:
