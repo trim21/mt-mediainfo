@@ -320,12 +320,12 @@ class Scrape:
         return False
 
     def backfill_selected_size(self) -> None:
-        """Backfill selected_size for threads that already have a torrent but selected_size=0."""
+        """Backfill selected_size and selected_files for threads that have a torrent but are missing data."""
         while True:
             tids: list[tuple[int]] = self.__db.fetch_all(
                 """
                 select tid from thread
-                where selected_size = 0 and info_hash != ''
+                where (selected_size = 0 or selected_files = '[]'::jsonb) and info_hash != ''
                 limit 200
                 """,
             )
