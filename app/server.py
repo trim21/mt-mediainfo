@@ -329,6 +329,7 @@ class ConfigUpsertRequest:
     value: str
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class DeleteConfigGroupRequest:
     prefix: str
 
