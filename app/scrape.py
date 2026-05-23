@@ -587,7 +587,7 @@ class Scrape:
             "2-fetch-detail": lambda: self.__run_scrape(limit),
             "3-fetch-torrent": lambda: self.__run_fetch_torrents(),
             "4-backup": lambda: self.__run_backup(),
-            "5-backup": lambda: self.backfill_selected_size(),
+            "5-backfill": lambda: self.backfill_selected_size(),
         }
 
         # Earliest time each operation is allowed to run again
