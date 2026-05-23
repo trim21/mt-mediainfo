@@ -53,6 +53,7 @@
        <th>Progress</th>
        <th>Speed</th>
        <th>ETA</th>
+       <th>No Progress Since</th>
        {% endif %}
        <th>Started</th>
        <th>{% if status == 'done' %}Completed{% else %}Updated{% endif %}</th>
@@ -79,6 +80,7 @@
        <td>{{ j.progress_fmt }}%</td>
        <td>{{ j.speed_fmt }}</td>
        <td>{{ j.eta_fmt }}</td>
+       <td>{{ j.no_progress_since }}</td>
        {% endif %}
        <td>{{ j.start_download_time | fmt_dt }}</td>
        <td>{{ (j.completed_at if status == 'done' else j.updated_at) | fmt_dt }}</td>

@@ -1712,6 +1712,21 @@ def create_app() -> fastapi.FastAPI:
             ),
         )
 
+        info_hashes = [r["info_hash"] for r in rows]
+        progress_rows = await pool.fetch(
+            """
+            select info_hash, max(recorded_at) as last_progress_at
+            from job_download_size
+            where node_id = $1 and info_hash = any($2)
+            group by info_hash
+            """,
+            node_id,
+            info_hashes,
+        )
+        last_progress_map: dict[str, datetime] = {
+            r["info_hash"]: r["last_progress_at"] for r in progress_rows
+        }
+
         pager = _pagination(page, cast(int, total_count))
 
         now = datetime.now(tz=TZ_SHANGHAI)
@@ -1748,6 +1763,7 @@ def create_app() -> fastapi.FastAPI:
                 if r["selected_size"] > 0
                 else "-",
                 "progress_fmt": f"{int(r['progress'] * 1000) / 10:.1f}",
+                "no_progress_since": _timeago(last_progress_map.get(r["info_hash"])),
             }
             | _calc_speed_eta(r)
             for r in rows
