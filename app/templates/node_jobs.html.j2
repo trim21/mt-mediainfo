@@ -34,29 +34,39 @@
     <span class="text-muted small">{{ (page - 1) * page_size + 1 }}-{{ [page * page_size, total_count] | min }} of {{ total_count }}</span>
     <div class="btn-group btn-group-sm">
       <a class="btn btn-outline-secondary{% if not has_prev %} disabled{% endif %}"
-         href="/nodes/{{ node_id }}?status={{ status }}&page={{ prev_page if prev_page else 1 }}">Previous</a>
+         href="/nodes/{{ node_id }}?status={{ status }}&page={{ prev_page if prev_page else 1 }}{% if sort %}&sort={{ sort }}&order={{ order }}{% endif %}">Previous</a>
       <a class="btn btn-outline-secondary{% if not has_next %} disabled{% endif %}"
-         href="/nodes/{{ node_id }}?status={{ status }}&page={{ next_page if next_page else total_pages }}">Next</a>
+         href="/nodes/{{ node_id }}?status={{ status }}&page={{ next_page if next_page else total_pages }}{% if sort %}&sort={{ sort }}&order={{ order }}{% endif %}">Next</a>
     </div>
   </div>
   {% endif %}
 
+  {% macro sort_link(key, label) %}
+    {% if sort == key %}
+      <a href="/nodes/{{ node_id }}?status={{ status }}&sort={{ key }}&order={{ 'desc' if order == 'asc' else 'asc' }}"
+         class="text-decoration-none text-dark">{{ label }} {{ '▲' if order == 'asc' else '▼' }}</a>
+    {% else %}
+      <a href="/nodes/{{ node_id }}?status={{ status }}&sort={{ key }}&order=asc"
+         class="text-decoration-none text-dark">{{ label }}</a>
+    {% endif %}
+  {% endmacro %}
+
   <table class="table table-bordered table-hover table-sm">
     <thead class="table-light">
      <tr>
-       <th>TID</th>
+       <th>{{ sort_link('tid', 'TID') }}</th>
        <th>Status</th>
-       <th>Seeders</th>
-       <th>Size</th>
-       <th>Selected Size</th>
+       <th>{{ sort_link('seeders', 'Seeders') }}</th>
+       <th>{{ sort_link('size', 'Size') }}</th>
+       <th>{{ sort_link('selected_size', 'Selected Size') }}</th>
        {% if status == 'downloading' %}
-       <th>Progress</th>
-       <th>Speed</th>
-       <th>ETA</th>
-       <th>No Progress Since</th>
+       <th>{{ sort_link('progress', 'Progress') }}</th>
+       <th>{{ sort_link('speed', 'Speed') }}</th>
+       <th>{{ sort_link('eta', 'ETA') }}</th>
+       <th>{{ sort_link('no_progress', 'No Progress Since') }}</th>
        {% endif %}
-       <th>Started</th>
-       <th>{% if status == 'done' %}Completed{% else %}Updated{% endif %}</th>
+       <th>{{ sort_link('started', 'Started') }}</th>
+       <th>{{ sort_link('completed' if status == 'done' else 'updated', 'Completed' if status == 'done' else 'Updated') }}</th>
        <th>Link</th>
        <th>Actions</th>
      </tr>

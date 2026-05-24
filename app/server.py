@@ -1686,6 +1686,8 @@ def create_app() -> fastapi.FastAPI:
             Literal[ItemStatus.DOWNLOADING, ItemStatus.DONE], Query()
         ] = ItemStatus.DOWNLOADING,
         page: Annotated[int, Query()] = 1,
+        sort: Annotated[str, Query()] = "",
+        order: Annotated[Literal["asc", "desc"], Query()] = "asc",
     ) -> HTMLResponse:
         node_row = await pool.fetchrow(
             "select id, last_seen, alias, version from node where id = $1", node_id
@@ -1696,6 +1698,43 @@ def create_app() -> fastapi.FastAPI:
                 ctx={"node_id": node_id, "node_name": "", "jobs": [], "status": status},
                 status_code=404,
             )
+
+        _sort_cols_downloading: dict[str, str] = {
+            "tid": "job.tid",
+            "seeders": "thread.seeders",
+            "size": "thread.size",
+            "selected_size": "thread.selected_size",
+            "progress": "job.progress",
+            "speed": "job.dlspeed",
+            "eta": "job.eta",
+            "no_progress": "(select max(recorded_at) from job_download_size where info_hash = job.info_hash and node_id = job.node_id)",
+            "started": "job.start_download_time",
+            "updated": "job.updated_at",
+        }
+        _sort_cols_done: dict[str, str] = {
+            "tid": "job.tid",
+            "seeders": "thread.seeders",
+            "size": "thread.size",
+            "selected_size": "thread.selected_size",
+            "started": "job.start_download_time",
+            "completed": "job.completed_at",
+        }
+
+        sort_cols = _sort_cols_downloading if status == ItemStatus.DOWNLOADING else _sort_cols_done
+        if sort and sort in sort_cols:
+            sort_expr = sort_cols[sort]
+            nulls = " nulls last" if sort in ("eta", "no_progress") else ""
+            order_by = f"{sort_expr} {order}{nulls}"
+            effective_sort = sort
+            effective_order = order
+        else:
+            order_by = (
+                "job.completed_at desc nulls last"
+                if status == ItemStatus.DONE
+                else "job.eta asc nulls last"
+            )
+            effective_sort = ""
+            effective_order = "asc"
 
         total_count, rows = await asyncio.gather(
             pool.fetchval(
@@ -1713,7 +1752,7 @@ def create_app() -> fastapi.FastAPI:
                 from job
                 join thread on (thread.tid = job.tid)
                 where job.node_id = $1 and job.status = $2
-                order by {"job.completed_at desc nulls last" if status == ItemStatus.DONE else "job.eta asc nulls last"}
+                order by {order_by}
                 limit $3 offset $4
                 """,
                 node_id,
@@ -1789,6 +1828,8 @@ def create_app() -> fastapi.FastAPI:
                 "version": node_row["version"],
                 "jobs": jobs,
                 "status": status,
+                "sort": effective_sort,
+                "order": effective_order,
             }
             | {k: v for k, v in pager.items() if k != "offset"},
         )
