@@ -601,20 +601,20 @@ def _build_daily_charts(
     )
 
 
-def _build_config_tree(rows: list[dict[str, str]]) -> list[dict]:
+def _build_config_tree(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
     """Build a FancyTree-compatible tree from config keys separated by ':'."""
 
-    roots: list[dict] = []
-    index: dict[str, dict] = {}
+    roots: list[dict[str, Any]] = []
+    index: dict[str, dict[str, Any]] = {}
 
-    def leaf_node(key: str, value: str) -> dict:
+    def leaf_node(key: str, value: str) -> dict[str, Any]:
         return {"title": key, "key": key, "data": {"value": value}}
 
-    def ensure_group(name: str, parent_key: str | None) -> dict:
+    def ensure_group(name: str, parent_key: str | None) -> dict[str, Any]:
         full = f"{parent_key}:{name}" if parent_key else name
         if full in index:
             return index[full]
-        group: dict = {
+        group: dict[str, Any] = {
             "title": name,
             "key": full,
             "folder": True,
