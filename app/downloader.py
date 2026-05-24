@@ -37,7 +37,7 @@ from app.const import (
     SELECTED_CATEGORY,
     TZ_SHANGHAI,
     ItemStatus,
-    PickStrategy,
+    pick_order_clause,
 )
 from app.db import Connection, Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
@@ -72,14 +72,9 @@ class Status(enum.IntEnum):
 
 
 def _pick_query(config: DownloaderConfig) -> LiteralString:
-    if config.pick_strategy == PickStrategy.seeders:
-        order_clause: LiteralString = (
-            "order by seeders desc, (category = any($3)) desc, selected_size asc, tid asc"
-        )
-    else:
-        order_clause = "order by (category = any($3)) desc, selected_size asc, tid asc"
+    order_clause = pick_order_clause(config.pick_strategy, 3)
 
-    seeder_clause: LiteralString = cast(LiteralString, config.seeder_condition)  # type: ignore[redundant-cast]
+    seeder_clause: LiteralString = cast(LiteralString, config.seeder_condition)
 
     return f"""
     select thread.* from thread

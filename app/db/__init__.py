@@ -117,7 +117,7 @@ class Database:
             if m.version <= current:
                 continue
             print(f"running migration {m.version}")
-            self.execute(cast(LiteralString, m.sql))  # type: ignore[redundant-cast]
+            self.execute(cast(LiteralString, m.sql))
             self.execute(
                 "insert into config (key, value) values ('schema_version', $1)"
                 " on conflict (key) do update set value = excluded.value",

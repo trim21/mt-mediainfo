@@ -27,6 +27,7 @@ from app.const import (
     TZ_SHANGHAI,
     ItemStatus,
     PickStrategy,
+    pick_order_clause,
     search_cursor_key,
 )
 from app.db import Database
@@ -1289,10 +1290,7 @@ def create_app() -> fastapi.FastAPI:
         page: Annotated[int, Query()] = 1,
         strategy: Annotated[PickStrategy, Query()] = PickStrategy.seeders,
     ) -> HTMLResponse:
-        if strategy == PickStrategy.seeders:
-            order = "order by seeders desc, (category = any($2)) desc, tid asc"
-        else:
-            order = "order by (category = any($2)) desc, tid asc"
+        order = pick_order_clause(strategy, 2)
         return await _render_thread_list(
             render,
             title="Pending to Download",

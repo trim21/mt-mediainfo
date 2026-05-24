@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from typing import Final
+from typing import Final, LiteralString, cast
 from zoneinfo import ZoneInfo
 
 TZ_SHANGHAI: Final = ZoneInfo("Asia/Shanghai")
@@ -37,6 +37,18 @@ QB_TAG_NEED_SELECT: Final = "need-select"
 class PickStrategy(str, enum.Enum):
     tid = "tid"  # priority category first, then tid asc
     seeders = "seeders"  # seeders desc, then priority category, then tid asc
+
+
+def pick_order_clause(strategy: PickStrategy, priority_category_param: int) -> LiteralString:
+    if strategy == PickStrategy.seeders:
+        return cast(
+            LiteralString,
+            f"order by seeders desc, (category = any(${priority_category_param})) desc, selected_size asc, tid asc",
+        )
+    return cast(
+        LiteralString,
+        f"order by (category = any(${priority_category_param})) desc, selected_size asc, tid asc",
+    )
 
 
 SELECTED_CATEGORY = [
