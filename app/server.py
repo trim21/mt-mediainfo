@@ -14,6 +14,7 @@ from typing import Annotated, Any, Literal, Protocol, cast
 import asyncpg
 import durationpy
 import fastapi
+import jinja2
 import orjson
 from fastapi import Depends, Query, Request
 from fastapi.templating import Jinja2Templates
@@ -53,18 +54,23 @@ def _fmt_dt(dt: datetime | None) -> str:
     return dt.astimezone(TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _timeago(dt: datetime | None) -> str:
+def _timeago(dt: datetime | None, now: datetime) -> str:
     if dt is None:
         return "-"
-    delta = datetime.now(tz=TZ_SHANGHAI) - dt.astimezone(TZ_SHANGHAI)
+    delta = now - dt.astimezone(TZ_SHANGHAI)
     seconds = delta.total_seconds()
     if seconds < 0:
         return "-"
     return _fmt_eta(seconds) + " ago"
 
 
+@jinja2.pass_context
+def _timeago_filter(context: jinja2.runtime.Context, dt: datetime | None) -> str:
+    return _timeago(dt, context["now"])
+
+
 templates.env.filters["fmt_dt"] = _fmt_dt
-templates.env.filters["timeago"] = _timeago
+templates.env.filters["timeago"] = _timeago_filter
 
 
 @dataclass(slots=True, frozen=True)
@@ -297,6 +303,8 @@ class _Render(Protocol):
 
 
 async def __render(request: Request) -> _Render:
+    now = datetime.now(tz=TZ_SHANGHAI)
+
     def render(
         name: str,
         ctx: dict[str, Any] | None = None,
@@ -304,6 +312,9 @@ async def __render(request: Request) -> _Render:
         headers: Mapping[str, str] | None = None,
         media_type: str | None = None,
     ) -> HTMLResponse:
+        if ctx is None:
+            ctx = {}
+        ctx["now"] = now
         return templates.TemplateResponse(
             name=name,
             request=request,
@@ -1763,7 +1774,7 @@ def create_app() -> fastapi.FastAPI:
                 if r["selected_size"] > 0
                 else "-",
                 "progress_fmt": f"{int(r['progress'] * 1000) / 10:.1f}",
-                "no_progress_since": _timeago(last_progress_map.get(r["info_hash"])),
+                "no_progress_since": _timeago(last_progress_map.get(r["info_hash"]), now),
             }
             | _calc_speed_eta(r)
             for r in rows
