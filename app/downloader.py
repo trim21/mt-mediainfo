@@ -596,6 +596,13 @@ class Downloader:
                     """,
                     [tid, self.config.node_id, info_hash, ItemStatus.DOWNLOADING, ETA_INF],
                 )
+                conn.execute(
+                    """
+                    insert into job_download_size (info_hash, node_id, size)
+                    values ($1, $2, 0)
+                    """,
+                    [info_hash, self.config.node_id],
+                )
                 left_size -= selected_size
                 picked.append((tid, info_hash))
 
