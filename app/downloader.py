@@ -321,7 +321,7 @@ class Downloader:
             info_hash for info_hash, unselected in job_rows if unselected
         }
 
-        stale_cutoff = now - timedelta(days=3)
+        stale_cutoff = now - timedelta(days=2)
 
         stalled_rows = self.db.fetch_all(
             """
