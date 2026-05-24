@@ -37,6 +37,22 @@
 
   <div class="card mt-3">
     <div class="card-body">
+      <h5 class="card-title">Reset Node Jobs</h5>
+      <p class="card-text">Reset downloading jobs for a node. These jobs will be released for other nodes to pick up.</p>
+      <div class="d-flex align-items-center gap-2">
+        <select id="resetNodeSelect" class="form-select form-select-sm" style="width: auto;">
+          {% for n in nodes %}
+          <option value="{{ n.id }}">{{ n.name }} ({{ n.downloading }} downloading)</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="btn btn-outline-danger" onclick="resetNodeJobs()">Reset Jobs</button>
+        <span id="resetResult" class="text-success" style="display:none;">Done!</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-3">
+    <div class="card-body">
       <h5 class="card-title">Config</h5>
       <table id="configTree" class="table table-sm table-bordered mb-3">
         <thead>
@@ -155,6 +171,30 @@
         el.style.display = 'inline';
         setTimeout(function() { el.style.display = 'none'; }, 3000);
       });
+  }
+
+  async function resetNodeJobs() {
+    var select = document.getElementById('resetNodeSelect');
+    var nodeId = select.value;
+    var label = select.options[select.selectedIndex].text;
+    if (!confirm('Reset downloading jobs for ' + label + '?')) return;
+    var btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      var resp = await fetch('/api/node/' + nodeId + '/reset-jobs', {method: 'POST'});
+      if (!resp.ok) {
+        btn.textContent = 'Error';
+        return;
+      }
+      var el = document.getElementById('resetResult');
+      el.style.display = 'inline';
+      setTimeout(function() { el.style.display = 'none'; location.reload(); }, 1500);
+    } catch (e) {
+      btn.textContent = 'Error';
+    }
+    btn.disabled = false;
+    btn.textContent = 'Reset Jobs';
   }
 
   document.getElementById('addConfigForm').addEventListener('submit', async function(e) {

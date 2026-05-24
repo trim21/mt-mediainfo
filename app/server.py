@@ -1635,9 +1635,26 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/admin")
     async def admin_page(render: Render) -> HTMLResponse:
-        config_rows = await pool.fetch("select key, value from config order by key")
+        config_rows, node_rows, node_job_rows = await asyncio.gather(
+            pool.fetch("select key, value from config order by key"),
+            pool.fetch("select id, alias from node order by id asc"),
+            pool.fetch(
+                "select node_id, count(1)::int as cnt from job where status = $1 group by node_id",
+                ItemStatus.DOWNLOADING,
+            ),
+        )
+        downloading_map: dict[str, int] = {str(r["node_id"]): r["cnt"] for r in node_job_rows}
+        nodes = [
+            {
+                "id": str(r["id"]),
+                "name": r["alias"] or str(r["id"])[:8],
+                "downloading": downloading_map.get(str(r["id"]), 0),
+            }
+            for r in node_rows
+        ]
         return render(
-            "admin.html.j2", ctx={"config": _build_config_tree([dict(r) for r in config_rows])}
+            "admin.html.j2",
+            ctx={"config": _build_config_tree([dict(r) for r in config_rows]), "nodes": nodes},
         )
 
     @app.get("/nodes")
