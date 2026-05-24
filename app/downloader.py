@@ -73,9 +73,11 @@ class Status(enum.IntEnum):
 
 def _pick_query(config: DownloaderConfig) -> LiteralString:
     if config.pick_strategy == PickStrategy.seeders:
-        order_clause: LiteralString = "order by seeders desc, (category = any($3)) desc, tid asc"
+        order_clause: LiteralString = (
+            "order by seeders desc, (category = any($3)) desc, selected_size asc, tid asc"
+        )
     else:
-        order_clause = "order by (category = any($3)) desc, tid asc"
+        order_clause = "order by (category = any($3)) desc, selected_size asc, tid asc"
 
     seeder_clause: LiteralString = cast(LiteralString, config.seeder_condition)  # type: ignore[redundant-cast]
 
