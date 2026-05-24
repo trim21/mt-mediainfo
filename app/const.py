@@ -47,7 +47,7 @@ def pick_order_clause(strategy: PickStrategy, priority_category_param: int) -> L
         )
     return cast(
         LiteralString,
-        f"order by (category = any(${priority_category_param})) desc, tid asc",
+        f"order by tid asc, (category = any(${priority_category_param})) desc",
     )
 
 
