@@ -1,17 +1,14 @@
-import os
-import platform
 import subprocess
 import tempfile
 from collections.abc import Generator
 from datetime import timedelta
 from pathlib import Path
-from typing import NamedTuple, cast
+from typing import NamedTuple
 
 import orjson
 import PIL.Image
 import regex
-from rapidocr import EngineType, RapidOCR
-from rapidocr.utils.output import RapidOCROutput
+from rapidocr_onnxruntime import RapidOCR
 from sslog import logger
 
 from app.utils import must_run_command
@@ -24,44 +21,7 @@ class Point(NamedTuple):
 
 pattern_chinese = regex.compile(r"\p{script=Han}")
 
-_ocr_engine: RapidOCR | None = None
-
-
-def _is_intel_cpu() -> bool:
-    system = platform.system()
-    if system == "Linux":
-        try:
-            with open("/proc/cpuinfo", encoding="utf8") as f:
-                if "GenuineIntel" in f.read():
-                    return True
-        except Exception:
-            logger.debug("failed to read /proc/cpuinfo", exc_info=True)
-    elif system == "Windows":
-        ident = os.environ.get("PROCESSOR_IDENTIFIER", "") or platform.processor() or ""
-        if "Intel" in ident:
-            return True
-    return False
-
-
-def _create_ocr_engine() -> RapidOCR:
-    if _is_intel_cpu():
-        logger.info("Intel CPU detected, using OpenVINO backend")
-        return RapidOCR(
-            params={
-                "Det.engine_type": EngineType.OPENVINO,
-                "Cls.engine_type": EngineType.OPENVINO,
-                "Rec.engine_type": EngineType.OPENVINO,
-            }
-        )
-    logger.info("Using ONNX Runtime backend")
-    return RapidOCR()
-
-
-def _get_ocr_engine() -> RapidOCR:
-    global _ocr_engine
-    if _ocr_engine is None:
-        _ocr_engine = _create_ocr_engine()
-    return _ocr_engine
+ocr_engine = RapidOCR()
 
 
 def get_video_duration(ffprobe_bin: str, video_file: Path) -> int:
@@ -147,16 +107,15 @@ def check_hardcode_chinese_subtitle(
             with PIL.Image.open(file) as img:
                 size = Point(*img.size)
 
-            result = cast(RapidOCROutput, _get_ocr_engine()(str(file)))
-            if not result.txts:
+            result, _ = ocr_engine(file)
+            if not result:
                 continue
-            assert result.boxes is not None
-            for i in range(len(result.txts)):
-                s = result.txts[i]
-                if not s:
+            for points, s, _ in result:
+                points = [Point(int(x), int(y)) for x, y in points]
+                if points[0].y <= size.y / 2:
                     continue
-                y0 = int(result.boxes[i][0][1])
-                if y0 <= size.y / 2:
+
+                if not s:
                     continue
                 chinese_ratio = len(pattern_chinese.findall(s)) / len(s)
                 if chinese_ratio > 0.5:
