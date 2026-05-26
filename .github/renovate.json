@@ -6,6 +6,7 @@
     "local>trim21/renovate-config:python",
     "local>trim21/renovate-config:monthly"
   ],
+  "rebaseWhen": "conflicted",
   "labels": [
     "ci:auto-merge",
     "dependencies"
