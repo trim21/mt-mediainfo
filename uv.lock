@@ -21,6 +21,12 @@ wheels = [
 ]
 
 [[package]]
+name = "antlr4-python3-runtime"
+version = "4.9.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3e/38/7859ff46355f76f8d19459005ca000b6e7012f2f1ca597746cbcd1fbfe5e/antlr4-python3-runtime-4.9.3.tar.gz", hash = "sha256:f224469b4168294902bb1efa80a8bf7855f24c99aef99cbefc1bcd3cce77881b", size = 117034, upload-time = "2021-11-06T17:52:23.524Z" }
+
+[[package]]
 name = "anyio"
 version = "4.13.0"
 source = { registry = "https://pypi.org/simple" }
@@ -45,14 +51,16 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "jinja2" },
+    { name = "onnxruntime" },
     { name = "opendal" },
+    { name = "openvino" },
     { name = "orjson" },
     { name = "pg-dlock" },
     { name = "pillow" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic" },
     { name = "qbittorrent-api" },
-    { name = "rapidocr-onnxruntime" },
+    { name = "rapidocr" },
     { name = "regex" },
     { name = "rich" },
     { name = "rtorrent-rpc" },
@@ -81,14 +89,16 @@ requires-dist = [
     { name = "fastapi", specifier = "==0.136.1" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "jinja2", specifier = "==3.1.6" },
+    { name = "onnxruntime", specifier = ">=1.26.0" },
     { name = "opendal", specifier = "==0.47.1" },
+    { name = "openvino", specifier = ">=2025.1.0" },
     { name = "orjson", specifier = "==3.11.9" },
     { name = "pg-dlock", specifier = "==0.0.0a2" },
     { name = "pillow", specifier = "==12.2.0" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.4" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "qbittorrent-api", specifier = "==2026.5.1" },
-    { name = "rapidocr-onnxruntime", specifier = "==1.4.4" },
+    { name = "rapidocr", specifier = ">=3.8.1" },
     { name = "regex", specifier = "==2026.5.9" },
     { name = "rich", specifier = "==15.0.0" },
     { name = "rtorrent-rpc", specifier = "==0.9.6" },
@@ -237,6 +247,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
+]
+
+[[package]]
+name = "colorlog"
+version = "6.10.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a2/61/f083b5ac52e505dfc1c624eafbf8c7589a0d7f32daa398d2e7590efa5fda/colorlog-6.10.1.tar.gz", hash = "sha256:eb4ae5cb65fe7fec7773c2306061a8e63e02efc2c72eba9d27b0fa23c94f1321", size = 17162, upload-time = "2025-10-16T16:14:11.978Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6d/c1/e419ef3723a074172b68aaa89c9f3de486ed4c2399e2dbd8113a4fdcaf9e/colorlog-6.10.1-py3-none-any.whl", hash = "sha256:2d7e8348291948af66122cff006c9f8da6255d224e7cf8e37d8de2df3bad8c9c", size = 11743, upload-time = "2025-10-16T16:14:10.512Z" },
 ]
 
 [[package]]
@@ -470,6 +492,19 @@ wheels = [
 ]
 
 [[package]]
+name = "omegaconf"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "antlr4-python3-runtime" },
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/09/48/6388f1bb9da707110532cb70ec4d2822858ddfb44f1cdf1233c20a80ea4b/omegaconf-2.3.0.tar.gz", hash = "sha256:d5d4b6d29955cc50ad50c46dc269bcd92c6e00f5f90d23ab5fee7bfca4ba4cc7", size = 3298120, upload-time = "2022-12-08T20:59:22.753Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/94/1843518e420fa3ed6919835845df698c7e27e183cb997394e4a670973a65/omegaconf-2.3.0-py3-none-any.whl", hash = "sha256:7b4df175cdb08ba400f45cae3bdcae7ba8365db4d165fc65fd04b050ab63b46b", size = 79500, upload-time = "2022-12-08T20:59:19.686Z" },
+]
+
+[[package]]
 name = "onnxruntime"
 version = "1.26.0"
 source = { registry = "https://pypi.org/simple" }
@@ -520,6 +555,30 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/a8/7a/33c19dc935ad4a1f71c5682577486b85370594d2f2fb78ceb9b7d208188a/opendal-0.47.1-cp311-abi3-musllinux_1_1_armv7l.whl", hash = "sha256:49f312533fc76acbd3bc0040c114584c0e0e7661f62e0e522efa0825eacbbc8e", size = 17107011, upload-time = "2026-04-30T18:18:29.961Z" },
     { url = "https://files.pythonhosted.org/packages/b8/24/aa064423a77122b983105a825c9574d0536e66d9ee9606dacd4c93412875/opendal-0.47.1-cp311-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:05f36d4a3f464401440d89d415fb5cd604fbefad0c5ac408bbcc1f0f736cff84", size = 18437138, upload-time = "2026-04-30T18:18:27.056Z" },
     { url = "https://files.pythonhosted.org/packages/c7/49/95f6671c8ef04eff65a09ebf93149c03ed6318334a4ddea182a31b43fc8f/opendal-0.47.1-cp311-abi3-win_amd64.whl", hash = "sha256:fa2e403e7f86f57164181d1d0f4b59afc77997f89cdeeab883591622b99bda29", size = 19973547, upload-time = "2026-04-30T18:17:45.838Z" },
+]
+
+[[package]]
+name = "openvino"
+version = "2026.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "openvino-telemetry" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/ee/9efdb99429a01f3f9705a62a93149b8f5ef34405d5840e2c48fcebde9a4a/openvino-2026.1.0-21367-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:d4e8389590b4419adfc4b060a621a20471961624c4f36b05396054389518678e", size = 30887535, upload-time = "2026-04-07T14:18:26.804Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/6a/e71fdc9d07668a149c7dc9dcbfe87d121b329e8297da080201c3ea2abb7e/openvino-2026.1.0-21367-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:4b0559cafdc6ebd96544c7e4a50700cf46c608b7189a947e3a496d5a38badf3a", size = 56819721, upload-time = "2026-04-07T14:18:31.333Z" },
+    { url = "https://files.pythonhosted.org/packages/db/9e/24497251b2ae226d7e9ce5beea3b667169cf0287203a4d138d58e3944736/openvino-2026.1.0-21367-cp312-cp312-manylinux_2_35_aarch64.whl", hash = "sha256:12e3ecb96950173cd3e17a48763f47744f1f048bae7dd8f7bc416f0c665c24e3", size = 26852687, upload-time = "2026-04-07T14:18:34.95Z" },
+    { url = "https://files.pythonhosted.org/packages/73/cb/07035dcbf60347c0706c4f8d3ffb003c34fe8205e4041699a6655cc858c3/openvino-2026.1.0-21367-cp312-cp312-win_amd64.whl", hash = "sha256:21fbc8f9aa765d9ded024311f4e48e38118643cda0f0139dcfa5422c0c457eb6", size = 71174500, upload-time = "2026-04-07T14:18:41.069Z" },
+]
+
+[[package]]
+name = "openvino-telemetry"
+version = "2025.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/71/8a/89d82f1a9d913fb266c2e6dc2f6030935db24b7152963a8db6c4f039787f/openvino_telemetry-2025.2.0.tar.gz", hash = "sha256:8bf8127218e51e99547bf38b8fb85a8b31c9bf96e6f3a82eb0b3b6a34155977c", size = 18894, upload-time = "2025-07-07T10:29:51.159Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3b/ac/5ab0ca0aa269ad3c73f7bfc3801b10e5f56f75a31bf68c1ae8bd51cf70a4/openvino_telemetry-2025.2.0-py3-none-any.whl", hash = "sha256:bcb667e83a44f202ecf4cfa49281715c6d7e21499daec04ff853b7f964833599", size = 25227, upload-time = "2025-07-07T10:29:50.189Z" },
 ]
 
 [[package]]
@@ -788,22 +847,24 @@ wheels = [
 ]
 
 [[package]]
-name = "rapidocr-onnxruntime"
-version = "1.4.4"
+name = "rapidocr"
+version = "3.8.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "colorlog" },
     { name = "numpy" },
-    { name = "onnxruntime" },
+    { name = "omegaconf" },
     { name = "opencv-python" },
     { name = "pillow" },
     { name = "pyclipper" },
     { name = "pyyaml" },
+    { name = "requests" },
     { name = "shapely" },
     { name = "six" },
     { name = "tqdm" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ba/12/1e5497183bdbe782dbb91bad1d0d2297dba4d2831b2652657f7517bfc6df/rapidocr_onnxruntime-1.4.4-py3-none-any.whl", hash = "sha256:971d7d5f223a7a808662229df1ef69893809d8457d834e6373d3854bc1782cbf", size = 14915192, upload-time = "2025-01-17T01:48:25.104Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/4a/fa521d947f0fc7bb304bf11bec4cb66266bd81494588b4cb48dc01001719/rapidocr-3.8.1-py3-none-any.whl", hash = "sha256:650044b1fbce9e6bae5cae462dcf8be754cde11e2f23fc51f65dcc08deae2c46", size = 15080319, upload-time = "2026-04-11T07:13:22.56Z" },
 ]
 
 [[package]]
