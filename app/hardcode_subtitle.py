@@ -5,12 +5,13 @@ import tempfile
 from collections.abc import Generator
 from datetime import timedelta
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 import orjson
 import PIL.Image
 import regex
 from rapidocr import EngineType, RapidOCR
+from rapidocr.utils.output import RapidOCROutput
 from sslog import logger
 
 from app.utils import must_run_command
@@ -146,9 +147,10 @@ def check_hardcode_chinese_subtitle(
             with PIL.Image.open(file) as img:
                 size = Point(*img.size)
 
-            result = _get_ocr_engine()(str(file))
+            result = cast(RapidOCROutput, _get_ocr_engine()(str(file)))
             if not result.txts:
                 continue
+            assert result.boxes is not None
             for i in range(len(result.txts)):
                 s = result.txts[i]
                 if not s:
