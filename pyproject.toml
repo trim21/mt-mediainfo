@@ -18,9 +18,9 @@ dependencies = [
   'durationpy==0.10',
   'fastapi==0.136.1',
   'uvicorn==0.47.0',
-  "rapidocr>=3.8.1",
-  "openvino>=2025.1.0",
-  "onnxruntime>=1.26.0",
+  "rapidocr==3.8.1",
+  "openvino==2026.1.0",
+  "onnxruntime==1.26.0",
   'jinja2==3.1.6',
   'tzdata==2026.2',
   "pillow==12.2.0",
@@ -43,6 +43,7 @@ dev = [
 
 [tool.uv]
 package = false
+override-dependencies = ["antlr4-python3-runtime>=4.13.2"]
 
 [tool.pytest.ini_options]
 cache_dir = '.venv/.cache/pytest'
