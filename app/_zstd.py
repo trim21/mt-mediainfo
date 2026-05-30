@@ -2,25 +2,33 @@
 
 from __future__ import annotations
 
-from typing import IO, Self
+from typing import Protocol, Self
 
 import zstandard
 
 ZSTD_LEVEL = 3
 
 
-def writer(dst: IO[bytes], level: int = ZSTD_LEVEL) -> _ZstdWriter:
+class _Writable(Protocol):
+    def write(self, data: bytes) -> object: ...
+
+
+class _Readable(Protocol):
+    def read(self, size: int = ...) -> bytes: ...
+
+
+def writer(dst: _Writable, level: int = ZSTD_LEVEL) -> _ZstdWriter:
     """Return a write-compress wrapper object."""
     return _ZstdWriter(dst, level)
 
 
-def reader(src: IO[bytes]) -> _ZstdReader:
+def reader(src: _Readable) -> _ZstdReader:
     """Return a read-decompress wrapper object."""
     return _ZstdReader(src)
 
 
 class _ZstdWriter:
-    def __init__(self, dst: IO[bytes], level: int = ZSTD_LEVEL) -> None:
+    def __init__(self, dst: _Writable, level: int = ZSTD_LEVEL) -> None:
         self._dst = dst
         self._cctx = zstandard.ZstdCompressor(level=level)
         self._comp = self._cctx.compressobj()
@@ -33,7 +41,6 @@ class _ZstdWriter:
         remaining = self._comp.flush()
         if remaining:
             self._dst.write(remaining)
-        self._dst.flush()
 
     def close(self) -> None:
         self.flush()
@@ -46,8 +53,8 @@ class _ZstdWriter:
 
 
 class _ZstdReader:
-    def __init__(self, src: IO[bytes]) -> None:
-        self._reader = zstandard.ZstdDecompressor().stream_reader(src)
+    def __init__(self, src: _Readable) -> None:
+        self._reader = zstandard.ZstdDecompressor().stream_reader(src)  # type: ignore[arg-type]
 
     def read(self, size: int = -1) -> bytes:
         if size < 0:
