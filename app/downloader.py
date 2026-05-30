@@ -81,6 +81,7 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
     left join job on (job.tid = thread.tid)
     where
         mediainfo = '' and
+        api_mediainfo = '' and
         thread.info_hash != '' and
         thread.selected_size > 0 and
         thread.selected_size < $1 and
@@ -519,7 +520,7 @@ class Downloader:
             ]
             conn.execute(
                 """
-                    update thread set mediainfo = $1, hard_coded_subtitle = $2, selected_files = $3 where info_hash = $4
+                    update thread set mediainfo = $1, generated_mediainfo_at = current_timestamp, hard_coded_subtitle = $2, selected_files = $3 where info_hash = $4
                     """,
                 [
                     media_info.replace("\x00", ""),

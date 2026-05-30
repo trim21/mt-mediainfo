@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import opendal
 import orjson
@@ -76,6 +77,17 @@ def iter_jsonl_lines(compressed: bytes) -> Iterator[bytes]:
         yield buf
 
 
+def _get_mediainfo(row: dict[str, Any]) -> str:
+    return row.get("mediainfo", "")
+
+
+def _is_api_mediainfo(row: dict[str, Any], mediainfo: str) -> bool:
+    api = row.get("api_mediainfo")
+    if not api:
+        return False
+    return mediainfo == api
+
+
 def main() -> None:
     op = create_operator(load_s3_config())
 
@@ -97,8 +109,10 @@ def main() -> None:
             if not line.strip():
                 continue
             row = orjson.loads(line)
-            mediainfo = row["mediainfo"]
+            mediainfo = _get_mediainfo(row)
             if not mediainfo:
+                continue
+            if _is_api_mediainfo(row, mediainfo):
                 continue
             entry = {
                 "id": row["tid"],

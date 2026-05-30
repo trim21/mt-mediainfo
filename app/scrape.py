@@ -74,7 +74,7 @@ class Scrape:
             select tid from thread
             where
               deleted = false and
-              mediainfo_at is null and
+              api_mediainfo_at is null and
               seeders != 0 and
               category = any($1)
             order by (category = any($3)) desc, tid asc
@@ -117,15 +117,15 @@ class Scrape:
 
             self.__db.execute(
                 """
-                insert into thread (tid, size, mediainfo, category, seeders, deleted, mediainfo_at)
+                insert into thread (tid, size, api_mediainfo, category, seeders, deleted, api_mediainfo_at)
                 values ($1, $2, $3, $4, $5, false, current_timestamp)
                 on conflict (tid) do update set
                   size = excluded.size,
-                  mediainfo = excluded.mediainfo,
+                  api_mediainfo = excluded.api_mediainfo,
                   category = excluded.category,
                   seeders = excluded.seeders,
                   deleted = false,
-                  mediainfo_at = current_timestamp
+                  api_mediainfo_at = current_timestamp
                 """,
                 [
                     tid,
@@ -247,8 +247,9 @@ class Scrape:
             where
               deleted = false and
               info_hash = '' and
-              mediainfo_at is not null and
+              api_mediainfo_at is not null and
               mediainfo = '' and
+              api_mediainfo = '' and
               torrent_invalid = '' and
               seeders != 0 and
               category = any($1)
@@ -468,7 +469,7 @@ class Scrape:
             select tid from thread
             where
               deleted = false and
-              mediainfo_at is null and
+              api_mediainfo_at is null and
               seeders != 0 and
               category = any($1)
             order by (category = any($3)) desc, tid asc
@@ -493,7 +494,7 @@ class Scrape:
                 raise
 
             self.__db.execute(
-                "update thread set mediainfo = $2, mediainfo_at = current_timestamp where tid = $1",
+                "update thread set api_mediainfo = $2, api_mediainfo_at = current_timestamp where tid = $1",
                 [tid, (mediainfo or "").replace("\x00", "")],
             )
 
@@ -546,7 +547,7 @@ class Scrape:
                 entry_date = date.fromisoformat(parts[1])
             except ValueError:
                 continue
-            if entry_date < cutoff:
+            if entry_date < cutoff and entry_date.day != 1 and entry_date != date(2026, 5, 30):
                 self.__op.delete(entry.path)
                 logger.info("deleted old backup {}", entry.path)
 

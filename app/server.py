@@ -787,10 +787,10 @@ def create_app() -> fastapi.FastAPI:
                 ),
                 pool.fetch(
                     """
-                    select (mediainfo_at at time zone 'Asia/Shanghai')::date as day,
+                    select (api_mediainfo_at at time zone 'Asia/Shanghai')::date as day,
                            count(1)::int as count
                     from thread
-                    where mediainfo_at >= $1 and mediainfo_at < $2
+                    where api_mediainfo_at >= $1 and api_mediainfo_at < $2
                     group by day
                     """,
                     start_ts,
@@ -918,7 +918,7 @@ def create_app() -> fastapi.FastAPI:
                 tomorrow,
             ),
             pool.fetchval(
-                "select count(1)::int from thread where mediainfo_at >= $1 and mediainfo_at < $2",
+                "select count(1)::int from thread where api_mediainfo_at >= $1 and api_mediainfo_at < $2",
                 today,
                 tomorrow,
             ),
@@ -967,9 +967,9 @@ def create_app() -> fastapi.FastAPI:
               count(1) as scraped_total,
               count(1) filter (where category = any($1)) as total,
               coalesce(sum(selected_size) filter (where category = any($1)), 0) as total_size,
-              count(1) filter (where deleted = false and mediainfo_at is null
+              count(1) filter (where deleted = false and api_mediainfo_at is null
                                 and seeders != 0 and upload_at >= '2024-01-01' and category = any($1)) as pending_fetch_mediainfo,
-              count(1) filter (where deleted = false and mediainfo_at is not null
+              count(1) filter (where deleted = false and api_mediainfo_at is not null
                                 and mediainfo = '' and info_hash = '' and torrent_invalid = '' and seeders != 0 and category = any($1)) as pending_fetch_torrent,
               count(1) filter (where mediainfo != '' and info_hash != ''
                 and category = any($1)) as done,
@@ -1243,12 +1243,12 @@ def create_app() -> fastapi.FastAPI:
             title="Pending Fetch Mediainfo",
             count_sql="""
             select count(1)::int from thread
-                        where deleted = false and mediainfo_at is null and seeders != 0
+                        where deleted = false and api_mediainfo_at is null and seeders != 0
               and upload_at >= '2024-01-01' and category = any($1)
             """,
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from thread
-                        where deleted = false and mediainfo_at is null and seeders != 0
+                        where deleted = false and api_mediainfo_at is null and seeders != 0
               and upload_at >= '2024-01-01' and category = any($1)
             order by tid desc
             limit $2 offset $3
@@ -1268,12 +1268,12 @@ def create_app() -> fastapi.FastAPI:
             title="Pending Fetch Torrent",
             count_sql="""
             select count(1)::int from thread
-            where deleted = false and mediainfo_at is not null
+            where deleted = false and api_mediainfo_at is not null
                             and mediainfo = '' and info_hash = '' and torrent_invalid = '' and seeders != 0 and category = any($1)
             """,
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from thread
-            where deleted = false and mediainfo_at is not null
+            where deleted = false and api_mediainfo_at is not null
                             and mediainfo = '' and info_hash = '' and torrent_invalid = '' and seeders != 0 and category = any($1)
             order by tid desc
             limit $2 offset $3
@@ -1484,9 +1484,9 @@ def create_app() -> fastapi.FastAPI:
     async def thread_detail(render: Render, tid: int) -> HTMLResponse:
         row = await pool.fetchrow(
             """
-            select tid, category, size, selected_size, selected_files, seeders, mediainfo,
-                   info_hash, hard_coded_subtitle, created_at, upload_at, mediainfo_at,
-                   torrent_fetched_at, torrent_invalid
+             select tid, category, size, selected_size, selected_files, seeders, mediainfo, api_mediainfo,
+                    info_hash, hard_coded_subtitle, created_at, upload_at, api_mediainfo_at, generated_mediainfo_at,
+                    torrent_fetched_at, torrent_invalid
             from thread
             where tid = $1
             """,
