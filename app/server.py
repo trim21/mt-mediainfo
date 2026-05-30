@@ -960,6 +960,7 @@ def create_app() -> fastapi.FastAPI:
             downloading_node_rows,
             done_node_rows,
             scrape_status_rows,
+            skipped_stats,
         ) = await asyncio.gather(
             pool.fetchrow(
                 """
@@ -968,10 +969,10 @@ def create_app() -> fastapi.FastAPI:
               count(1) filter (where category = any($1)) as total,
               coalesce(sum(selected_size) filter (where category = any($1)), 0) as total_size,
               count(1) filter (where deleted = false and api_mediainfo_at is null
-                                and seeders != 0 and category = any($1)) as pending_fetch_mediainfo,
+                                and mediainfo = '' and seeders != 0 and category = any($1)) as pending_fetch_mediainfo,
               count(1) filter (where deleted = false and api_mediainfo_at is not null
                                 and mediainfo = '' and info_hash = '' and torrent_invalid = '' and seeders != 0 and category = any($1)) as pending_fetch_torrent,
-              count(1) filter (where mediainfo != '' and info_hash != ''
+              count(1) filter (where mediainfo != '' and info_hash != '' and seeders != 0
                 and category = any($1)) as done,
               coalesce(sum(selected_size) filter (where mediainfo != '' and info_hash != ''
                 and category = any($1)), 0) as done_size
@@ -1045,6 +1046,15 @@ def create_app() -> fastapi.FastAPI:
                 ItemStatus.DONE,
             ),
             pool.fetch("select * from scrape_status order by name"),
+            pool.fetchrow(
+                """
+            select count(1)::int as count,
+                   coalesce(sum(selected_size), 0)::int8 as size
+            from thread
+            where category = any($1) and (deleted = true or seeders = 0)
+            """,
+                SELECTED_CATEGORY,
+            ),
         )
 
         thread_stats = cast(asyncpg.Record, thread_stats)
@@ -1121,20 +1131,9 @@ def create_app() -> fastapi.FastAPI:
             for r in scrape_status_rows
         ]
 
-        skipped = (
-            total
-            - done
-            - downloading
-            - failed
-            - removed_by_client
-            - pending_fetch_mediainfo
-            - pending_fetch_torrent
-            - pending_to_download
-        )
-
-        skipped_size = (
-            total_size - done_size - downloading_size - failed_size - removed_by_client_size
-        )
+        skipped_stats = cast(asyncpg.Record, skipped_stats)
+        skipped = cast(int, skipped_stats["count"])
+        skipped_size = cast(int, skipped_stats["size"])
 
         def pct(n: int) -> str:
             if total == 0:
