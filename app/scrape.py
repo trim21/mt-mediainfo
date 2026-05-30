@@ -213,7 +213,7 @@ class Scrape:
 
     TORRENT_DL_LIMIT = 10
     TORRENT_DL_TTL = timedelta(days=2)
-    DAILY_TORRENT_LIMIT = 2500
+    DAILY_TORRENT_LIMIT = 2800
     DAILY_TORRENT_TTL = timedelta(days=2)
 
     def _torrent_dl_count_key(self, tid: int, today: str) -> str:
