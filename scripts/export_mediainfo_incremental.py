@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
@@ -7,9 +8,10 @@ from typing import Any
 
 import opendal
 import orjson
-import zstandard
 from tqdm import tqdm
 
+from app._zstd import reader as zstd_reader
+from app._zstd import writer as zstd_writer
 from app.config import load_s3_config
 from app.torrent_store import create_operator
 from app.utils import human_readable_size
@@ -73,8 +75,7 @@ def download_backup(op: opendal.Operator, backup_date: date) -> bytes:
 
 
 def iter_jsonl_lines(compressed: bytes) -> Iterator[bytes]:
-    dctx = zstandard.ZstdDecompressor()
-    reader = dctx.stream_reader(compressed)
+    reader = zstd_reader(io.BytesIO(compressed))
     buf = b""
     while True:
         chunk = reader.read(1024 * 1024)
@@ -137,14 +138,10 @@ def _is_api_mediainfo(row: dict[str, Any], mediainfo: str) -> bool:
 
 
 def write_export(entries: list[dict[str, Any]], output_path: Path) -> int:
-    cctx = zstandard.ZstdCompressor(level=3)
     count = 0
-    with (
-        output_path.open("wb") as f_out,
-        cctx.stream_writer(f_out) as writer,
-    ):
+    with output_path.open("wb") as f_out, zstd_writer(f_out) as w:
         for entry in entries:
-            writer.write(orjson.dumps(entry) + b"\n")
+            w.write(orjson.dumps(entry) + b"\n")
             count += 1
     return count
 

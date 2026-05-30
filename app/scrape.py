@@ -10,10 +10,10 @@ from datetime import date, datetime, timedelta
 import orjson
 import psycopg.rows
 import pydantic
-import zstandard
 from bencode2 import BencodeDecodeError
 from sslog import logger
 
+from app._zstd import writer as zstd_writer
 from app.config import ScrapeConfig
 from app.const import PRIORITY_CATEGORY, SELECTED_CATEGORY, TZ_SHANGHAI, search_cursor_key
 from app.db import Database
@@ -517,7 +517,6 @@ class Scrape:
 
     def backup_to_s3(self, backup_date: date) -> None:
         """Dump thread and job tables as zstd-compressed JSON Lines to S3."""
-        cctx = zstandard.ZstdCompressor()
         for table in ("thread", "job", "node"):
             with (
                 io.BytesIO() as buf,
@@ -525,11 +524,11 @@ class Scrape:
                 conn.cursor(row_factory=psycopg.rows.dict_row) as cur,
             ):
                 raw_size = 0
-                with cctx.stream_writer(buf, closefd=False) as writer:
+                with zstd_writer(buf) as w:
                     for row in cur.stream(f"SELECT * FROM {table}"):
                         encoded = orjson.dumps(row)
-                        writer.write(encoded)
-                        writer.write(b"\n")
+                        w.write(encoded)
+                        w.write(b"\n")
                         raw_size += len(encoded)
                         raw_size += 1
                 key = f"backups/{backup_date}/{table}.jsonl.zst"
@@ -616,14 +615,13 @@ class Scrape:
                 raise RuntimeError(f"pg_dump failed: {err}")
 
             zst_path = os.path.join(tmp_dir, "dump.sql.zst")
-            cctx = zstandard.ZstdCompressor()
             with (
                 open(sql_path, "rb") as src,
                 open(zst_path, "wb") as dst,
-                cctx.stream_writer(dst, closefd=False) as writer,
+                zstd_writer(dst) as w,
             ):
                 while chunk := src.read(65536):
-                    writer.write(chunk)
+                    w.write(chunk)
 
             key = f"pg_dumps/{backup_date}/dump.sql.zst"
             with open(zst_path, "rb") as src:
