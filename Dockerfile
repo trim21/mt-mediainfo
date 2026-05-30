@@ -17,7 +17,7 @@ VOLUME ["/data"]
 
 ENTRYPOINT ["python", "main.py"]
 
-RUN apt-get update && apt-get install -y mediainfo ffmpeg && \
+RUN apt-get update && apt-get install -y mediainfo ffmpeg postgresql-client && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./

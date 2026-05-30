@@ -1,6 +1,8 @@
 import enum
 import io
 import os
+import subprocess
+import tempfile
 import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
@@ -38,10 +40,12 @@ class RunStatus(str, enum.Enum):
 class Scrape:
     mteam_client: MTeamAPI
     __db: Database
+    __config: ScrapeConfig
 
     KV_QUOTA_EXHAUSTED = "quota_exhausted.today"
 
     def __init__(self, c: ScrapeConfig):
+        self.__config = c
         self.__db = Database(c.pg_dsn())
         self.__db.wait_db_migration()
         self.mteam_client = MTeamAPI(c)
@@ -564,6 +568,98 @@ class Scrape:
             return RunResult.error
         return RunResult.ok
 
+    def _pg_dump_to_s3(self, backup_date: date) -> None:
+        """Dump the entire database with pg_dump and upload to S3."""
+        c = self.__config
+
+        env = os.environ.copy()
+        env["PGPASSWORD"] = c.pg_password or ""
+
+        args = [
+            "pg_dump",
+            "--host",
+            c.pg_host,
+            "--port",
+            str(c.pg_port),
+            "--username",
+            c.pg_user or "postgres",
+            "--dbname",
+            c.pg_db,
+            "--no-owner",
+            "--no-acl",
+            "--no-comments",
+        ]
+
+        if c.pg_sslmode:
+            env["PGSSLMODE"] = c.pg_sslmode
+        if c.pg_ssl_rootcert:
+            env["PGSSLROOTCERT"] = c.pg_ssl_rootcert
+        if c.pg_ssl_cert:
+            env["PGSSLCERT"] = c.pg_ssl_cert
+        if c.pg_ssl_key:
+            env["PGSSLKEY"] = os.path.join(tempfile.gettempdir(), "pg-client.key")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            sql_path = os.path.join(tmp_dir, "dump.sql")
+            args_with_file = [*args, "--file", sql_path]
+
+            result = subprocess.run(
+                args_with_file,
+                env=env,
+                capture_output=True,
+                check=False,
+            )
+
+            if result.returncode != 0:
+                err = result.stderr.decode(errors="replace")
+                logger.error("pg_dump failed (exit {}): {}", result.returncode, err)
+                raise RuntimeError(f"pg_dump failed: {err}")
+
+            zst_path = os.path.join(tmp_dir, "dump.sql.zst")
+            cctx = zstandard.ZstdCompressor()
+            with (
+                open(sql_path, "rb") as src,
+                open(zst_path, "wb") as dst,
+                cctx.stream_writer(dst, closefd=False) as writer,
+            ):
+                while chunk := src.read(65536):
+                    writer.write(chunk)
+
+            key = f"pg_dumps/{backup_date}/dump.sql.zst"
+            with open(zst_path, "rb") as src:
+                s3 = self.__op.open(key, "wb")
+                with s3:  # type: ignore[call-arg]
+                    while chunk := src.read(65536):
+                        s3.write(chunk)
+            logger.info("pg_dump backed up to s3 ({})", key)
+
+        cutoff = backup_date - timedelta(days=7)
+        for entry in self.__op.scan("pg_dumps/"):
+            parts = entry.path.split("/")
+            if len(parts) < 2:
+                continue
+            try:
+                entry_date = date.fromisoformat(parts[1])
+            except ValueError:
+                continue
+            if entry_date < cutoff and entry_date.day != 1 and entry_date != date(2026, 5, 30):
+                self.__op.delete(entry.path)
+                logger.info("deleted old pg_dump {}", entry.path)
+
+    def __run_pg_dump(self) -> RunResult:
+        today = datetime.now(TZ_SHANGHAI).date()
+        last = self.__kv.get("last_pg_dump_date")
+        if last == today.isoformat():
+            logger.info("skipping pg_dump (already done today)")
+            return RunResult.ok
+        try:
+            self._pg_dump_to_s3(today)
+            self.__kv.set("last_pg_dump_date", today.isoformat())
+        except Exception:
+            logger.exception("failed to pg_dump to s3")
+            return RunResult.error
+        return RunResult.ok
+
     def __update_status(self, name: str, result: RunStatus, next_allowed: datetime | None) -> None:
         self.__db.execute(
             """
@@ -589,6 +685,7 @@ class Scrape:
             "3-fetch-torrent": lambda: self.__run_fetch_torrents(),
             "4-backup": lambda: self.__run_backup(),
             "5-backfill": lambda: self.backfill_selected_size(),
+            "6-pg-dump": lambda: self.__run_pg_dump(),
         }
 
         # Earliest time each operation is allowed to run again
