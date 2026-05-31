@@ -608,11 +608,12 @@ class Scrape:
                     w.write(chunk)
 
             key = f"pg_dumps/{backup_date}/dump.sql.zst"
-            with open(zst_path, "rb") as src:
-                s3 = self.__op.open(key, "wb")
-                with s3:  # type: ignore[call-arg]
-                    while chunk := src.read(65536):
-                        s3.write(chunk)
+            with (
+                open(zst_path, "rb") as src,
+                self.__op.open(key, "wb") as s3,
+            ):
+                while chunk := src.read(65536):
+                    s3.write(chunk)
             logger.info("pg_dump backed up to s3 ({})", key)
 
         cutoff = backup_date - timedelta(days=7)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, Self
+from typing import IO, Protocol, Self, cast
 
 import zstandard
 
@@ -54,7 +54,7 @@ class _ZstdWriter:
 
 class _ZstdReader:
     def __init__(self, src: _Readable) -> None:
-        self._reader = zstandard.ZstdDecompressor().stream_reader(src)  # type: ignore[arg-type]
+        self._reader = zstandard.ZstdDecompressor().stream_reader(cast(IO[bytes], src))
 
     def read(self, size: int = -1) -> bytes:
         if size < 0:

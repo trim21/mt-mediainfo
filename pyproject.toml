@@ -26,7 +26,7 @@ dependencies = [
   "regex==2026.5.9",
   "asyncpg==0.31.0",
   # "polars==1.39.3",
-  "opendal==0.47.1",
+  "opendal>=0.47.2",
   "zstandard==0.25.0",
   "pg-dlock==0.0.0a2",
   "boto3>=1.43.18",
@@ -42,6 +42,14 @@ dev = [
 
 [tool.uv]
 package = false
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+explicit = true
+
+[tool.uv.sources]
+opendal = { index = "testpypi" }
 
 [tool.pytest.ini_options]
 cache_dir = '.venv/.cache/pytest'
