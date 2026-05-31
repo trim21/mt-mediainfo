@@ -409,6 +409,45 @@ class Scrape:
 
         return RunResult.ok
 
+    def backfill_bdmv(self) -> RunResult:
+        """Mark existing BDMV torrents as selected_size=-2."""
+        if self.__kv.get("backfill_bdmv_done") == "1":
+            return RunResult.ok
+
+        cursor = parse_obj(int, self.__kv.get("backfill_bdmv_cursor") or "0")
+
+        tids: list[tuple[int]] = self.__db.fetch_all(
+            """
+            select tid from thread
+            where info_hash != '' and selected_size != -2 and tid > $1
+            order by tid
+            limit 1000
+            """,
+            [cursor],
+        )
+
+        if not tids:
+            self.__kv.set("backfill_bdmv_done", "1")
+            return RunResult.ok
+
+        for (tid,) in tids:
+            tc = self.__store.read(tid)
+            if tc is None:
+                continue
+            try:
+                t = parse_torrent(tc)
+            except (pydantic.ValidationError, BencodeDecodeError):
+                continue
+
+            if is_bdmv(torrent=t):
+                self.__db.execute(
+                    """update thread set selected_size = -2 where tid = $1""",
+                    [tid],
+                )
+
+        self.__kv.set("backfill_bdmv_cursor", str(tids[-1][0]))
+        return RunResult.ok
+
     @staticmethod
     def __is_rate_limited(e: MTeamRequestError) -> bool:
         return e.message == "請求過於頻繁"
@@ -766,6 +805,7 @@ class Scrape:
             "5-backfill": lambda: self.backfill_selected_size(),
             "6-pg-dump": lambda: self.__run_pg_dump(),
             "7-export-mediainfo": lambda: self.__run_export_mediainfo(),
+            "8-backfill-bdmv": lambda: self.backfill_bdmv(),
         }
 
         # Earliest time each operation is allowed to run again

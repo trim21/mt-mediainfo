@@ -23,6 +23,7 @@ The scraper in `app/scrape.py` is a long-running scheduler that moves threads fr
 | `backfill_selected_size`  | `5-backfill`         | Recompute selected_size for legacy rows    |
 | `_pg_dump_to_s3`          | `6-pg-dump`          | Daily raw pg_dump backup to S3             |
 | `_export_mediainfo_to_s3` | `7-export-mediainfo` | Monthly incremental mediainfo export to S3 |
+| `backfill_bdmv`           | `8-backfill-bdmv`    | Mark BDMV torrents as selected_size=-2     |
 
 - A rate-limited operation gets a 5-minute cooldown; only that operation pauses, others continue
 - Status per operation is tracked in the `scrape_status` table

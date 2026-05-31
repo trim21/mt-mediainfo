@@ -60,6 +60,12 @@
           <th>Skipped / No seeders</th>
           <td>{{ skipped }}</td>
         </tr>
+        {% if bdmv > 0 %}
+        <tr>
+          <th>BDMV</th>
+          <td>{{ bdmv }}</td>
+        </tr>
+        {% endif %}
         </tbody>
       </table>
 

@@ -18,7 +18,7 @@ A thread represents a torrent page on M-Team. Threads are stored in the `thread`
 | `generated_mediainfo_at` | `timestamptz NULL` | When local mediainfo was extracted                                                                      |
 | `torrent_invalid`        | `text`             | Torrent error reason (`''` = valid, `'file error'` = download failure, `'parse error'` = parse failure) |
 | `info_hash`              | `text`             | Torrent info hash (`''` = torrent file not yet downloaded)                                              |
-| `selected_size`          | `int8`             | Size of largest video file (`0` = not computed, `-1` = no video file found)                             |
+| `selected_size`          | `int8`             | Size of largest video file (`0` = not computed, `-1` = no video file found, `-2` = BDMV)                |
 | `deleted`                | `bool`             | Marked as deleted on M-Team                                                                             |
 | `seeders`                | `int8`             | Number of seeders                                                                                       |
 | `hard_coded_subtitle`    | `bool`             | Whether hardcoded Chinese subtitles were detected                                                       |
@@ -63,6 +63,8 @@ scrape_search() discovers thread
        │
        ▼
   ┌─ selected_size == -1 ──► skipped_threads (no video file)
+  │
+  ├─ selected_size == -2 ──► skipped_threads (BDMV)
   │
   └─ selected_size > 0 ──► pending_download_threads (Stage 3)
        │
