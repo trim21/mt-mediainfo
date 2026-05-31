@@ -1349,6 +1349,24 @@ def create_app() -> fastapi.FastAPI:
             show_failed_reason=False,
         )
 
+    @app.get("/threads/bdmv")
+    async def threads_bdmv(render: Render, page: Annotated[int, Query()] = 1) -> HTMLResponse:
+        return await _render_thread_list(
+            render,
+            title="BDMV",
+            count_sql="select count(1)::int from thread where selected_size = -2 and category = any($1)",
+            rows_sql="""
+            select tid, category, size, selected_size, seeders, created_at from thread
+            where selected_size = -2 and category = any($3)
+            order by created_at desc
+            limit $1 offset $2
+            """,
+            params=[SELECTED_CATEGORY],
+            page=page,
+            show_progress=False,
+            show_failed_reason=False,
+        )
+
     @app.get("/thread/{tid}")
     async def thread_detail(render: Render, tid: int) -> HTMLResponse:
         row = await pool.fetchrow(
