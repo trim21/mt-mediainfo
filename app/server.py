@@ -530,13 +530,16 @@ def create_app() -> fastapi.FastAPI:
     pool = asyncpg.create_pool(cfg.pg_dsn(), init=_init_connection)
     s3_op = create_operator(load_s3_config())
     s3cfg = load_s3_config()
-    s3_client: S3Client = botocore.session.get_session().create_client(
-        "s3",
-        region_name=s3cfg.s3_region,
-        endpoint_url=s3cfg.s3_endpoint,
-        aws_access_key_id=s3cfg.s3_access_key_id,
-        aws_secret_access_key=s3cfg.s3_secret_access_key,
-        config=BotoConfig(signature_version="s3v4"),
+    s3_client = cast(
+        S3Client,
+        botocore.session.get_session().create_client(
+            "s3",
+            region_name=s3cfg.s3_region,
+            endpoint_url=s3cfg.s3_endpoint,
+            aws_access_key_id=s3cfg.s3_access_key_id,
+            aws_secret_access_key=s3cfg.s3_secret_access_key,
+            config=BotoConfig(signature_version="s3v4"),
+        ),
     )
 
     @asynccontextmanager
