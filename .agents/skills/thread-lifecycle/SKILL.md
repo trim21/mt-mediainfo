@@ -6,120 +6,134 @@ user-invocable: false
 
 # Thread Lifecycle (Database)
 
-A thread represents a torrent page on M-Team. Threads are stored in the `thread` table and progress through several stages based on column values. There is no explicit `status` column — the stage is determined by a combination of `mediainfo_at`, `mediainfo`, `info_hash`, `torrent_invalid`, and `selected_size`.
+A thread represents a torrent page on M-Team. Threads are stored in the `thread` table and progress through several pipeline stages. Stage membership is defined by **views** (`013_thread_pipeline_view.sql`), not by a status column. Scraper and downloader queries use these views to avoid duplicating WHERE conditions.
 
 ## Key Columns
 
-| Column                | Type               | Purpose                                                                                                                                |
-| --------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `mediainfo_at`        | `timestamptz NULL` | When mediainfo was fetched (NULL = not yet attempted)                                                                                  |
-| `mediainfo`           | `text`             | Mediainfo text (`''` = not yet obtained)                                                                                               |
-| `torrent_invalid`     | `text`             | Torrent error reason (`''` = valid or not yet checked, `'file error'` = download failure, `'parse error'` = decode/validation failure) |
-| `info_hash`           | `text`             | Torrent info hash (`''` = torrent file not yet downloaded)                                                                             |
-| `selected_size`       | `int8`             | Size of largest video file (`0` = not computed, `-1` = no video file found)                                                            |
-| `deleted`             | `bool`             | Marked as deleted on M-Team                                                                                                            |
-| `seeders`             | `int8`             | Number of seeders                                                                                                                      |
-| `hard_coded_subtitle` | `bool`             | Whether hardcoded Chinese subtitles were detected in the video file                                                                    |
-| `torrent_fetched_at`  | `timestamptz NULL` | When the .torrent file was downloaded                                                                                                  |
-| `created_at`          | `timestamptz`      | When the thread row was first created                                                                                                  |
-| `upload_at`           | `timestamptz`      | When the torrent was uploaded to M-Team                                                                                                |
+| Column                   | Type               | Purpose                                                                                                 |
+| ------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------- |
+| `api_mediainfo`          | `text`             | M-Team API mediainfo (written by scraper; `''` = not fetched or empty)                                  |
+| `api_mediainfo_at`       | `timestamptz NULL` | When M-Team API mediainfo was fetched (NULL = not yet attempted)                                        |
+| `mediainfo`              | `text`             | Locally extracted mediainfo (written by downloader; `''` = not yet extracted)                           |
+| `generated_mediainfo_at` | `timestamptz NULL` | When local mediainfo was extracted                                                                      |
+| `torrent_invalid`        | `text`             | Torrent error reason (`''` = valid, `'file error'` = download failure, `'parse error'` = parse failure) |
+| `info_hash`              | `text`             | Torrent info hash (`''` = torrent file not yet downloaded)                                              |
+| `selected_size`          | `int8`             | Size of largest video file (`0` = not computed, `-1` = no video file found)                             |
+| `deleted`                | `bool`             | Marked as deleted on M-Team                                                                             |
+| `seeders`                | `int8`             | Number of seeders                                                                                       |
+| `hard_coded_subtitle`    | `bool`             | Whether hardcoded Chinese subtitles were detected                                                       |
+| `torrent_fetched_at`     | `timestamptz NULL` | When the .torrent file was downloaded                                                                   |
+| `created_at`             | `timestamptz`      | When the thread row was first created                                                                   |
+| `upload_at`              | `timestamptz`      | When the torrent was uploaded to M-Team                                                                 |
+
+## Pipeline Views
+
+Six views define the pipeline stages. All code selects from these views instead of writing raw WHERE conditions.
+
+| View                        | Purpose                                    | Used by                                                |
+| --------------------------- | ------------------------------------------ | ------------------------------------------------------ |
+| `pending_mediainfo_threads` | Threads needing M-Team API mediainfo fetch | scraper `scrape_detail`, `scrape_mediainfo`            |
+| `pending_torrent_threads`   | Threads needing .torrent file download     | scraper `fetch_torrent`                                |
+| `pending_download_threads`  | Threads ready for downloader               | downloader `_pick_query`, server pending-download page |
+| `completed_threads`         | Threads with mediainfo (API or local)      | server done page                                       |
+| `skipped_threads`           | Threads that can't produce mediainfo       | reference only                                         |
+| `dormant_threads`           | Threads with no seeders or deleted         | server skipped count                                   |
+
+See `app/sql/migrations/013_thread_pipeline_view.sql` for the full definition.
 
 ## Lifecycle Stages
 
 ```
 scrape_search() discovers thread
-  mediainfo_at=NULL, mediainfo='', info_hash=''
+  api_mediainfo_at=NULL, api_mediainfo='', mediainfo='', info_hash=''
        │
        ▼
-  Stage 1: Pending Fetch Mediainfo
+  pending_mediainfo_threads (Stage 1)
        │
        ├── scrape_mediainfo() or scrape_detail()
-       │   sets mediainfo_at, possibly mediainfo
+       │   sets api_mediainfo, api_mediainfo_at
        │
        ▼
-  ┌─ mediainfo != '' ──► Stage 5: Done (API mediainfo)
+  ┌─ api_mediainfo != '' ──► completed_threads (M-Team has it, no download needed)
   │
-  └─ mediainfo == '' ──► Stage 2: Pending Fetch Torrent
+  └─ api_mediainfo == '' ──► pending_torrent_threads (Stage 2)
        │
        ├── fetch_torrent()
        │   downloads .torrent, parses info_hash, computes selected_size
        │
        ▼
-  ┌─ selected_size == -1 ──► Terminal: No video file (skipped)
+  ┌─ selected_size == -1 ──► skipped_threads (no video file)
   │
-  └─ selected_size > 0 ──► Stage 3: Pending Download
+  └─ selected_size > 0 ──► pending_download_threads (Stage 3)
        │
-       ├── pick_job() in downloader.py
-       │   creates job, adds to qBittorrent
+       ├── downloader picks → creates job, adds to qBittorrent
        │
        ▼
   Stage 4: Downloading (tracked by job table)
        │
        ├── __process_local_torrent()
-       │   extracts mediainfo and checks hardcoded subtitles
+       │   extracts mediainfo, sets generated_mediainfo_at
        │
        ▼
-  Stage 5: Done (local mediainfo)
+  completed_threads (Stage 5: local mediainfo)
 ```
 
 ## Stage Details
 
-### Stage 1: Pending Fetch Mediainfo
+### pending_mediainfo_threads
 
-- **Condition**: `mediainfo_at IS NULL AND deleted = false AND seeders != 0`
-- **Action**: `scrape_mediainfo()` calls M-Team `/api/torrent/mediaInfo` API
-- **Transition**: Sets `mediainfo_at = current_timestamp`. If API returns mediainfo text, sets `mediainfo` → Done. If empty, → Stage 2.
-- **Alternative**: `scrape_detail()` also sets `mediainfo_at` and `mediainfo` via `/api/torrent/detail`
+- **Definition**: `deleted=false AND seeders!=0 AND api_mediainfo_at IS NULL AND api_mediainfo=''`
+- **Action**: scraper calls M-Team API to fetch mediainfo
+- **Transition**: Sets `api_mediainfo` and `api_mediainfo_at`:
+  - `api_mediainfo != ''` → `completed_threads` (M-Team has mediainfo, no local extraction needed)
+  - `api_mediainfo == ''` → `pending_torrent_threads` (need .torrent for local extraction)
 
-### Stage 2: Pending Fetch Torrent
+### pending_torrent_threads
 
-- **Condition**: `mediainfo_at IS NOT NULL AND mediainfo = '' AND info_hash = '' AND torrent_invalid = '' AND seeders != 0`
-- **Action**: `fetch_torrent()` downloads the `.torrent` file via M-Team API, parses it to extract `info_hash`, computes `selected_size`, stores content via `TorrentStore`
-- **Transition**: Sets `info_hash`, `selected_size`, `torrent_fetched_at`
-- **Edge cases**:
-  - Torrent file download error → sets `torrent_invalid = 'file error'` (terminal)
-  - Torrent file parse error → sets `torrent_invalid = 'parse error'` (terminal)
-  - No video file in torrent → sets `selected_size = -1` (skipped by download)
+- **Definition**: `deleted=false AND seeders!=0 AND api_mediainfo_at IS NOT NULL AND mediainfo='' AND api_mediainfo='' AND info_hash='' AND torrent_invalid=''`
+- **Action**: scraper downloads `.torrent` file, parses it, stores content via `TorrentStore`
+- **Transition**: Sets `info_hash`, `selected_size`, `torrent_fetched_at`:
+  - `selected_size > 0` → `pending_download_threads`
+  - `selected_size <= 0` → `skipped_threads`
 
-### Stage 3: Pending Download
+### pending_download_threads
 
-- **Condition**: `mediainfo = '' AND info_hash != '' AND selected_size > 0`
-- **Action**: `__pick_and_add_jobs()` in `app/downloader.py` selects threads ordered by priority category then `tid ASC`, creates a job, adds torrent to qBittorrent
-- **Filters**: Must have `seeders != 0`, `category` in `SELECTED_CATEGORY`, `selected_size < single_torrent_size_limit`, no existing job
+- **Definition**: `deleted=false AND seeders!=0 AND mediainfo='' AND api_mediainfo='' AND info_hash!='' AND selected_size>0`
+- **Action**: downloader picks threads, creates a job, adds torrent to qBittorrent
+- **Additional downloader filters**: `selected_size < single_torrent_size_limit`, `category = any(SELECTED_CATEGORY)`, `seeder_condition`, no existing job
 
-### Stage 4: Downloading
+### completed_threads
 
-- **Tracked by**: `job` table with `status = 'downloading'`
-- **Action**: qBittorrent downloads the torrent, node monitors progress
-- **See**: `qb-torrent-lifecycle` skill for qBittorrent-side details
-
-### Stage 5: Done
-
-- **Condition**: `mediainfo_at IS NOT NULL AND mediainfo != ''`
+- **Definition**: `deleted=false AND seeders!=0 AND ((mediainfo!='' AND info_hash!='') OR api_mediainfo!='')`
 - **Two paths**:
-  - **API mediainfo**: Obtained directly from M-Team API in Stage 1 (no download needed, `info_hash` may be `''`)
-  - **Local mediainfo**: Extracted from downloaded file by `__process_local_torrent()` (has `info_hash`, also sets `hard_coded_subtitle`)
-- **Web UI**: Done page filters by `info_hash != ''` and joins `job` with `status = 'done'` to show only locally processed threads
+  - M-Team API mediainfo: `api_mediainfo != ''`
+  - Local extraction: `mediainfo != '' AND info_hash != ''` (also has `generated_mediainfo_at`)
 
-## Terminal States
+### skipped_threads
 
-| State                         | Condition                         | Cause                                       |
-| ----------------------------- | --------------------------------- | ------------------------------------------- |
-| Deleted                       | `deleted = true`                  | Thread removed from M-Team (`種子未找到`)   |
-| Invalid torrent (file error)  | `torrent_invalid = 'file error'`  | Torrent file could not be downloaded        |
-| Invalid torrent (parse error) | `torrent_invalid = 'parse error'` | Torrent file could not be decoded/validated |
-| No video file                 | `selected_size = -1`              | No video file found in torrent              |
+- **Definition**: `deleted=false AND seeders!=0 AND (torrent_invalid!='' OR (selected_size<=0 AND info_hash!=''))`
+- Terminal: can't produce mediainfo (invalid torrent or no video file)
 
-## Backfill
+### dormant_threads
 
-`backfill_selected_size()` recomputes `selected_size` for threads where `selected_size = 0 AND info_hash != ''`. This handles threads that had their torrent downloaded before `selected_size` was introduced. Sets `-1` for no video file.
+- **Definition**: `deleted OR seeders=0`
+- Not actively processed. If seeders return (>0) and not deleted, `scrape_search` upserts `seeders` and `scrape_detail` or `scrape_mediainfo` will pick them up.
+
+## Mediainfo Sources
+
+The project distinguishes two sources of mediainfo:
+
+| Source           | Column          | Timestamp                | Writer     |
+| ---------------- | --------------- | ------------------------ | ---------- |
+| M-Team API       | `api_mediainfo` | `api_mediainfo_at`       | scraper    |
+| Local extraction | `mediainfo`     | `generated_mediainfo_at` | downloader |
+
+Export scripts compare `mediainfo` vs `api_mediainfo`: if they match, the data came from M-Team; if they differ, it's locally generated.
 
 ## Related
 
+- `app/sql/migrations/013_thread_pipeline_view.sql` — View definitions
+- `app/sql/migrations/012_api_mediainfo.sql` — `api_mediainfo` column and `api_mediainfo_at` rename
 - `app/scrape.py` — All scraping and fetching logic
-- `app/downloader.py` — Download and processing logic (Stages 3-5)
-- `app/server.py` — Web UI pages for each stage (`/threads/pending-mediainfo`, `/threads/pending-torrent`, `/threads/pending-download`, `/threads/done`, etc.)
-- `app/torrent_store.py` — S3-backed torrent content storage
-- `app/sql/migrations/` — Table definitions (see `001_initial_schema.sql` and later migrations)
-- `scrape-mteam` skill — scraper scheduling, rate limiting, and fetch operations
-- `server-dashboard` skill — page groupings and server-side route behavior
+- `app/downloader.py` — Download and processing logic
+- `app/server.py` — Dashboard queries using views

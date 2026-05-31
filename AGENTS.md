@@ -39,9 +39,10 @@ This project downloads torrents from M-Team, processes local media files to extr
 Tracks every M-Team torrent thread (discovered via search or gap-fill) along with its metadata, mediainfo, torrent info, and processing state.
 
 - **Inserted**: Upserted during `scrape_search()` (search results), `scrape_detail()` (detail fetch), and `scrape_mediainfo()` (mediainfo fetch) in `app/scrape.py`. Uses `ON CONFLICT (tid) DO UPDATE`.
-- **Updated**: `info_hash`, `selected_size`, `selected_files`, `torrent_fetched_at` set when a .torrent is downloaded and parsed; `mediainfo`, `hard_coded_subtitle` set by `app/downloader.py` after local extraction; `deleted=true` when M-Team reports torrent not found; `torrent_invalid` set on parse errors.
+- **Updated**: `info_hash`, `selected_size`, `selected_files`, `torrent_fetched_at` set when a .torrent is downloaded and parsed; `mediainfo`, `hard_coded_subtitle`, `generated_mediainfo_at` set by `app/downloader.py` after local extraction; `api_mediainfo`, `api_mediainfo_at` set by scraper when fetching M-Team API mediainfo; `deleted=true` when M-Team reports torrent not found; `torrent_invalid` set on parse errors.
 - **Deleted**: Never physically deleted — uses soft-delete via `deleted = true`.
 - **Read**: Queried by downloader to pick jobs, by scraper to find pending work, and by server for dashboard/filter pages.
+- **Key columns**: `api_mediainfo` (M-Team API data), `api_mediainfo_at` (when fetched), `mediainfo` (locally extracted), `generated_mediainfo_at` (when local extraction occurred). See `thread-lifecycle` skill for pipeline stage definitions via views (`pending_mediainfo_threads`, `pending_torrent_threads`, `pending_download_threads`, `completed_threads`, `skipped_threads`, `dormant_threads`).
 
 ### `job`
 

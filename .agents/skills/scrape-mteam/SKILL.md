@@ -6,20 +6,22 @@ user-invocable: false
 
 # M-Team Scrape Workflow
 
-The scraper in `app/scrape.py` is a long-running scheduler that moves threads from discovery toward either API mediainfo or local-download readiness. Use `thread-lifecycle` for the canonical database stage definitions; this skill explains how the scraper advances those stages.
+The scraper in `app/scrape.py` is a long-running scheduler that moves threads from discovery toward either API mediainfo or local-download readiness. Use `thread-lifecycle` for canonical database stage definitions; this skill explains how the scraper advances those stages.
 
 ## Loop Scheduling
 
 - `Scrape.start()` runs `__run()` forever
-- Each interval runs five independent operations, each with its own cooldown window:
+- Each interval runs independent operations, each with its own cooldown window:
 
-| Operation          | Runner key        | Description                             |
-| ------------------ | ----------------- | --------------------------------------- |
-| `scrape_search()`  | `0-search`        | Discover new threads via search API     |
-| `scrape_mediainfo` | `1-mediainfo`     | Fetch mediainfo via mediaInfo API       |
-| `scrape_detail`    | `2-fetch-detail`  | Fetch full detail (including mediainfo) |
-| `fetch_torrent`    | `3-fetch-torrent` | Download .torrent files                 |
-| `backup_to_s3`     | `4-backup`        | Daily DB backup to S3                   |
+| Operation                | Runner key        | Description                             |
+| ------------------------ | ----------------- | --------------------------------------- |
+| `scrape_search()`        | `0-search`        | Discover new threads via search API     |
+| `scrape_mediainfo`       | `1-mediainfo`     | Fetch mediainfo via mediaInfo API       |
+| `scrape_detail`          | `2-fetch-detail`  | Fetch full detail (including mediainfo) |
+| `fetch_torrent`          | `3-fetch-torrent` | Download .torrent files                 |
+| `backup_to_s3`           | `4-backup`        | Daily DB backup to S3                   |
+| `backfill_selected_size` | `5-backfill`      | Recompute selected_size for legacy rows |
+| `_pg_dump_to_s3`         | `6-pg-dump`       | Daily raw pg_dump backup to S3          |
 
 - A rate-limited operation gets a 5-minute cooldown; only that operation pauses, others continue
 - Status per operation is tracked in the `scrape_status` table
@@ -36,20 +38,21 @@ The scraper in `app/scrape.py` is a long-running scheduler that moves threads fr
 
 ### `scrape_mediainfo(limit)`
 
-- Targets selected-category threads where `deleted = false`, `mediainfo_at is null`, and `seeders != 0`
-- Calls `torrent_mediainfo(tid)` and writes `mediainfo` plus `mediainfo_at`
+- Selects from `pending_mediainfo_threads` view, filtered by `category = any(SELECTED_CATEGORY)`
+- Calls `torrent_mediainfo(tid)` and writes `api_mediainfo` plus `api_mediainfo_at`
 - If M-Team returns `種子未找到`, the thread is marked `deleted = true`
 
 ### `scrape_detail(limit)`
 
-- Primary path: fetch detail for selected-category threads missing `mediainfo_at` (with `seeders != 0` filter)
+- Selects from `pending_mediainfo_threads` view
+- Primary path: fetch detail for pending threads
 - Fallback path: if nothing is pending, fill gaps in the `tid` sequence with `generate_series`
-- Writes `size`, `mediainfo`, `category`, `seeders`, `deleted`, and `mediainfo_at`
+- Writes `size`, `api_mediainfo`, `category`, `seeders`, `deleted`, and `api_mediainfo_at`
 - If M-Team returns `種子未找到`, the row is upserted as deleted instead of being retried forever
 
 ### `fetch_torrent()`
 
-- Targets threads where `mediainfo_at is not null`, `mediainfo = ''`, `info_hash = ''`, `torrent_invalid = ''`, `seeders != 0`, and category is selected
+- Selects from `pending_torrent_threads` view, filtered by `category = any(SELECTED_CATEGORY)`
 - Has a per-thread daily download limit to avoid hitting M-Team's "相同種子當天最多下載" error
 - Downloads the `.torrent`, computes `info_hash`, stores content via `TorrentStore` (S3), and updates `torrent_fetched_at`
 - Parses files and sets `selected_size` to the largest video file size, or `-1` when no video file exists
@@ -65,7 +68,23 @@ The scraper in `app/scrape.py` is a long-running scheduler that moves threads fr
 
 - Dumps `thread`, `job`, and `node` tables as zstd-compressed JSON Lines to S3
 - Runs once per day (tracked via `last_backup_date` in KV config)
-- Cleans up backups older than 7 days
+- Retention: last 7 days + every 1st-of-month + specific date 2026-05-30
+
+### `_pg_dump_to_s3()`
+
+- Runs `pg_dump --no-owner --no-acl --no-comments` on the database
+- Compresses output with zstd and uploads to S3 under `pg_dumps/{date}/dump.sql.zst`
+- Same retention policy as `backup_to_s3`
+- SSL key reuses the temp file already created by `pg_dsn()` (`/tmp/pg-client.key`)
+
+## Views
+
+All scraper queries use pipeline views instead of raw WHERE conditions:
+
+- `pending_mediainfo_threads` — used by `scrape_detail` and `scrape_mediainfo`
+- `pending_torrent_threads` — used by `fetch_torrent`
+
+Views are defined in `app/sql/migrations/013_thread_pipeline_view.sql`.
 
 ## Ordering and Prioritization
 
