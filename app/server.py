@@ -12,13 +12,15 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, Protocol, cast
 
 import asyncpg
+import boto3
 import durationpy
 import fastapi
 import jinja2
 import orjson
+from botocore.config import Config as BotoConfig
 from fastapi import Depends, Query, Request
 from fastapi.templating import Jinja2Templates
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.config import ServerConfig, load_s3_config, load_server_config
 from app.const import (
@@ -526,6 +528,15 @@ def create_app() -> fastapi.FastAPI:
 
     pool = asyncpg.create_pool(cfg.pg_dsn(), init=_init_connection)
     s3_op = create_operator(load_s3_config())
+    s3cfg = load_s3_config()
+    s3_client = boto3.client(
+        "s3",
+        region_name=s3cfg.s3_region,
+        endpoint_url=s3cfg.s3_endpoint,
+        aws_access_key_id=s3cfg.s3_access_key_id,
+        aws_secret_access_key=s3cfg.s3_secret_access_key,
+        config=BotoConfig(signature_version="s3v4"),
+    )
 
     @asynccontextmanager
     async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
@@ -1720,6 +1731,18 @@ def create_app() -> fastapi.FastAPI:
             for r in rows
         ]
         return render("rpc.html.j2", ctx={"commands": commands})
+
+    @app.get("/api/export-records/{export_date}/download")
+    async def download_export(export_date: str) -> RedirectResponse:
+        root = (s3cfg.s3_root or "").rstrip("/")
+        prefix = f"{root}/" if root else ""
+        key = f"{prefix}exports/{export_date}/mediainfo_export.jsonl.zst"
+        url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": s3cfg.s3_bucket, "Key": key},
+            ExpiresIn=3600 * 24,
+        )
+        return RedirectResponse(url, status_code=302)
 
     @app.get("/exports")
     async def exports_page(render: Render) -> HTMLResponse:

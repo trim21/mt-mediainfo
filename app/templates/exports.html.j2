@@ -29,7 +29,9 @@
         <td class="text-muted small">{{ r.error | truncate(120) }}</td>
         <td>{{ r.created_at }}</td>
         <td>
-          {% if r.status in ('failed', 'running') %}
+          {% if r.status == 'success' %}
+          <a href="/api/export-records/{{ r.export_date }}/download" class="btn btn-sm btn-primary">Download</a>
+          {% elif r.status in ('failed', 'running') %}
           <form method="post" action="/api/export-records/{{ r.export_date }}/reset" onsubmit="return confirm('Reset exported_at for {{ r.export_date }}?')">
             <button type="submit" class="btn btn-sm btn-warning">Reset</button>
           </form>

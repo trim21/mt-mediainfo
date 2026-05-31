@@ -29,6 +29,7 @@ dependencies = [
   "opendal==0.47.1",
   "zstandard==0.25.0",
   "pg-dlock==0.0.0a2",
+  "boto3>=1.43.18",
 ]
 
 [dependency-groups]
