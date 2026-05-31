@@ -919,7 +919,7 @@ def create_app() -> fastapi.FastAPI:
                 SELECTED_CATEGORY,
             ),
             pool.fetch(
-                "select export_date, status, error from export_record where status in ('failed', 'running') order by export_date desc"
+                "select export_date from export_record where status = 'failed' order by export_date desc"
             ),
         )
 
@@ -1003,10 +1003,7 @@ def create_app() -> fastapi.FastAPI:
         skipped_size = cast(int, skipped_stats["size"])
 
         failed_export_dates = cast(list[asyncpg.Record], failed_export_dates)
-        failed_exports = [
-            {"export_date": r["export_date"], "status": r["status"], "error": r["error"]}
-            for r in failed_export_dates
-        ]
+        failed_exports = [{"export_date": r["export_date"]} for r in failed_export_dates]
 
         def pct(n: int) -> str:
             if total == 0:

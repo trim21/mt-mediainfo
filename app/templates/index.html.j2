@@ -20,7 +20,7 @@
   <div class="alert alert-danger" role="alert">
     <strong>Export failures:</strong>
     {% for e in failed_exports %}
-      <a href="/exports" class="alert-link">{{ e.export_date }} ({{ e.status }})</a>{% if not loop.last %}, {% endif %}
+      <a href="/exports" class="alert-link">{{ e.export_date }}</a>{% if not loop.last %}, {% endif %}
     {% endfor %}
   </div>
   {% endif %}
