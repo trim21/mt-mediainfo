@@ -107,3 +107,10 @@ def find_largest_video_file(files: list[tuple[int, str, int]]) -> int | None:
         if best is None or size > best[1]:
             best = (index, size)
     return best[0] if best is not None else None
+
+
+def is_bdmv(torrent: Torrent) -> bool:
+    for f in torrent.as_files():
+        if f.name.lower() in ("index.bdmv", "movieobject.bdmv"):
+            return True
+    return False

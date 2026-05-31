@@ -19,7 +19,7 @@ from app.const import PRIORITY_CATEGORY, SELECTED_CATEGORY, TZ_SHANGHAI, search_
 from app.db import Database
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
-from app.torrent import find_largest_video_file, parse_torrent
+from app.torrent import find_largest_video_file, is_bdmv, parse_torrent
 from app.torrent_store import TorrentStore, create_operator
 from app.utils import date_to_int, get_info_hash_v1_from_content, parse_obj
 
@@ -317,6 +317,16 @@ class Scrape:
 
             info_hash = get_info_hash_v1_from_content(tc)
 
+            if is_bdmv(torrent=t):
+                logger.info("torrent {} is bdmv, skipping", tid)
+                with self.__db.connection() as conn, conn.transaction():
+                    self.__store.write(tid, tc)
+                    conn.execute(
+                        """update thread set info_hash = $2, selected_size = -2, torrent_fetched_at = current_timestamp where tid = $1""",
+                        [tid, info_hash],
+                    )
+                continue
+
             files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
             keep_idx = find_largest_video_file(files_data)
             selected_size = (
@@ -369,6 +379,13 @@ class Scrape:
             except (pydantic.ValidationError, BencodeDecodeError):
                 self.__db.execute(
                     """update thread set selected_size = -1, selected_files = '[]'::jsonb where tid = $1""",
+                    [tid],
+                )
+                continue
+
+            if is_bdmv(torrent=t):
+                self.__db.execute(
+                    """update thread set selected_size = -2 where tid = $1""",
                     [tid],
                 )
                 continue
