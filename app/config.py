@@ -181,7 +181,7 @@ class DownloaderConfig(BaseConfig, S3Mixin):
     seeder_condition: Annotated[
         str,
         BeforeValidator(lambda x: x or "true"),
-        Field(alias="SEEDER_CONDITION", default="seeders >= 4"),
+        Field(alias="SEEDER_CONDITION", default="seeders >= 3"),
     ]
 
     thread_filter: Annotated[
