@@ -77,17 +77,12 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
     seeder_clause: LiteralString = cast(LiteralString, config.seeder_condition)
 
     return f"""
-    select thread.* from thread
-    left join job on (job.tid = thread.tid)
+    select pending_download_threads.* from pending_download_threads
+    left join job on (job.tid = pending_download_threads.tid)
     where
-        mediainfo = '' and
-        api_mediainfo = '' and
-        thread.info_hash != '' and
-        thread.selected_size > 0 and
-        thread.selected_size < $1 and
+        selected_size < $1 and
         category = any ($2) and
         job.tid is null and
-        seeders != 0 and
         ({seeder_clause})
     {order_clause}
     """

@@ -75,12 +75,8 @@ class Scrape:
 
         threads = self.__db.fetch_all(
             """
-            select tid from thread
-            where
-              deleted = false and
-              api_mediainfo_at is null and
-              seeders != 0 and
-              category = any($1)
+            select tid from pending_mediainfo_threads
+            where category = any($1)
             order by (category = any($3)) desc, tid asc
             limit $2
             """,
@@ -247,16 +243,8 @@ class Scrape:
     def fetch_torrent(self) -> bool:
         threads = self.__db.fetch_all(
             """
-            select tid from thread
-            where
-              deleted = false and
-              info_hash = '' and
-              api_mediainfo_at is not null and
-              mediainfo = '' and
-              api_mediainfo = '' and
-              torrent_invalid = '' and
-              seeders != 0 and
-              category = any($1)
+            select tid from pending_torrent_threads
+            where category = any($1)
             order by (category = any($2)) desc, tid asc
             limit 100
             """,
@@ -470,12 +458,8 @@ class Scrape:
         """Fetch mediainfo via /torrent/mediaInfo for threads missing it."""
         threads = self.__db.fetch_all(
             """
-            select tid from thread
-            where
-              deleted = false and
-              api_mediainfo_at is null and
-              seeders != 0 and
-              category = any($1)
+            select tid from pending_mediainfo_threads
+            where category = any($1)
             order by (category = any($3)) desc, tid asc
             limit $2
             """,

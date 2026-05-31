@@ -965,18 +965,13 @@ def create_app() -> fastapi.FastAPI:
             pool.fetchrow(
                 """
             select
-              count(1) as scraped_total,
-              count(1) filter (where category = any($1)) as total,
-              coalesce(sum(selected_size) filter (where category = any($1)), 0) as total_size,
-              count(1) filter (where deleted = false and api_mediainfo_at is null
-                                and mediainfo = '' and seeders != 0 and category = any($1)) as pending_fetch_mediainfo,
-              count(1) filter (where deleted = false and api_mediainfo_at is not null
-                                and mediainfo = '' and info_hash = '' and torrent_invalid = '' and seeders != 0 and category = any($1)) as pending_fetch_torrent,
-              count(1) filter (where mediainfo != '' and info_hash != '' and seeders != 0
-                and category = any($1)) as done,
-              coalesce(sum(selected_size) filter (where mediainfo != '' and info_hash != ''
-                and category = any($1)), 0) as done_size
-            from thread
+              (select count(1) from thread) as scraped_total,
+              (select count(1) from thread where category = any($1)) as total,
+              coalesce((select sum(selected_size) from thread where category = any($1)), 0) as total_size,
+              (select count(1) from pending_mediainfo_threads where category = any($1)) as pending_fetch_mediainfo,
+              (select count(1) from pending_torrent_threads where category = any($1)) as pending_fetch_torrent,
+              (select count(1) from completed_threads where category = any($1)) as done,
+              coalesce((select sum(selected_size) from completed_threads where category = any($1)), 0) as done_size
             """,
                 SELECTED_CATEGORY,
             ),
@@ -986,13 +981,10 @@ def create_app() -> fastapi.FastAPI:
             ),
             pool.fetchrow(
                 """
-            select count(1) as count, coalesce(sum(thread.selected_size), 0) as size
-            from thread
-            left join job on (job.tid = thread.tid)
-            where deleted = false and seeders != 0
-              and mediainfo = '' and thread.info_hash != ''
-              and selected_size > 0
-              and category = any($1) and job.tid is null
+            select count(1)::int as count, coalesce(sum(selected_size), 0)::int8 as size
+            from pending_download_threads
+            left join job on (job.tid = pending_download_threads.tid)
+            where category = any($1) and job.tid is null
             """,
                 SELECTED_CATEGORY,
             ),
@@ -1050,8 +1042,8 @@ def create_app() -> fastapi.FastAPI:
                 """
             select count(1)::int as count,
                    coalesce(sum(selected_size), 0)::int8 as size
-            from thread
-            where category = any($1) and (deleted = true or seeders = 0)
+            from dormant_threads
+            where category = any($1)
             """,
                 SELECTED_CATEGORY,
             ),
@@ -1241,13 +1233,11 @@ def create_app() -> fastapi.FastAPI:
             render,
             title="Pending Fetch Mediainfo",
             count_sql="""
-            select count(1)::int from thread
-                        where deleted = false and api_mediainfo_at is null and seeders != 0
-              and category = any($1)
+            select count(1)::int from pending_mediainfo_threads
+              where category = any($1)
             """,
             rows_sql="""
-            select tid, category, size, selected_size, seeders, created_at from thread
-                        where deleted = false and api_mediainfo_at is null and seeders != 0
+            select tid, category, size, selected_size, seeders, created_at from pending_mediainfo_threads
             order by tid desc
             limit $2 offset $3
             """,
@@ -1265,14 +1255,11 @@ def create_app() -> fastapi.FastAPI:
             render,
             title="Pending Fetch Torrent",
             count_sql="""
-            select count(1)::int from thread
-            where deleted = false and api_mediainfo_at is not null
-                            and mediainfo = '' and info_hash = '' and torrent_invalid = '' and seeders != 0 and category = any($1)
+            select count(1)::int from pending_torrent_threads
+              where category = any($1)
             """,
             rows_sql="""
-            select tid, category, size, selected_size, seeders, created_at from thread
-            where deleted = false and api_mediainfo_at is not null
-                            and mediainfo = '' and info_hash = '' and torrent_invalid = '' and seeders != 0 and category = any($1)
+            select tid, category, size, selected_size, seeders, created_at from pending_torrent_threads
             order by tid desc
             limit $2 offset $3
             """,
@@ -1294,20 +1281,14 @@ def create_app() -> fastapi.FastAPI:
             title="Pending to Download",
             count_sql="""
             select count(1)::int
-            from thread
-            left join job on (job.tid = thread.tid)
-            where deleted = false and seeders != 0
-              and mediainfo = '' and thread.info_hash != ''
-              and selected_size > 0
-              and category = any($1) and job.tid is null
+            from pending_download_threads
+            left join job on (job.tid = pending_download_threads.tid)
+            where category = any($1) and job.tid is null
             """,
             rows_sql=f"""
-            select thread.tid, category, size, selected_size, seeders, thread.created_at from thread
-            left join job on (job.tid = thread.tid)
-            where deleted = false and seeders != 0
-              and mediainfo = '' and thread.info_hash != ''
-              and selected_size > 0
-              and category = any($1) and job.tid is null
+            select pending_download_threads.tid, category, size, selected_size, seeders, pending_download_threads.created_at from pending_download_threads
+            left join job on (job.tid = pending_download_threads.tid)
+            where category = any($1) and job.tid is null
             {order}
             limit $3 offset $4
             """,
@@ -1354,14 +1335,14 @@ def create_app() -> fastapi.FastAPI:
             render,
             title="Done",
             count_sql="""
-            select count(1)::int from thread
-            where mediainfo != '' and info_hash != '' and category = any($1)
+            select count(1)::int from completed_threads
+            where category = any($1)
             """,
             rows_sql="""
-            select thread.tid, category, size, selected_size, seeders, thread.created_at
-            from thread
-            join job on (job.tid = thread.tid)
-            where mediainfo != '' and thread.info_hash != '' and category = any($1)
+            select completed_threads.tid, category, size, selected_size, seeders, completed_threads.created_at
+            from completed_threads
+            join job on (job.tid = completed_threads.tid)
+            where category = any($1)
               and job.status = 'done'
             order by job.completed_at desc
             limit $2 offset $3
