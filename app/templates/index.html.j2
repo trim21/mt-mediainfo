@@ -16,6 +16,15 @@
 <div class="container mt-4">
   <h2>Progress</h2>
 
+  {% if failed_exports %}
+  <div class="alert alert-danger" role="alert">
+    <strong>Export failures:</strong>
+    {% for e in failed_exports %}
+      <a href="/exports" class="alert-link">{{ e.export_date }} ({{ e.status }})</a>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <div class="progress mb-3" style="height: 30px;">
     <div class="progress-bar" style="width: {{ skipped_pct }}%; background-color: #adb5bd;" role="progressbar" title="Skipped: {{ skipped }}"></div>
     <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ pending_fetch_mediainfo_pct }}%" title="Pending mediainfo: {{ pending_fetch_mediainfo }}"></div>

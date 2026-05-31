@@ -830,6 +830,7 @@ def create_app() -> fastapi.FastAPI:
             done_node_rows,
             scrape_status_rows,
             skipped_stats,
+            failed_export_dates,
         ) = await asyncio.gather(
             pool.fetchrow(
                 """
@@ -917,6 +918,9 @@ def create_app() -> fastapi.FastAPI:
             """,
                 SELECTED_CATEGORY,
             ),
+            pool.fetch(
+                "select export_date, status, error from export_record where status in ('failed', 'running') order by export_date desc"
+            ),
         )
 
         thread_stats = cast(asyncpg.Record, thread_stats)
@@ -998,6 +1002,12 @@ def create_app() -> fastapi.FastAPI:
         skipped = cast(int, skipped_stats["count"])
         skipped_size = cast(int, skipped_stats["size"])
 
+        failed_export_dates = cast(list[asyncpg.Record], failed_export_dates)
+        failed_exports = [
+            {"export_date": r["export_date"], "status": r["status"], "error": r["error"]}
+            for r in failed_export_dates
+        ]
+
         def pct(n: int) -> str:
             if total == 0:
                 return "0.0"
@@ -1036,6 +1046,7 @@ def create_app() -> fastapi.FastAPI:
                 "skipped_size": human_readable_size(skipped_size),
                 "skipped_pct": pct(skipped),
                 "scrape_status": scrape_status,
+                "failed_exports": failed_exports,
             },
         )
 
