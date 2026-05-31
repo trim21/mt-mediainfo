@@ -689,7 +689,7 @@ def create_app() -> fastapi.FastAPI:
             or 0,
         )
         pager = _pagination(page, total_count)
-        rows = await pool.fetch(rows_sql, *params, pager["page_size"], pager["offset"])
+        rows = await pool.fetch(rows_sql, pager["page_size"], pager["offset"], *params)
         ctx = {
             "title": title,
             "show_progress": show_progress,
@@ -1238,11 +1238,12 @@ def create_app() -> fastapi.FastAPI:
             """,
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from pending_mediainfo_threads
-            where category = any($1)
-            order by tid desc
-            limit $2 offset $3
+            where category = any($3)
+            order by (mediainfo = '') desc, (category = any($4)) desc, seeders desc, tid asc
+            limit $1 offset $2
             """,
-            params=[SELECTED_CATEGORY],
+            params=[SELECTED_CATEGORY, PRIORITY_CATEGORY],
+            count_params=[SELECTED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=False,
@@ -1261,11 +1262,12 @@ def create_app() -> fastapi.FastAPI:
             """,
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from pending_torrent_threads
-            where category = any($1)
-            order by tid desc
-            limit $2 offset $3
+            where category = any($3)
+            order by (mediainfo = '') desc, (category = any($4)) desc, seeders desc, tid asc
+            limit $1 offset $2
             """,
-            params=[SELECTED_CATEGORY],
+            params=[SELECTED_CATEGORY, PRIORITY_CATEGORY],
+            count_params=[SELECTED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=False,
@@ -1290,9 +1292,9 @@ def create_app() -> fastapi.FastAPI:
             rows_sql=f"""
             select pending_download_threads.tid, category, size, selected_size, seeders, pending_download_threads.created_at from pending_download_threads
             left join job on (job.tid = pending_download_threads.tid)
-            where category = any($1) and job.tid is null
+            where category = any($3) and job.tid is null
             {order}
-            limit $3 offset $4
+            limit $1 offset $2
             """,
             params=[SELECTED_CATEGORY, PRIORITY_CATEGORY],
             count_params=[SELECTED_CATEGORY],
@@ -1321,9 +1323,9 @@ def create_app() -> fastapi.FastAPI:
                    job.progress, job.node_id
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
+            where job.status = $3 and thread.category = any($4)
             order by job.updated_at desc
-            limit $3 offset $4
+            limit $1 offset $2
             """,
             params=[ItemStatus.DOWNLOADING, SELECTED_CATEGORY],
             page=page,
@@ -1344,10 +1346,10 @@ def create_app() -> fastapi.FastAPI:
             select completed_threads.tid, category, size, selected_size, seeders, completed_threads.created_at
             from completed_threads
             join job on (job.tid = completed_threads.tid)
-            where category = any($1)
+            where category = any($3)
               and job.status = 'done'
             order by job.completed_at desc
-            limit $2 offset $3
+            limit $1 offset $2
             """,
             params=[SELECTED_CATEGORY],
             page=page,
@@ -1371,9 +1373,9 @@ def create_app() -> fastapi.FastAPI:
                    job.failed_reason
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
+            where job.status = $3 and thread.category = any($4)
             order by job.updated_at desc
-            limit $3 offset $4
+            limit $1 offset $2
             """,
             params=[ItemStatus.FAILED, SELECTED_CATEGORY],
             page=page,
@@ -1398,9 +1400,9 @@ def create_app() -> fastapi.FastAPI:
                    coalesce(job.removed_reason, '') as failed_reason
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = $1 and thread.category = any($2)
+            where job.status = $3 and thread.category = any($4)
             order by job.updated_at desc
-            limit $3 offset $4
+            limit $1 offset $2
             """,
             params=[ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, SELECTED_CATEGORY],
             page=page,

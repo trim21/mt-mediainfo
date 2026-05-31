@@ -77,7 +77,7 @@ class Scrape:
             """
             select tid from pending_mediainfo_threads
             where category = any($1)
-            order by (category = any($3)) desc, tid asc
+            order by (mediainfo = '') desc, (category = any($3)) desc, seeders desc, tid asc
             limit $2
             """,
             [SELECTED_CATEGORY, effective_limit, PRIORITY_CATEGORY],
@@ -245,7 +245,7 @@ class Scrape:
             """
             select tid from pending_torrent_threads
             where category = any($1)
-            order by (category = any($2)) desc, tid asc
+            order by (category = any($2)) desc, seeders desc, tid asc
             limit 100
             """,
             [SELECTED_CATEGORY, PRIORITY_CATEGORY],
@@ -460,7 +460,7 @@ class Scrape:
             """
             select tid from pending_mediainfo_threads
             where category = any($1)
-            order by (category = any($3)) desc, tid asc
+            order by (mediainfo = '') desc, (category = any($3)) desc, seeders desc, tid asc
             limit $2
             """,
             [SELECTED_CATEGORY, limit, PRIORITY_CATEGORY],
