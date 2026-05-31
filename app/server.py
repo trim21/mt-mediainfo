@@ -1281,7 +1281,7 @@ def create_app() -> fastapi.FastAPI:
         page: Annotated[int, Query()] = 1,
         strategy: Annotated[PickStrategy, Query()] = PickStrategy.seeders,
     ) -> HTMLResponse:
-        order = pick_order_clause(strategy, 2)
+        order = pick_order_clause(strategy, 4)
         return await _render_thread_list(
             render,
             title="Pending to Download",
