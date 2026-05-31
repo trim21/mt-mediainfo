@@ -106,7 +106,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "asyncpg-stubs", specifier = "==0.31.2" },
-    { name = "boto3-stubs", extras = ["s3"], specifier = ">=1.43.18" },
+    { name = "boto3-stubs", extras = ["s3"], specifier = "==1.43.18" },
     { name = "mypy", specifier = "==2.1.0" },
     { name = "ty", specifier = "==0.0.39" },
     { name = "types-regex", specifier = "==2026.5.9.20260518" },
