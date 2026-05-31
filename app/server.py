@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, Protocol, cast
 
 import asyncpg
-import boto3
+import botocore.session
 import durationpy
 import fastapi
 import jinja2
@@ -20,6 +20,7 @@ import orjson
 from botocore.config import Config as BotoConfig
 from fastapi import Depends, Query, Request
 from fastapi.templating import Jinja2Templates
+from mypy_boto3_s3 import S3Client
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.config import ServerConfig, load_s3_config, load_server_config
@@ -529,7 +530,7 @@ def create_app() -> fastapi.FastAPI:
     pool = asyncpg.create_pool(cfg.pg_dsn(), init=_init_connection)
     s3_op = create_operator(load_s3_config())
     s3cfg = load_s3_config()
-    s3_client = boto3.client(
+    s3_client: S3Client = botocore.session.get_session().create_client(
         "s3",
         region_name=s3cfg.s3_region,
         endpoint_url=s3cfg.s3_endpoint,

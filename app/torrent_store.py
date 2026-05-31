@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import opendal
 import xxhash
+from mypy_boto3_s3 import S3Client
 from sslog import logger
 
 from app.config import S3Mixin
-
-if TYPE_CHECKING:
-    from mypy_boto3_s3 import S3Client
 
 
 def _s3_key(tid: int) -> str:
