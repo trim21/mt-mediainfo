@@ -162,7 +162,7 @@ class DailyStat:
 def _project_today_fetched_byte_rate(
     snapshot: DailyStatsSnapshot,
     *,
-    projected_fetches_per_day: int = 900,
+    projected_fetches_per_day: int = 2000,
 ) -> float:
     if snapshot.fetched_count == 0:
         return 0.0
