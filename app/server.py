@@ -1011,7 +1011,8 @@ def create_app() -> fastapi.FastAPI:
                 """
             select job.node_id,
                    count(1)::int as count,
-                   coalesce(sum(thread.selected_size), 0)::int8 as size
+                   coalesce(sum(thread.selected_size), 0)::int8 as size,
+                   coalesce(sum(job.dlspeed), 0)::int8 as dlspeed
             from job
             join thread on (thread.tid = job.tid)
             where thread.category = any($1)
@@ -1097,6 +1098,7 @@ def create_app() -> fastapi.FastAPI:
                 "node_name": _node_name(str(r["node_id"])),
                 "count": int(r["count"]),
                 "size_fmt": human_readable_size(int(r["size"])),
+                "dlspeed": human_readable_size(int(r["dlspeed"])) + "/s",
             }
             for r in downloading_node_rows
         ]
