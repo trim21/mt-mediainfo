@@ -34,7 +34,7 @@ from app.const import (
 )
 from app.db import Database
 from app.rpc import PAYLOAD_TYPES, RpcRequest, enqueue_command
-from app.torrent_store import create_operator
+from app.torrent_store import create_operator, generate_presigned_url
 from app.utils import date_to_int, human_readable_byte_rate, human_readable_size, parse_obj
 
 
@@ -1737,10 +1737,11 @@ def create_app() -> fastapi.FastAPI:
         root = (s3cfg.s3_root or "").rstrip("/")
         prefix = f"{root}/" if root else ""
         key = f"{prefix}exports/{export_date}/mediainfo_export.jsonl.zst"
-        url = s3_client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": s3cfg.s3_bucket, "Key": key},
-            ExpiresIn=3600 * 24,
+        url = generate_presigned_url(
+            s3_client,
+            bucket=s3cfg.s3_bucket,
+            key=key,
+            download_filename=f"mediainfo_export_{export_date}.jsonl.zst",
         )
         return RedirectResponse(url, status_code=302)
 

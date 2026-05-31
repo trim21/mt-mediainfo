@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import opendal
 import xxhash
+from mypy_boto3_s3 import S3Client
 from sslog import logger
 
 from app.config import S3Mixin
@@ -42,3 +43,21 @@ class TorrentStore:
         except opendal.exceptions.NotFound:
             logger.debug("torrent {} not found in s3", tid)
         return None
+
+
+def generate_presigned_url(
+    client: S3Client,
+    *,
+    bucket: str,
+    key: str,
+    download_filename: str | None = None,
+    expires_in: int = 3600 * 24,
+) -> str:
+    params: dict[str, str] = {"Bucket": bucket, "Key": key}
+    if download_filename:
+        params["ResponseContentDisposition"] = f'attachment; filename="{download_filename}"'
+    return client.generate_presigned_url(
+        "get_object",
+        Params=params,
+        ExpiresIn=expires_in,
+    )
