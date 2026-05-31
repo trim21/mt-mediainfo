@@ -203,6 +203,7 @@ class Downloader:
         self.__update_job_status(
             status=ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
             info_hash=payload.info_hash,
+            removed_reason="rpc",
         )
         return {"info_hash": payload.info_hash}
 
@@ -233,20 +234,21 @@ class Downloader:
         info_hash: str = "",
         tid: int = 0,
         failed_reason: str = "",
+        removed_reason: str = "",
     ) -> None:
         if info_hash:
             conn.execute(
-                """update job set status = $1, failed_reason = $2, updated_at = current_timestamp,
+                """update job set status = $1, failed_reason = $2, removed_reason = $3, updated_at = current_timestamp,
                    completed_at = case when $1 = 'done' then current_timestamp else completed_at end
-                   where info_hash = $3 and node_id = $4""",
-                [status, failed_reason, info_hash, node_id],
+                   where info_hash = $4 and node_id = $5""",
+                [status, failed_reason, removed_reason, info_hash, node_id],
             )
         else:
             conn.execute(
-                """update job set status = $1, failed_reason = $2, updated_at = current_timestamp,
+                """update job set status = $1, failed_reason = $2, removed_reason = $3, updated_at = current_timestamp,
                    completed_at = case when $1 = 'done' then current_timestamp else completed_at end
-                   where tid = $3 and node_id = $4""",
-                [status, failed_reason, tid, node_id],
+                   where tid = $4 and node_id = $5""",
+                [status, failed_reason, removed_reason, tid, node_id],
             )
             conn.execute(
                 "delete from job_download_size where info_hash = (select job.info_hash from job where job.tid = $1 and job.node_id = $2) and node_id = $2",
@@ -260,6 +262,7 @@ class Downloader:
         info_hash: str = "",
         tid: int = 0,
         failed_reason: str = "",
+        removed_reason: str = "",
     ) -> None:
         """Update job status. Identify job by info_hash or tid (plus node_id)."""
         with self.db.connection() as conn, conn.transaction():
@@ -270,6 +273,7 @@ class Downloader:
                 info_hash=info_hash,
                 tid=tid,
                 failed_reason=failed_reason,
+                removed_reason=removed_reason,
             )
 
     def __process_qb_torrents(self) -> None:
@@ -286,6 +290,7 @@ class Downloader:
             """
                 update job set
                   status = $1,
+                  removed_reason = $6,
                   updated_at = $5
                 where (not info_hash = any($2)) and node_id = $3 and status = $4
                 """,
@@ -295,6 +300,7 @@ class Downloader:
                 self.config.node_id,
                 ItemStatus.DOWNLOADING,
                 now,
+                "manual",
             ],
         )
 
@@ -339,9 +345,13 @@ class Downloader:
             if t.hash in stalled_hashes:
                 logger.info("cleanup stalled torrent {}", t.name)
                 self.__update_job_status(
-                    status=ItemStatus.FAILED,
+                    status=ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
                     info_hash=t.hash,
-                    failed_reason="stalled",
+                    removed_reason="stalled",
+                )
+                self.db.execute(
+                    "update thread set torrent_invalid = 'stalled' where info_hash = $1",
+                    [t.hash],
                 )
                 self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue

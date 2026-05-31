@@ -1392,7 +1392,8 @@ def create_app() -> fastapi.FastAPI:
             where job.status = $1 and thread.category = any($2)
             """,
             rows_sql="""
-            select thread.tid, category, size, selected_size, seeders, thread.created_at
+            select thread.tid, category, size, selected_size, seeders, thread.created_at,
+                   coalesce(job.removed_reason, '') as failed_reason
             from job
             join thread on (thread.tid = job.tid)
             where job.status = $1 and thread.category = any($2)
@@ -1402,7 +1403,7 @@ def create_app() -> fastapi.FastAPI:
             params=[ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, SELECTED_CATEGORY],
             page=page,
             show_progress=False,
-            show_failed_reason=False,
+            show_failed_reason=True,
             show_reset=True,
             show_reset_all=True,
         )
