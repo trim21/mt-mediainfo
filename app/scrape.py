@@ -21,7 +21,7 @@ from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
 from app.torrent import find_largest_video_file, parse_torrent
 from app.torrent_store import TorrentStore, create_operator
-from app.utils import get_info_hash_v1_from_content, parse_obj
+from app.utils import date_to_int, get_info_hash_v1_from_content, parse_obj
 
 
 class RunResult(enum.Enum):
@@ -642,6 +642,85 @@ class Scrape:
             return RunResult.error
         return RunResult.ok
 
+    def _export_mediainfo_to_s3(self, export_date: date) -> int:
+        """Export incremental mediainfo and return count."""
+        date_int = date_to_int(export_date)
+        date_str = export_date.isoformat()
+        key = f"exports/{export_date}/mediainfo_export.jsonl.zst"
+
+        tids: list[int] = []
+        compressed: bytes = b""
+        with self.__db.connection() as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+            buf = io.BytesIO()
+            with zstd_writer(buf) as writer:
+                for row in cur.stream(
+                    """select tid, mediainfo, hard_coded_subtitle from thread
+                       where api_mediainfo != ''
+                         and mediainfo != ''
+                         and mediainfo != api_mediainfo
+                         and exported_at = 0
+                         and seeders != 0
+                         and deleted = false"""
+                ):
+                    entry = orjson.dumps({
+                        "id": row["tid"],
+                        "mediainfo": row["mediainfo"],
+                        "hardcoded_subtitle": row["hard_coded_subtitle"],
+                    })
+                    writer.write(entry + b"\n")
+                    tids.append(row["tid"])
+
+            compressed = buf.getvalue()
+
+        if not tids:
+            logger.info("no new mediainfo to export")
+            return 0
+
+        self.__db.execute(
+            """insert into export_record (export_date, status, exported_count)
+               values ($1, 'running', $2)
+               on conflict (export_date) do update set
+                 status = excluded.status,
+                 exported_count = excluded.exported_count,
+                 error = ''""",
+            [date_str, len(tids)],
+        )
+
+        self.__db.execute(
+            "update thread set exported_at = $1 where tid = any($2)",
+            [date_int, tids],
+        )
+
+        self.__op.write(key, compressed)
+
+        self.__db.execute(
+            "update export_record set status = 'success' where export_date = $1",
+            [date_str],
+        )
+
+        logger.info("exported {} mediainfo entries to s3 ({})", len(tids), key)
+        return len(tids)
+
+    def __run_export_mediainfo(self) -> RunResult:
+        today = datetime.now(TZ_SHANGHAI).date()
+        if today.day != 1:
+            return RunResult.ok
+        last = self.__kv.get("last_export_mediainfo_date")
+        if last == today.isoformat():
+            logger.info("skipping mediainfo export (already done today)")
+            return RunResult.ok
+        try:
+            self._export_mediainfo_to_s3(today)
+            self.__kv.set("last_export_mediainfo_date", today.isoformat())
+        except Exception as e:
+            self.__db.execute(
+                "update export_record set status = 'failed', error = $2 where export_date = $1",
+                [today.isoformat(), str(e)],
+            )
+            logger.exception("failed to export mediainfo to s3")
+            return RunResult.error
+        return RunResult.ok
+
     def __update_status(self, name: str, result: RunStatus, next_allowed: datetime | None) -> None:
         self.__db.execute(
             """
@@ -668,6 +747,7 @@ class Scrape:
             "4-backup": lambda: self.__run_backup(),
             "5-backfill": lambda: self.backfill_selected_size(),
             "6-pg-dump": lambda: self.__run_pg_dump(),
+            "7-export-mediainfo": lambda: self.__run_export_mediainfo(),
         }
 
         # Earliest time each operation is allowed to run again

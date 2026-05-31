@@ -12,6 +12,7 @@ This project downloads torrents from M-Team, processes local media files to extr
 - `app/rpc.py` - RPC method definitions, payload validation, queue polling, and enqueue helpers
 - `app/config.py` - Pydantic-based config from environment variables for downloader, scraper, and server
 - `app/const.py` - Status, tag, lock, category, and pick-strategy constants
+- `app/_zstd.py` - Thin zstd streaming wrapper around `zstandard`; use `zstd_writer(dst)` / `zstd_reader(src)` instead of raw zstandard API
 - `app/mt.py` - M-Team API client and exceptions
 - `app/torrent.py` - Torrent parsing and largest-video-file selection
 - `app/torrent_store.py` - S3-backed torrent content storage

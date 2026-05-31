@@ -3,6 +3,7 @@ import hashlib
 import shlex
 import subprocess
 from collections.abc import Hashable
+from datetime import date
 from pathlib import Path
 from shutil import which
 from typing import IO, Any, Self
@@ -157,3 +158,11 @@ def dedupe[J: Hashable](seq: list[J]) -> list[J]:
     seen: set[J] = set()
     seen_add = seen.add
     return [x for x in seq if not (x in seen or seen_add(x))]
+
+
+def date_to_int(d: date) -> int:
+    return d.year * 10000 + d.month * 100 + d.day
+
+
+def int_to_date(n: int) -> date:
+    return date(n // 10000, (n // 100) % 100, n % 100)

@@ -10,7 +10,7 @@ ZSTD_LEVEL = 3
 
 
 class _Writable(Protocol):
-    def write(self, data: bytes) -> object: ...
+    def write(self, data: bytes, /) -> object: ...
 
 
 class _Readable(Protocol):

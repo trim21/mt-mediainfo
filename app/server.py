@@ -20,7 +20,7 @@ from fastapi import Depends, Query, Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, JSONResponse
 
-from app.config import ServerConfig, load_server_config
+from app.config import ServerConfig, load_s3_config, load_server_config
 from app.const import (
     PRIORITY_CATEGORY,
     SELECTED_CATEGORY,
@@ -32,7 +32,8 @@ from app.const import (
 )
 from app.db import Database
 from app.rpc import PAYLOAD_TYPES, RpcRequest, enqueue_command
-from app.utils import human_readable_byte_rate, human_readable_size, parse_obj
+from app.torrent_store import create_operator
+from app.utils import date_to_int, human_readable_byte_rate, human_readable_size, parse_obj
 
 
 class ORJSONResponse(JSONResponse):
@@ -524,6 +525,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
     pool = asyncpg.create_pool(cfg.pg_dsn(), init=_init_connection)
+    s3_op = create_operator(load_s3_config())
 
     @asynccontextmanager
     async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
@@ -1710,5 +1712,63 @@ def create_app() -> fastapi.FastAPI:
             for r in rows
         ]
         return render("rpc.html.j2", ctx={"commands": commands})
+
+    @app.get("/exports")
+    async def exports_page(render: Render) -> HTMLResponse:
+        rows = await pool.fetch(
+            "select export_date, status, error, exported_count, created_at "
+            "from export_record order by export_date desc"
+        )
+        records = [
+            {
+                "export_date": r["export_date"],
+                "status": r["status"],
+                "error": r["error"],
+                "exported_count": r["exported_count"],
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+        return render("exports.html.j2", ctx={"records": records})
+
+    @app.post("/api/export-records/{export_date}/reset")
+    async def reset_export(export_date: str) -> HTMLResponse:
+        try:
+            dt = datetime.strptime(export_date, "%Y-%m-%d").replace(tzinfo=TZ_SHANGHAI)
+            date_int = date_to_int(dt.date())
+        except ValueError:
+            return HTMLResponse("<h3>Invalid date</h3>", status_code=400)
+
+        s3_key = f"exports/{export_date}/mediainfo_export.jsonl.zst"
+        errors: list[str] = []
+
+        try:
+            await asyncio.to_thread(s3_op.delete, s3_key)
+        except Exception as e:
+            errors.append(f"s3 delete failed: {e}")
+
+        try:
+            await pool.execute(
+                "update thread set exported_at = 0 where exported_at = $1",
+                date_int,
+            )
+        except Exception as e:
+            errors.append(f"db reset failed: {e}")
+
+        if errors:
+            return HTMLResponse(
+                "<h3>Reset Failed</h3><ul>"
+                + "".join(f"<li>{e}</li>" for e in errors)
+                + '</ul><a href="/exports">Back</a>',
+                status_code=500,
+            )
+
+        await pool.execute(
+            "delete from export_record where export_date = $1",
+            export_date,
+        )
+        return HTMLResponse(
+            '<html><body><h3>Reset Done</h3><a href="/exports">Back</a></body></html>',
+        )
 
     return app
