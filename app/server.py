@@ -1238,6 +1238,7 @@ def create_app() -> fastapi.FastAPI:
             """,
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from pending_mediainfo_threads
+            where category = any($1)
             order by tid desc
             limit $2 offset $3
             """,
@@ -1260,6 +1261,7 @@ def create_app() -> fastapi.FastAPI:
             """,
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from pending_torrent_threads
+            where category = any($1)
             order by tid desc
             limit $2 offset $3
             """,
