@@ -264,34 +264,6 @@ class DailyCharts:
         }
 
 
-@dataclass(slots=True, frozen=True)
-class WeeklyCharts:
-    weekly_byte_rate: ByteRateChart
-    weekly_fetched_size: list[LabeledByteRate]
-    weekly_thread_count: list[LabeledCount]
-    weekly_torrent_count: list[LabeledCount]
-    weekly_done_count: DoneCountChart
-    weekly_mediainfo_count: list[LabeledCount]
-
-    def to_payload(self) -> dict[str, Any]:
-        return {
-            "weekly_byte_rate": self.weekly_byte_rate.to_dict(),
-            "weekly_fetched_size": [
-                point.to_dict(label_key="week") for point in self.weekly_fetched_size
-            ],
-            "weekly_thread_count": [
-                point.to_dict(label_key="week") for point in self.weekly_thread_count
-            ],
-            "weekly_torrent_count": [
-                point.to_dict(label_key="week") for point in self.weekly_torrent_count
-            ],
-            "weekly_done_count": self.weekly_done_count.to_dict(),
-            "weekly_mediainfo_count": [
-                point.to_dict(label_key="week") for point in self.weekly_mediainfo_count
-            ],
-        }
-
-
 class _Render(Protocol):
     def __call__(
         self,
@@ -383,16 +355,6 @@ def _today_start() -> datetime:
     return datetime(now.year, now.month, now.day, tzinfo=TZ_SHANGHAI)
 
 
-def _week_range() -> tuple[int, int]:
-    return -12, -1
-
-
-def _week_label(today: datetime, week_num: int) -> str:
-    ref = today + timedelta(days=1)
-    start = ref + timedelta(weeks=int(week_num))
-    return start.strftime("%Y-%m-%d")
-
-
 def _build_history_daily_stats(history_stats: list[DailyStatsSnapshot]) -> list[DailyStat]:
     return [DailyStat.from_snapshot(stats) for stats in history_stats]
 
@@ -413,101 +375,6 @@ def _combine_daily_stats(
     daily_stats = {stats.day: stats for stats in history_daily_stats}
     daily_stats[today_daily_stat.day] = today_daily_stat
     return [daily_stats[day] for day in sorted(daily_stats)]
-
-
-def _build_weekly_charts(
-    daily_stats: list[DailyStat],
-) -> WeeklyCharts:
-    days_per_week = 7.0
-    today_date = max((s.day for s in daily_stats), default=_today_start().date())
-    today = datetime(today_date.year, today_date.month, today_date.day, tzinfo=TZ_SHANGHAI)
-    ref_date = today_date + timedelta(days=1)
-    min_week, max_week = _week_range()
-
-    week_days: dict[int, list[DailyStat]] = {w: [] for w in range(min_week, max_week + 1)}
-    for s in daily_stats:
-        d = s.day
-        wn = (d - ref_date).days // 7
-        if min_week <= wn <= max_week:
-            week_days[wn].append(s)
-
-    all_node_ids: set[str] = set()
-    for s in daily_stats:
-        all_node_ids.update(s.node_downloaded.keys())
-    sorted_node_ids = sorted(all_node_ids)
-
-    labels: list[str] = []
-    byte_rate_totals: list[ByteRateTotal] = []
-    done_count_totals: list[int] = []
-    fetched_data: list[LabeledByteRate] = []
-    thread_count_data: list[LabeledCount] = []
-    torrent_count_data: list[LabeledCount] = []
-    mediainfo_count_data: list[LabeledCount] = []
-
-    byte_rate_per_node: dict[str, list[float]] = {nid: [] for nid in sorted_node_ids}
-    done_count_per_node: dict[str, list[int]] = {nid: [] for nid in sorted_node_ids}
-
-    for wn in range(min_week, max_week + 1):
-        label = _week_label(today, wn)
-        labels.append(label)
-        days = week_days[wn]
-
-        total_dl_bytes = sum(s.downloaded_bytes for s in days)
-        total_dl_count = sum(s.downloaded_count for s in days)
-        byte_rate = sum(s.downloaded_byte_rate for s in days) / days_per_week
-        fetched_rate = sum(s.fetched_byte_rate for s in days) / days_per_week
-
-        byte_rate_totals.append(
-            ByteRateTotal(
-                byte_rate=byte_rate,
-                byte_rate_fmt=human_readable_byte_rate(byte_rate),
-                total_size=int(total_dl_bytes),
-                total_size_fmt=human_readable_size(total_dl_bytes),
-            )
-        )
-        done_count_totals.append(total_dl_count)
-
-        fetched_data.append(LabeledByteRate(label=label, byte_rate=fetched_rate))
-
-        thread_count_data.append(LabeledCount(label=label, count=sum(s.thread_count for s in days)))
-        torrent_count_data.append(
-            LabeledCount(label=label, count=sum(s.torrent_count for s in days))
-        )
-        mediainfo_count_data.append(
-            LabeledCount(label=label, count=sum(s.mediainfo_count for s in days))
-        )
-
-        node_totals: dict[str, dict[str, int]] = {}
-        for s in days:
-            for nid, nd in s.node_downloaded.items():
-                if nid not in node_totals:
-                    node_totals[nid] = {"bytes": 0, "count": 0}
-                node_totals[nid]["bytes"] += nd.downloaded_bytes
-                node_totals[nid]["count"] += nd.count
-
-        for nid in sorted_node_ids:
-            nt = node_totals.get(nid, {"bytes": 0, "count": 0})
-            byte_rate_per_node[nid].append(
-                sum(s.node_downloaded_byte_rate.get(nid, 0.0) for s in days) / days_per_week
-            )
-            done_count_per_node[nid].append(nt["count"])
-
-    return WeeklyCharts(
-        weekly_byte_rate=ByteRateChart(
-            labels=labels,
-            totals=byte_rate_totals,
-            per_node=byte_rate_per_node,
-        ),
-        weekly_fetched_size=fetched_data,
-        weekly_thread_count=thread_count_data,
-        weekly_torrent_count=torrent_count_data,
-        weekly_done_count=DoneCountChart(
-            labels=labels,
-            totals=done_count_totals,
-            per_node=done_count_per_node,
-        ),
-        weekly_mediainfo_count=mediainfo_count_data,
-    )
 
 
 def _build_daily_charts(
@@ -1166,41 +1033,19 @@ def create_app() -> fastapi.FastAPI:
                 "skipped": skipped,
                 "skipped_size": human_readable_size(skipped_size),
                 "skipped_pct": pct(skipped),
-                "node_aliases": node_aliases,
                 "scrape_status": scrape_status,
             },
         )
 
-    @app.get("/api/weekly-charts")
-    async def weekly_charts() -> ORJSONResponse:
-        since = _today_start().date() - timedelta(days=13 * 7)
-        await _backfill_daily_stats(since)
-        history_rows, today_stats = await asyncio.gather(
-            pool.fetch(
-                "select * from daily_stats where day >= $1 order by day",
-                since,
-            ),
-            _compute_today_stats(),
-        )
-        history_stats = [DailyStatsSnapshot.from_record(row) for row in history_rows]
-        history_daily_stats = _build_history_daily_stats(history_stats)
-        today_daily_stat = _build_today_daily_stat(today_stats)
-        daily_stats = _combine_daily_stats(history_daily_stats, today_daily_stat)
-        return ORJSONResponse(_build_weekly_charts(daily_stats).to_payload())
-
     @app.get("/detail")
     async def detail(render: Render, start: Annotated[str | None, Query()] = None) -> HTMLResponse:
         today = _today_start()
-        default_start = (today - timedelta(days=364)).strftime("%Y-%m-%d")
-        start_value = start if start is not None else default_start
-
-        start_dt: datetime | None = None
-        if start_value:
-            start_dt = datetime.strptime(start_value, "%Y-%m-%d").replace(tzinfo=TZ_SHANGHAI)
-
-        if start_dt is None:
-            start_dt = today - timedelta(days=364)
-        start_dt = start_dt.replace(tzinfo=TZ_SHANGHAI) if start_dt.tzinfo is None else start_dt
+        if start:
+            start_dt = datetime.strptime(start, "%Y-%m-%d").replace(tzinfo=TZ_SHANGHAI)
+            start_value = start
+        else:
+            start_dt = today - timedelta(days=30)
+            start_value = start_dt.strftime("%Y-%m-%d")
 
         await _backfill_daily_stats(start_dt.date())
         history_rows, today_stats, alias_rows, all_node_rows = await asyncio.gather(
