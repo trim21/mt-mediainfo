@@ -6,7 +6,10 @@ This project downloads torrents from M-Team, processes local media files to extr
 
 ## Code Map
 
-- `app/downloader.py` - Downloader loop, qBittorrent integration, local mediainfo extraction, hardcoded-subtitle detection, RPC polling
+- `app/downloader.py` - Downloader loop, BT client integration, local mediainfo extraction, hardcoded-subtitle detection, RPC polling
+- `app/bt_client.py` - Abstract `BTClient` base class defining the torrent client interface (add, delete, list, resume, pause, get files, set file priority)
+- `app/qb_client.py` - `QBittorrentClient` implementation of `BTClient` using `qbittorrentapi`
+- `app/rt_client.py` - `RTorrentClient` implementation of `BTClient` using XML-RPC (`rtorrent-rpc`)
 - `app/scrape.py` - Thread discovery, API mediainfo fetch, torrent download, S3 backup, and `selected_size` backfill
 - `app/server.py` - FastAPI dashboard, JSON endpoints, daily stats cache, node and RPC views
 - `app/rpc.py` - RPC method definitions, payload validation, queue polling, and enqueue helpers
@@ -27,7 +30,7 @@ This project downloads torrents from M-Team, processes local media files to extr
 ## Runtime Invariants
 
 - Python 3.12 project with environment-driven config in `app/config.py`
-- `app/downloader.py` uses `qbittorrentapi` directly to interact with qBittorrent
+- `app/downloader.py` uses `BTClient` abstraction; concrete clients are `QBittorrentClient` (`qbittorrentapi`) and `RTorrentClient` (`rtorrent-rpc`)
 - Downloader loop order matters: heartbeat -> wait for PG notify or timeout -> process RPC commands -> process qBittorrent torrents -> pick new jobs
 - `app/downloader.py` and `app/scrape.py` use psycopg-based sync DB access; `app/server.py` uses asyncpg
 - `app/sql/migrations/` contains all SQL migrations; `001_initial_schema.sql` creates the initial tables; subsequent migrations add columns and indexes; `schema_version` in the `config` table tracks which migrations have run (absent = 0)
@@ -50,7 +53,7 @@ Tracks every M-Team torrent thread (discovered via search or gap-fill) along wit
 Represents a download job assigned to a specific downloader node. Tracks the lifecycle from `downloading` through terminal states (`done`, `failed`, `removed_from_download_client`, `skipped`).
 
 - **Inserted**: In `app/downloader.py` `__pick_and_add_jobs()` when a thread is selected for download.
-- **Updated**: `progress`, `dlspeed`, `eta` updated each qB poll iteration; `status` transitions: `downloading` → `done` / `failed` / `removed_from_download_client` / `skipped`; `completed_at` set when status becomes `done`.
+- **Updated**: `progress`, `dlspeed`, `eta` updated each qB poll iteration; `status` transitions: `downloading` → `done` / `failed` / `removed_from_download_client` / `skipped`; `completed_at` set when status becomes `done`; `removed_reason` set when status becomes `removed_from_download_client`.
 - **Deleted**: By admin reset APIs in `app/server.py` — per-thread reset, all-removed reset, or per-node reset.
 - **Read**: Joined with `thread` in pick query; aggregated by status/node for dashboard pages.
 
@@ -112,7 +115,25 @@ Tracks per-torrent download progress over time.
 
 - **Inserted**: During the qBittorrent poll loop in `app/downloader.py`, a new row is written only when `t.completed` (bytes downloaded) differs from the most recent recorded value for that `(info_hash, node_id)` pair.
 - **Deleted**: Rows are removed when the associated job is resolved — either completed (mediainfo extraction done) or failed (including stalled cleanup).
-- **Read**: Used to detect stalled downloads — torrents whose latest `recorded_at` is older than 3 days are marked failed and removed from qBittorrent.
+- **Read**: Used to detect stalled downloads — torrents whose latest `recorded_at` is older than 2 days are marked failed and removed from qBittorrent.
+
+### `export_record`
+
+Tracks mediainfo export jobs to S3.
+
+- **Inserted**: By `_export_mediainfo_to_s3()` in `app/scrape.py` when a monthly export runs.
+- **Updated**: `status` transitions: `running` → `success` / `failed`; `error` set on failure; `exported_count` set on insert.
+- **Deleted**: By `POST /api/export-records/{export_date}/reset` in `app/server.py`.
+- **Read**: Listed on `/exports` page; failed exports surfaced on dashboard index.
+
+Export workflow:
+
+1. Runs on the 1st of each month (`__run_export_mediainfo` checks `today.day == 1` and `last_export_mediainfo_date` KV)
+2. Selects threads where `api_mediainfo != ''`, `mediainfo != ''`, `mediainfo != api_mediainfo` (locally generated mediainfo that differs from M-Team API), `exported_at = 0`, `seeders != 0`, `deleted = false`
+3. Writes zstd-compressed JSON Lines to S3 under `exports/{date}/mediainfo_export.jsonl.zst`
+4. Marks `thread.exported_at` with the export date int so those rows are excluded from future exports
+5. On exception: marks `export_record` as `failed` with error message; does NOT update `last_export_mediainfo_date`, so the next interval retries
+6. Manual reset (`POST /api/export-records/{export_date}/reset`): deletes the S3 object, resets `thread.exported_at = 0` for affected threads, deletes the `export_record` row — enabling a fresh re-export
 
 ## Skills
 

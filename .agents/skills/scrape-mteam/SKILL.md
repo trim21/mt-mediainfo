@@ -13,15 +13,16 @@ The scraper in `app/scrape.py` is a long-running scheduler that moves threads fr
 - `Scrape.start()` runs `__run()` forever
 - Each interval runs independent operations, each with its own cooldown window:
 
-| Operation                | Runner key        | Description                             |
-| ------------------------ | ----------------- | --------------------------------------- |
-| `scrape_search()`        | `0-search`        | Discover new threads via search API     |
-| `scrape_mediainfo`       | `1-mediainfo`     | Fetch mediainfo via mediaInfo API       |
-| `scrape_detail`          | `2-fetch-detail`  | Fetch full detail (including mediainfo) |
-| `fetch_torrent`          | `3-fetch-torrent` | Download .torrent files                 |
-| `backup_to_s3`           | `4-backup`        | Daily DB backup to S3                   |
-| `backfill_selected_size` | `5-backfill`      | Recompute selected_size for legacy rows |
-| `_pg_dump_to_s3`         | `6-pg-dump`       | Daily raw pg_dump backup to S3          |
+| Operation                 | Runner key           | Description                                |
+| ------------------------- | -------------------- | ------------------------------------------ |
+| `scrape_search()`         | `0-search`           | Discover new threads via search API        |
+| `scrape_mediainfo`        | `1-mediainfo`        | Fetch mediainfo via mediaInfo API          |
+| `scrape_detail`           | `2-fetch-detail`     | Fetch full detail (including mediainfo)    |
+| `fetch_torrent`           | `3-fetch-torrent`    | Download .torrent files                    |
+| `backup_to_s3`            | `4-backup`           | Daily DB backup to S3                      |
+| `backfill_selected_size`  | `5-backfill`         | Recompute selected_size for legacy rows    |
+| `_pg_dump_to_s3`          | `6-pg-dump`          | Daily raw pg_dump backup to S3             |
+| `_export_mediainfo_to_s3` | `7-export-mediainfo` | Monthly incremental mediainfo export to S3 |
 
 - A rate-limited operation gets a 5-minute cooldown; only that operation pauses, others continue
 - Status per operation is tracked in the `scrape_status` table
@@ -76,6 +77,16 @@ The scraper in `app/scrape.py` is a long-running scheduler that moves threads fr
 - Compresses output with zstd and uploads to S3 under `pg_dumps/{date}/dump.sql.zst`
 - Same retention policy as `backup_to_s3`
 - SSL key reuses the temp file already created by `pg_dsn()` (`/tmp/pg-client.key`)
+
+### `_export_mediainfo_to_s3()`
+
+- `__run_export_mediainfo()` wrapper runs only on the 1st of each month (tracked via `last_export_mediainfo_date` KV)
+- Exports threads where `api_mediainfo != ''`, `mediainfo != ''`, `mediainfo != api_mediainfo` (locally generated mediainfo that differs from M-Team API), `exported_at = 0`, `seeders != 0`, `deleted = false`
+- Tracks already-exported threads via `exported_at` column on `thread` table (0 = not exported, date int = exported)
+- Writes zstd-compressed JSON Lines to S3 under `exports/{date}/mediainfo_export.jsonl.zst`
+- Records export status in the `export_record` table (status: `running` → `success` / `failed`)
+- On failure: marks `export_record` as `failed` with error; does NOT update `last_export_mediainfo_date`, so next interval retries
+- Manual reset via `POST /api/export-records/{export_date}/reset`: deletes S3 file, resets `thread.exported_at = 0`, deletes `export_record` row
 
 ## Views
 

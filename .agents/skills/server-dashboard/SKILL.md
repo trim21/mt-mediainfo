@@ -34,7 +34,6 @@ The web server in `app/server.py` is a FastAPI factory that serves Jinja templat
 ### Overview and charts
 
 - `/` renders the top-level dashboard with aggregate counts, sizes, and scrape status
-- `/api/weekly-charts` returns cached weekly history plus live today stats
 - `/detail` renders daily charts from an arbitrary start date (with `?start=YYYY-MM-DD`)
 
 ### Thread lists
@@ -46,9 +45,14 @@ The web server in `app/server.py` is a FastAPI factory that serves Jinja templat
 - `/threads/done`
 - `/threads/failed`
 - `/threads/removed`
+- `/threads/all` — all non-deleted threads across all categories
 - `/threads/errors` (scrape error log from `scrape_error` table)
 
 Each list page maps directly to a lifecycle predicate. If you change these filters, update `thread-lifecycle` too.
+
+### Single thread detail
+
+- `/thread/{tid}` renders a single-thread detail page with full metadata, mediainfo sources, job history, and torrent info
 
 ### Node and RPC views
 
@@ -56,6 +60,16 @@ Each list page maps directly to a lifecycle predicate. If you change these filte
 - `/nodes/{node_id}` shows jobs with speed and ETA formatting, supports `?status=downloading|done`
 - `/rpc` shows the most recent `node_command` rows with derived status
 - `POST /api/node/{node_id}/rpc` validates the node and method, then enqueues a command
+
+### Exports
+
+- `/exports` lists all `export_record` rows with status, count, and error details
+- `GET /api/export-records/{export_date}/download` generates a pre-signed S3 URL and redirects
+- `POST /api/export-records/{export_date}/reset` deletes S3 file, resets `thread.exported_at`, deletes the `export_record` row
+
+### Admin
+
+- `/admin` displays config entries in a tree view and lists all nodes
 
 ### Mutations
 
@@ -67,6 +81,7 @@ Each list page maps directly to a lifecycle predicate. If you change these filte
 - `GET /api/config` lists all config entries
 - `POST /api/config` upserts a config entry (blocks `schema_version`)
 - `DELETE /api/config/{key}` deletes a config entry (blocks `schema_version`)
+- `POST /api/config/delete-group` deletes all config entries with a given key prefix (blocks `schema_version`)
 
 ## Change Guidance
 

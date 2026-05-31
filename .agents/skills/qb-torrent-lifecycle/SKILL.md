@@ -47,14 +47,14 @@ torrents_add (with tags=[downloading, need-select], download_limit=1, sequential
 The code in `__process_qb_torrents()` determines the stage using torrent state, NOT tags:
 
 1. **Not in managed jobs**: Handled by `__handle_unmanaged_torrent()` — tries to reclaim if `removed-by-client`, otherwise deletes
-2. **Old torrents** (`seen_complete` older than 10 days): Deleted, job marked failed with "no seeders"
+2. **Stalled** (no progress for 2 days via `job_download_size`): Removed from client, thread marked `torrent_invalid = 'stalled'`, job marked failed
 3. **Error state** (`state.is_errored`): Deleted, job marked failed with "torrent error"
 4. **Has `process-error` tag**: Skipped entirely (the one exception where a tag affects logic)
 5. **Unselected category**: Deleted, job marked skipped
 6. **Uploading/seeding** (`state.is_uploading`): Swaps tag to `processing`, runs mediainfo extraction
 7. **Has `need-select` tag**: Selects largest video file, clears download limit, removes tag
 8. **Stopped/paused** (`state.is_paused`): Swaps tag to `downloading`, resumes the torrent
-9. **Downloading** (default): Updates progress/dlspeed/eta in DB
+9. **Downloading** (default): Updates progress/dlspeed/eta in DB + records to `job_download_size`
 
 ## Stage Details
 
@@ -94,11 +94,11 @@ In `__process_qb_torrents()`, paused torrents are detected and resumed with tag 
 
 ## Cleanup
 
-- **Old torrents**: Torrents where `seen_complete` is older than 10 days are deleted, job marked failed with "no seeders"
+- **Stalled torrents**: Torrents with no progress for 2 days (detected via `job_download_size` table) are removed from client, thread marked `torrent_invalid = 'stalled'`, job marked failed
 - **Torrent error state**: Torrents in `state.is_errored` are deleted, job marked failed with "torrent error"
 - **Unselected category**: Torrents whose thread category is no longer in `SELECTED_CATEGORY` are deleted, job marked skipped
-- **Removed from client**: If a torrent disappears from qb (user deleted), job is marked `removed-by-client`
-- **Unmanaged torrents**: Torrents not in any downloading job are paused (or reclaimed if previously marked `removed-by-client`)
+- **Removed from client**: If a torrent disappears from qb (user deleted), job is marked `removed-by-client` (reason: `"manual"`)
+- **Unmanaged torrents**: Torrents not in any downloading job are deleted (with files); reclaimed if previously marked `removed-by-client`
 
 ## Related
 
