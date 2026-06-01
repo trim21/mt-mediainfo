@@ -54,6 +54,30 @@ def _decode_cached_files(data: bytes) -> list[tuple[int, str, int]]:
     return orjson.loads(gzip.decompress(data))
 
 
+def get_torrent_files(
+    tid: int,
+    db: Database,
+    store: TorrentStore,
+) -> list[tuple[int, str, int]] | None:
+    row = db.fetch_one("select files from thread_file_cache where tid = $1", [tid])
+    if row is not None:
+        try:
+            return _decode_cached_files(row[0])
+        except Exception:
+            logger.warning("failed to decode cached files for tid {}", tid)
+
+    tc = store.read(tid)
+    if tc is None:
+        return None
+    t = parse_torrent(tc)
+    files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
+    db.execute(
+        """insert into thread_file_cache (tid, files) values ($1, $2) on conflict (tid) do update set files = excluded.files""",
+        [tid, _encode_cached_files(files_data)],
+    )
+    return files_data
+
+
 class Scrape:
     mteam_client: MTeamAPI
     __db: Database
@@ -451,46 +475,6 @@ class Scrape:
         if error_count:
             return RunResult.error
         return RunResult.ok
-
-    def backfill_bdmv(self, status_name: str = "") -> RunResult:
-        """Mark existing BDMV torrents as selected_size=-2."""
-
-        def _handle(tid: int) -> None:
-            files_data: list[tuple[int, str, int]] | None = None
-
-            row = self.__db.fetch_one(
-                """select files from thread_file_cache where tid = $1""",
-                [tid],
-            )
-            if row is not None:
-                try:
-                    files_data = _decode_cached_files(row[0])
-                except Exception:
-                    logger.warning("failed to decode cached files for tid {}", tid)
-
-            if files_data is None:
-                tc = self.__store.read(tid)
-                if tc is None:
-                    return
-                t = parse_torrent(tc)
-                files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
-                self.__db.execute(
-                    """insert into thread_file_cache (tid, files) values ($1, $2) on conflict (tid) do update set files = excluded.files""",
-                    [tid, _encode_cached_files(files_data)],
-                )
-
-            if any(n.lower() in ("index.bdmv", "movieobject.bdmv") for _, n, _ in files_data):
-                self.__db.execute(
-                    """update thread set selected_size = -2 where tid = $1""",
-                    [tid],
-                )
-
-        return self.run_backfill(
-            "bdmv",
-            "info_hash != '' and selected_size != -2 and torrent_invalid = ''",
-            _handle,
-            status_name=status_name,
-        )
 
     @staticmethod
     def __is_rate_limited(e: MTeamRequestError) -> bool:
@@ -976,9 +960,7 @@ class Scrape:
             "6-export-mediainfo": lambda: self.__run_export_mediainfo(),
         }
 
-        backfill_runners: dict[str, Callable[[], RunResult]] = {
-            "8-backfill-bdmv": lambda: self.backfill_bdmv(status_name="8-backfill-bdmv"),
-        }
+        backfill_runners: dict[str, Callable[[], RunResult]] = {}
 
         all_names = list(runners) + list(backfill_runners)
         self.__db.execute("delete from scrape_status where not name = any($1)", [all_names])
