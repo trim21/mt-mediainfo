@@ -847,17 +847,19 @@ def create_app() -> fastapi.FastAPI:
             skipped_stats,
             bdmv_stats,
             failed_export_dates,
+            node_alias_rows,
         ) = await asyncio.gather(
             pool.fetchrow(
                 """
             select
-              (select count(1) from thread) as scraped_total,
-              (select count(1) from thread where category = any($1)) as total,
-              coalesce((select sum(selected_size) from thread where category = any($1)), 0) as total_size,
-              (select count(1) from pending_mediainfo_threads where category = any($1)) as pending_fetch_mediainfo,
-              (select count(1) from pending_torrent_threads where category = any($1)) as pending_fetch_torrent,
-              (select count(1) from completed_threads where category = any($1)) as done,
-              coalesce((select sum(selected_size) from completed_threads where category = any($1)), 0) as done_size
+              count(1) as scraped_total,
+              count(1) filter (where category = any($1)) as total,
+              coalesce(sum(selected_size) filter (where category = any($1)), 0)::int8 as total_size,
+              count(1) filter (where category = any($1) and deleted = false and seeders != 0 and api_mediainfo_at is null and api_mediainfo = '') as pending_fetch_mediainfo,
+              count(1) filter (where category = any($1) and deleted = false and seeders != 0 and api_mediainfo_at is not null and mediainfo = '' and api_mediainfo = '' and info_hash = '' and torrent_invalid = '') as pending_fetch_torrent,
+              count(1) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')) as done,
+              coalesce(sum(selected_size) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')), 0)::int8 as done_size
+            from thread
             """,
                 SELECTED_CATEGORY,
             ),
@@ -945,6 +947,7 @@ def create_app() -> fastapi.FastAPI:
             pool.fetch(
                 "select export_date from export_record where status = 'failed' order by export_date desc"
             ),
+            pool.fetch("select id, alias from node where alias != ''"),
         )
 
         thread_stats = cast(asyncpg.Record, thread_stats)
@@ -980,10 +983,8 @@ def create_app() -> fastapi.FastAPI:
             "size", 0
         )
 
-        node_aliases = {
-            str(r["id"]): str(r["alias"])
-            for r in await pool.fetch("select id, alias from node where alias != ''")
-        }
+        node_alias_rows = cast(list[asyncpg.Record], node_alias_rows)
+        node_aliases = {str(r["id"]): str(r["alias"]) for r in node_alias_rows}
 
         def _node_name(nid: str) -> str:
             return node_aliases.get(nid, nid[:8])
