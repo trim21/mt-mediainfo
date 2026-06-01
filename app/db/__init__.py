@@ -107,8 +107,16 @@ class Database:
         self.execute(
             "create table if not exists config (key text primary key, value text not null)"
         )
+        self.execute("create table if not exists schema_version (version int not null)")
 
-        row = self.fetch_val("select value from config where key = 'schema_version'")
+        row = self.fetch_val("select version from schema_version limit 1")
+
+        if row is None:
+            old = self.fetch_val("select value from config where key = 'schema_version'")
+            if old is not None:
+                version = int(old)
+                self.execute("insert into schema_version (version) values ($1)", [version])
+                row = version
 
         migrations = _load_migrations()
 
@@ -118,16 +126,22 @@ class Database:
                 continue
             print(f"running migration {m.version}")
             self.execute(cast(LiteralString, m.sql))
+            if current == 0:
+                self.execute("insert into schema_version (version) values ($1)", [m.version])
+            else:
+                self.execute("update schema_version set version = $1", [m.version])
             self.execute(
                 "insert into config (key, value) values ('schema_version', $1)"
                 " on conflict (key) do update set value = excluded.value",
                 [str(m.version)],
             )
+            current = m.version
 
     def wait_db_migration(self) -> None:
         expected = _expected_schema_version()
+        self.execute("create table if not exists schema_version (version int not null)")
         while True:
-            row = self.fetch_val("select value from config where key = 'schema_version'")
+            row = self.fetch_val("select version from schema_version limit 1")
             current = int(row) if row is not None else 0
             if current >= expected:
                 break

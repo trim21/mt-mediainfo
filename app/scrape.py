@@ -644,6 +644,8 @@ class Scrape:
             "--no-owner",
             "--no-acl",
             "--no-comments",
+            "--exclude-table-data",
+            "thread_file_cache",
         ]
 
         if c.pg_sslmode:
