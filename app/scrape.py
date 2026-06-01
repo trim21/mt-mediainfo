@@ -885,7 +885,7 @@ class Scrape:
                 all_done = False
                 self.__update_status(name, RunStatus.running, None, category="backfill")
                 try:
-                    result = run()
+                    run()
                 except Exception:
                     logger.exception("backfill {} failed", name)
                     self.__update_status(name, RunStatus.error, None, category="backfill")
@@ -895,9 +895,14 @@ class Scrape:
                     "select count(*) from backfill_task where name = $1 and status = 'done'",
                     [backfill_name],
                 )
+                remaining = self.__db.fetch_val(
+                    "select count(*) from backfill_task where name = $1 and status = 'pending'",
+                    [backfill_name],
+                )
+                status = RunStatus.running if remaining > 0 else RunStatus.ok
                 self.__update_status(
                     name,
-                    RunStatus(result.value),
+                    status,
                     None,
                     category="backfill",
                     detail=f"{done}/{total}",
