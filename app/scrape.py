@@ -391,7 +391,7 @@ class Scrape:
         *,
         args: Sequence[Any] = (),
         status_name: str = "",
-        concurrency: int = 4,
+        concurrency: int = 8,
     ) -> RunResult:
         total = self.__db.fetch_val("select count(*) from backfill_task where name = $1", [name])
 
