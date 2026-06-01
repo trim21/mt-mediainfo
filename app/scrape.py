@@ -416,10 +416,9 @@ class Scrape:
                 self.__update_detail(status_name, f"done {total}/{total}")
             return RunResult.ok
 
-        batch_size = 100
         tids: list[tuple[int]] = self.__db.fetch_all(
-            "select tid from backfill_task where name = $1 and status = 'pending' order by tid limit $2",
-            [name, batch_size],
+            "select tid from backfill_task where name = $1 and status = 'pending' order by tid",
+            [name],
         )
 
         done_count = total - pending_count
