@@ -4,6 +4,7 @@ import io
 import os
 import subprocess
 import tempfile
+import threading
 import time
 from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
@@ -17,7 +18,12 @@ from sslog import logger
 
 from app._zstd import writer as zstd_writer
 from app.config import ScrapeConfig
-from app.const import PRIORITY_CATEGORY, SELECTED_CATEGORY, TZ_SHANGHAI, search_cursor_key
+from app.const import (
+    PRIORITY_CATEGORY,
+    SELECTED_CATEGORY,
+    TZ_SHANGHAI,
+    search_cursor_key,
+)
 from app.db import Database
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
@@ -296,7 +302,8 @@ class Scrape:
                         ttl=self.TORRENT_DL_TTL,
                     )
                     logger.warning(
-                        "torrent {} hit daily download limit, skipping until tomorrow", tid
+                        "torrent {} hit daily download limit, skipping until tomorrow",
+                        tid,
                     )
                     continue
                 self._log_scrape_error(tid, "fetch_torrent", e)
@@ -713,7 +720,10 @@ class Scrape:
 
         tids: list[int] = []
         compressed: bytes = b""
-        with self.__db.connection() as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        with (
+            self.__db.connection() as conn,
+            conn.cursor(row_factory=psycopg.rows.dict_row) as cur,
+        ):
             buf = io.BytesIO()
             with zstd_writer(buf) as writer:
                 for row in cur.stream(
@@ -797,32 +807,40 @@ class Scrape:
             [name, result.value, next_allowed],
         )
 
-    def __run(self) -> None:
-        limit = parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
+    def __run_backfills(
+        self,
+        backfill_runners: dict[str, Callable[[], RunResult]],
+        interval: int,
+    ) -> None:
+        while True:
+            all_done = True
+            for name, run in backfill_runners.items():
+                if self.__kv.get(f"backfill.{name}.done") == "1":
+                    self.__update_status(name, RunStatus.ok, None)
+                    continue
+                all_done = False
+                self.__update_status(name, RunStatus.running, None)
+                try:
+                    result = run()
+                except Exception:
+                    logger.exception("backfill {} failed", name)
+                    self.__update_status(name, RunStatus.error, None)
+                    continue
+                self.__update_status(name, RunStatus(result.value), None)
+            if all_done:
+                logger.info("all backfills completed")
+                return
+            time.sleep(interval)
+
+    def __run_regular(
+        self,
+        runners: dict[str, Callable[[], RunResult]],
+        interval: int,
+    ) -> None:
         cooldown = timedelta(minutes=5)
-        interval = 60  # 1 minute
 
-        runners: dict[str, Callable[[], RunResult]] = {
-            "0-search": lambda: self.__run_search(),
-            "1-mediainfo": lambda: self.__run_mediainfo(limit),
-            "2-fetch-detail": lambda: self.__run_scrape(limit),
-            "3-fetch-torrent": lambda: self.__run_fetch_torrents(),
-            "4-backup": lambda: self.__run_backup(),
-            "6-pg-dump": lambda: self.__run_pg_dump(),
-            "7-export-mediainfo": lambda: self.__run_export_mediainfo(),
-            "8-backfill-bdmv": lambda: self.backfill_bdmv(),
-        }
-
-        # Earliest time each operation is allowed to run again
         epoch = datetime.now(TZ_SHANGHAI)
         next_allowed: dict[str, datetime] = {key: epoch for key in runners}
-
-        self.__db.execute(
-            "delete from scrape_status where not name = any($1)", [list(runners.keys())]
-        )
-        self.__db.execute(
-            "update scrape_status set last_result = 'error' where last_result = 'running'"
-        )
 
         while True:
             self.__kv.cleanup()
@@ -856,4 +874,46 @@ class Scrape:
             time.sleep(interval)
 
     def start(self) -> None:
-        self.__run()
+        interval = 60
+
+        runners: dict[str, Callable[[], RunResult]] = {
+            "0-search": lambda: self.__run_search(),
+            "1-mediainfo": lambda: self.__run_mediainfo(
+                parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
+            ),
+            "2-fetch-detail": lambda: self.__run_scrape(
+                parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
+            ),
+            "3-fetch-torrent": lambda: self.__run_fetch_torrents(),
+            "4-backup": lambda: self.__run_backup(),
+            "5-pg-dump": lambda: self.__run_pg_dump(),
+            "6-export-mediainfo": lambda: self.__run_export_mediainfo(),
+        }
+
+        backfill_runners: dict[str, Callable[[], RunResult]] = {
+            "10-backfill-bdmv": lambda: self.backfill_bdmv(),
+        }
+
+        self.__db.execute("delete from scrape_status")
+
+        backfill_done = threading.Event()
+
+        def _backfill_wrapper() -> None:
+            self.__run_backfills(backfill_runners, interval)
+            backfill_done.set()
+
+        t_regular = threading.Thread(
+            target=self.__run_regular, args=(runners, interval), daemon=True
+        )
+        t_backfill = threading.Thread(target=_backfill_wrapper, daemon=True)
+        t_regular.start()
+        t_backfill.start()
+
+        while True:
+            time.sleep(5)
+            if not t_regular.is_alive():
+                logger.error("regular scrape thread exited unexpectedly")
+                raise SystemExit(1)
+            if not backfill_done.is_set() and not t_backfill.is_alive():
+                logger.error("backfill thread exited unexpectedly")
+                raise SystemExit(1)
