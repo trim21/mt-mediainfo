@@ -860,10 +860,8 @@ class Scrape:
             "2-fetch-detail": lambda: self.__run_scrape(limit),
             "3-fetch-torrent": lambda: self.__run_fetch_torrents(),
             "4-backup": lambda: self.__run_backup(),
-            "5-backfill": lambda: self.backfill_selected_size(),
             "6-pg-dump": lambda: self.__run_pg_dump(),
             "7-export-mediainfo": lambda: self.__run_export_mediainfo(),
-            "8-backfill-bdmv": lambda: self.backfill_bdmv(),
         }
 
         # Earliest time each operation is allowed to run again
