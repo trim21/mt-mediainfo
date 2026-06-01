@@ -1,4 +1,5 @@
 import enum
+import gzip
 import io
 import os
 import subprocess
@@ -35,6 +36,14 @@ class RunStatus(str, enum.Enum):
     ok = "ok"
     rate_limited = "rate_limited"
     error = "error"
+
+
+def _encode_cached_files(files_data: list[tuple[int, str, int]]) -> bytes:
+    return gzip.compress(orjson.dumps(files_data))
+
+
+def _decode_cached_files(data: bytes) -> list[tuple[int, str, int]]:
+    return orjson.loads(gzip.decompress(data))
 
 
 class Scrape:
@@ -319,11 +328,18 @@ class Scrape:
 
             if is_bdmv(torrent=t):
                 logger.info("torrent {} is bdmv, skipping", tid)
+                cached = _encode_cached_files([
+                    (i, f.name, f.length) for i, f in enumerate(t.as_files())
+                ])
                 with self.__db.connection() as conn, conn.transaction():
                     self.__store.write(tid, tc)
                     conn.execute(
                         """update thread set info_hash = $2, selected_size = -2, torrent_fetched_at = current_timestamp where tid = $1""",
                         [tid, info_hash],
+                    )
+                    conn.execute(
+                        """insert into thread_file_cache (tid, files) values ($1, $2) on conflict (tid) do update set files = excluded.files""",
+                        [tid, cached],
                     )
                 continue
 
@@ -338,6 +354,7 @@ class Scrape:
                 {"index": i, "name": name, "size": size, "selected": i == keep_idx}
                 for i, name, size in files_data
             ]
+            cached = _encode_cached_files(files_data)
 
             with self.__db.connection() as conn, conn.transaction():
                 self.__store.write(tid, tc)
@@ -350,6 +367,10 @@ class Scrape:
                         selected_size,
                         orjson.dumps(selected_files).decode(),
                     ],
+                )
+                conn.execute(
+                    """insert into thread_file_cache (tid, files) values ($1, $2) on conflict (tid) do update set files = excluded.files""",
+                    [tid, cached],
                 )
         return False
 
@@ -367,30 +388,49 @@ class Scrape:
             return RunResult.ok
 
         for (tid,) in tids:
-            tc = self.__store.read(tid)
-            if tc is None:
-                self.__db.execute(
-                    """update thread set info_hash = '', selected_size = 0, selected_files = '[]'::jsonb where tid = $1""",
-                    [tid],
-                )
-                continue
-            try:
-                t = parse_torrent(tc)
-            except (pydantic.ValidationError, BencodeDecodeError):
-                self.__db.execute(
-                    """update thread set selected_size = -1, selected_files = '[]'::jsonb where tid = $1""",
-                    [tid],
-                )
-                continue
+            files_data: list[tuple[int, str, int]] | None = None
 
-            if is_bdmv(torrent=t):
+            row = self.__db.fetch_one(
+                """select files from thread_file_cache where tid = $1""",
+                [tid],
+            )
+            if row is not None:
+                try:
+                    files_data = _decode_cached_files(row[0])
+                except Exception:
+                    logger.warning("failed to decode cached files for tid {}", tid)
+
+            if files_data is None:
+                tc = self.__store.read(tid)
+                if tc is None:
+                    self.__db.execute(
+                        """update thread set info_hash = '', selected_size = 0, selected_files = '[]'::jsonb where tid = $1""",
+                        [tid],
+                    )
+                    continue
+                try:
+                    t = parse_torrent(tc)
+                except (pydantic.ValidationError, BencodeDecodeError):
+                    self.__db.execute(
+                        """update thread set selected_size = -1, selected_files = '[]'::jsonb where tid = $1""",
+                        [tid],
+                    )
+                    continue
+
+                files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
+                self.__db.execute(
+                    """insert into thread_file_cache (tid, files) values ($1, $2) on conflict (tid) do update set files = excluded.files""",
+                    [tid, _encode_cached_files(files_data)],
+                )
+
+            if any(name.lower() in ("index.bdmv", "movieobject.bdmv") for _, name, _ in files_data):
                 self.__db.execute(
                     """update thread set selected_size = -2 where tid = $1""",
                     [tid],
                 )
                 continue
 
-            files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
+            total_length = sum(size for _, _, size in files_data)
             keep_idx = find_largest_video_file(files_data)
             selected_size = (
                 next((size for i, _, size in files_data if i == keep_idx), -1)
@@ -404,7 +444,7 @@ class Scrape:
 
             self.__db.execute(
                 """update thread set size = $2, selected_size = $3, selected_files = $4 where tid = $1""",
-                [tid, t.total_length, selected_size, orjson.dumps(selected_files).decode()],
+                [tid, total_length, selected_size, orjson.dumps(selected_files).decode()],
             )
 
         return RunResult.ok
@@ -431,15 +471,33 @@ class Scrape:
             return RunResult.ok
 
         for (tid,) in tids:
-            tc = self.__store.read(tid)
-            if tc is None:
-                continue
-            try:
-                t = parse_torrent(tc)
-            except (pydantic.ValidationError, BencodeDecodeError):
-                continue
+            files_data: list[tuple[int, str, int]] | None = None
 
-            if is_bdmv(torrent=t):
+            row = self.__db.fetch_one(
+                """select files from thread_file_cache where tid = $1""",
+                [tid],
+            )
+            if row is not None:
+                try:
+                    files_data = _decode_cached_files(row[0])
+                except Exception:
+                    logger.warning("failed to decode cached files for tid {}", tid)
+
+            if files_data is None:
+                tc = self.__store.read(tid)
+                if tc is None:
+                    continue
+                try:
+                    t = parse_torrent(tc)
+                except (pydantic.ValidationError, BencodeDecodeError):
+                    continue
+                files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
+                self.__db.execute(
+                    """insert into thread_file_cache (tid, files) values ($1, $2) on conflict (tid) do update set files = excluded.files""",
+                    [tid, _encode_cached_files(files_data)],
+                )
+
+            if any(name.lower() in ("index.bdmv", "movieobject.bdmv") for _, name, _ in files_data):
                 self.__db.execute(
                     """update thread set selected_size = -2 where tid = $1""",
                     [tid],
