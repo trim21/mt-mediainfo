@@ -862,6 +862,7 @@ class Scrape:
             "4-backup": lambda: self.__run_backup(),
             "6-pg-dump": lambda: self.__run_pg_dump(),
             "7-export-mediainfo": lambda: self.__run_export_mediainfo(),
+            "8-backfill-bdmv": lambda: self.backfill_bdmv(),
         }
 
         # Earliest time each operation is allowed to run again
@@ -870,6 +871,9 @@ class Scrape:
 
         self.__db.execute(
             "delete from scrape_status where not name = any($1)", [list(runners.keys())]
+        )
+        self.__db.execute(
+            "update scrape_status set last_result = 'error' where last_result = 'running'"
         )
 
         while True:
