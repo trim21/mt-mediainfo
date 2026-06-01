@@ -5,8 +5,9 @@ import os
 import subprocess
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
+from typing import Any, LiteralString, cast
 
 import orjson
 import psycopg.rows
@@ -374,103 +375,50 @@ class Scrape:
                 )
         return False
 
-    def backfill_selected_size(self) -> RunResult:
-        """Backfill selected_size and selected_files for threads that have a torrent but selected_size=0."""
-        tids: list[tuple[int]] = self.__db.fetch_all(
-            """
-            select tid from thread
-            where selected_size = 0 and info_hash != ''
-            limit 1000
-            """,
+    def run_backfill(
+        self,
+        name: str,
+        where: str,
+        handler: Callable[[int], None],
+        *,
+        args: Sequence[Any] = (),
+    ) -> RunResult:
+        done_key = f"backfill.{name}.done"
+        cursor_key = f"backfill.{name}.cursor"
+
+        if self.__kv.get(done_key) == "1":
+            return RunResult.ok
+
+        cursor = parse_obj(int, self.__kv.get(cursor_key) or "0")
+
+        query = cast(
+            LiteralString,
+            f"select tid from thread where {where} and tid > $1 order by tid limit 1000",
         )
 
+        tids: list[tuple[int]] = self.__db.fetch_all(query, [cursor, *args])
+
         if not tids:
+            self.__kv.set(done_key, "1")
             return RunResult.ok
 
         for (tid,) in tids:
-            files_data: list[tuple[int, str, int]] | None = None
+            handler(tid)
 
-            row = self.__db.fetch_one(
-                """select files from thread_file_cache where tid = $1""",
-                [tid],
-            )
-            if row is not None:
-                try:
-                    files_data = _decode_cached_files(row[0])
-                except Exception:
-                    logger.warning("failed to decode cached files for tid {}", tid)
-
-            if files_data is None:
-                tc = self.__store.read(tid)
-                if tc is None:
-                    self.__db.execute(
-                        """update thread set info_hash = '', selected_size = 0, selected_files = '[]'::jsonb where tid = $1""",
-                        [tid],
-                    )
-                    continue
-                try:
-                    t = parse_torrent(tc)
-                except (pydantic.ValidationError, BencodeDecodeError):
-                    self.__db.execute(
-                        """update thread set selected_size = -1, selected_files = '[]'::jsonb where tid = $1""",
-                        [tid],
-                    )
-                    continue
-
-                files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
-                self.__db.execute(
-                    """insert into thread_file_cache (tid, files) values ($1, $2) on conflict (tid) do update set files = excluded.files""",
-                    [tid, _encode_cached_files(files_data)],
-                )
-
-            if any(name.lower() in ("index.bdmv", "movieobject.bdmv") for _, name, _ in files_data):
-                self.__db.execute(
-                    """update thread set selected_size = -2 where tid = $1""",
-                    [tid],
-                )
-                continue
-
-            total_length = sum(size for _, _, size in files_data)
-            keep_idx = find_largest_video_file(files_data)
-            selected_size = (
-                next((size for i, _, size in files_data if i == keep_idx), -1)
-                if keep_idx is not None
-                else -1
-            )
-            selected_files = [
-                {"index": i, "name": name, "size": size, "selected": i == keep_idx}
-                for i, name, size in files_data
-            ]
-
-            self.__db.execute(
-                """update thread set size = $2, selected_size = $3, selected_files = $4 where tid = $1""",
-                [tid, total_length, selected_size, orjson.dumps(selected_files).decode()],
-            )
-
+        self.__kv.set(cursor_key, str(tids[-1][0]))
         return RunResult.ok
 
     def backfill_bdmv(self) -> RunResult:
         """Mark existing BDMV torrents as selected_size=-2."""
-        if self.__kv.get("backfill_bdmv_done") == "1":
-            return RunResult.ok
 
-        cursor = parse_obj(int, self.__kv.get("backfill_bdmv_cursor") or "0")
+        old_cursor = self.__kv.get("backfill_bdmv_cursor")
+        if old_cursor is not None and self.__kv.get("backfill.bdmv.cursor") is None:
+            self.__kv.set("backfill.bdmv.cursor", old_cursor)
+        old_done = self.__kv.get("backfill_bdmv_done")
+        if old_done is not None and self.__kv.get("backfill.bdmv.done") is None:
+            self.__kv.set("backfill.bdmv.done", old_done)
 
-        tids: list[tuple[int]] = self.__db.fetch_all(
-            """
-            select tid from thread
-            where info_hash != '' and selected_size != -2 and tid > $1
-            order by tid
-            limit 1000
-            """,
-            [cursor],
-        )
-
-        if not tids:
-            self.__kv.set("backfill_bdmv_done", "1")
-            return RunResult.ok
-
-        for (tid,) in tids:
+        def _handle(tid: int) -> None:
             files_data: list[tuple[int, str, int]] | None = None
 
             row = self.__db.fetch_one(
@@ -486,11 +434,8 @@ class Scrape:
             if files_data is None:
                 tc = self.__store.read(tid)
                 if tc is None:
-                    continue
-                try:
-                    t = parse_torrent(tc)
-                except (pydantic.ValidationError, BencodeDecodeError):
-                    continue
+                    return
+                t = parse_torrent(tc)
                 files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
                 self.__db.execute(
                     """insert into thread_file_cache (tid, files) values ($1, $2) on conflict (tid) do update set files = excluded.files""",
@@ -503,8 +448,11 @@ class Scrape:
                     [tid],
                 )
 
-        self.__kv.set("backfill_bdmv_cursor", str(tids[-1][0]))
-        return RunResult.ok
+        return self.run_backfill(
+            "bdmv",
+            "info_hash != '' and selected_size != -2 and torrent_invalid = ''",
+            _handle,
+        )
 
     @staticmethod
     def __is_rate_limited(e: MTeamRequestError) -> bool:
