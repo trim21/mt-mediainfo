@@ -389,6 +389,7 @@ class Scrape:
         handler: Callable[[int], None],
         *,
         args: Sequence[Any] = (),
+        status_name: str = "",
     ) -> RunResult:
         done_key = f"backfill.{name}.done"
         cursor_key = f"backfill.{name}.cursor"
@@ -411,11 +412,19 @@ class Scrape:
 
         for (tid,) in tids:
             handler(tid)
+            if status_name:
+                self.__update_status(
+                    status_name,
+                    RunStatus.running,
+                    None,
+                    category="backfill",
+                    detail=f"cursor={tid}",
+                )
 
         self.__kv.set(cursor_key, str(tids[-1][0]))
         return RunResult.ok
 
-    def backfill_bdmv(self) -> RunResult:
+    def backfill_bdmv(self, status_name: str = "") -> RunResult:
         """Mark existing BDMV torrents as selected_size=-2."""
 
         old_cursor = self.__kv.get("backfill_bdmv_cursor")
@@ -459,6 +468,7 @@ class Scrape:
             "bdmv",
             "info_hash != '' and selected_size != -2 and torrent_invalid = ''",
             _handle,
+            status_name=status_name,
         )
 
     @staticmethod
@@ -794,17 +804,27 @@ class Scrape:
             return RunResult.error
         return RunResult.ok
 
-    def __update_status(self, name: str, result: RunStatus, next_allowed: datetime | None) -> None:
+    def __update_status(
+        self,
+        name: str,
+        result: RunStatus,
+        next_allowed: datetime | None,
+        *,
+        category: str = "",
+        detail: str = "",
+    ) -> None:
         self.__db.execute(
             """
-            insert into scrape_status (name, last_run_at, last_result, next_allowed_at)
-            values ($1, current_timestamp, $2, $3)
+            insert into scrape_status (name, last_run_at, last_result, next_allowed_at, category, detail)
+            values ($1, current_timestamp, $2, $3, $4, $5)
             on conflict (name) do update set
               last_run_at = current_timestamp,
               last_result = excluded.last_result,
-              next_allowed_at = excluded.next_allowed_at
+              next_allowed_at = excluded.next_allowed_at,
+              category = excluded.category,
+              detail = excluded.detail
             """,
-            [name, result.value, next_allowed],
+            [name, result.value, next_allowed, category, detail],
         )
 
     def __run_backfills(
@@ -815,18 +835,32 @@ class Scrape:
         while True:
             all_done = True
             for name, run in backfill_runners.items():
-                if self.__kv.get(f"backfill.{name}.done") == "1":
-                    self.__update_status(name, RunStatus.ok, None)
+                done_key = f"backfill.{name}.done"
+                cursor_key = f"backfill.{name}.cursor"
+                if self.__kv.get(done_key) == "1":
+                    self.__update_status(
+                        name, RunStatus.ok, None, category="backfill", detail="done"
+                    )
                     continue
                 all_done = False
-                self.__update_status(name, RunStatus.running, None)
+                cursor = self.__kv.get(cursor_key) or "0"
+                self.__update_status(
+                    name, RunStatus.running, None, category="backfill", detail=f"cursor={cursor}"
+                )
                 try:
                     result = run()
                 except Exception:
                     logger.exception("backfill {} failed", name)
-                    self.__update_status(name, RunStatus.error, None)
+                    self.__update_status(name, RunStatus.error, None, category="backfill")
                     continue
-                self.__update_status(name, RunStatus(result.value), None)
+                cursor = self.__kv.get(cursor_key) or "0"
+                self.__update_status(
+                    name,
+                    RunStatus(result.value),
+                    None,
+                    category="backfill",
+                    detail=f"cursor={cursor}",
+                )
             if all_done:
                 logger.info("all backfills completed")
                 return
@@ -855,11 +889,18 @@ class Scrape:
                         next_allowed[name].strftime("%H:%M:%S"),
                     )
                     continue
-                self.__update_status(name, RunStatus.running, next_allowed[name])
+                self.__update_status(name, RunStatus.running, next_allowed[name], category="scrape")
                 result = run()
                 if result == RunResult.rate_limited:
                     next_allowed[name] = datetime.now(TZ_SHANGHAI) + cooldown
-                self.__update_status(name, RunStatus(result.value), next_allowed[name])
+                na = next_allowed[name]
+                self.__update_status(
+                    name,
+                    RunStatus(result.value),
+                    na,
+                    category="scrape",
+                    detail=na.astimezone(TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S"),
+                )
 
             status_parts: list[str] = []
             for name in runners:
@@ -891,7 +932,7 @@ class Scrape:
         }
 
         backfill_runners: dict[str, Callable[[], RunResult]] = {
-            "10-backfill-bdmv": lambda: self.backfill_bdmv(),
+            "8-backfill-bdmv": lambda: self.backfill_bdmv(status_name="8-backfill-bdmv"),
         }
 
         self.__db.execute("delete from scrape_status")

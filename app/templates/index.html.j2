@@ -79,18 +79,20 @@
         <thead>
           <tr>
             <th>Operation</th>
+            <th>Category</th>
             <th>Last Run</th>
             <th>Result</th>
-            <th>Next Allowed</th>
+            <th>Detail</th>
           </tr>
         </thead>
         <tbody>
         {% for s in scrape_status %}
           <tr class="{% if s.last_result == 'running' %}table-info{% elif s.last_result == 'rate_limited' %}table-warning{% elif s.last_result == 'error' %}table-danger{% else %}table-success{% endif %}">
             <td>{{ s.name }}</td>
+            <td>{{ s.category }}</td>
             <td>{{ s.last_run_at | timeago }}</td>
             <td>{{ s.last_result }}</td>
-            <td>{{ s.next_allowed_at | fmt_dt }}</td>
+            <td>{{ s.detail }}</td>
           </tr>
         {% endfor %}
         </tbody>
