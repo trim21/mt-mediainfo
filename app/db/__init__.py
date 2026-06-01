@@ -111,13 +111,6 @@ class Database:
 
         row = self.fetch_val("select version from schema_version limit 1")
 
-        if row is None:
-            old = self.fetch_val("select value from config where key = 'schema_version'")
-            if old is not None:
-                version = int(old)
-                self.execute("insert into schema_version (version) values ($1)", [version])
-                row = version
-
         migrations = _load_migrations()
 
         current = int(row) if row is not None else 0
@@ -130,11 +123,6 @@ class Database:
                 self.execute("insert into schema_version (version) values ($1)", [m.version])
             else:
                 self.execute("update schema_version set version = $1", [m.version])
-            self.execute(
-                "insert into config (key, value) values ('schema_version', $1)"
-                " on conflict (key) do update set value = excluded.value",
-                [str(m.version)],
-            )
             current = m.version
 
     def wait_db_migration(self) -> None:

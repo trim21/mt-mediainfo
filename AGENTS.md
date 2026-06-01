@@ -23,7 +23,7 @@ This project downloads torrents from M-Team, processes local media files to extr
 - `app/hardcode_subtitle.py` - Hardcoded Chinese subtitle detection via ffprobe/ffmpeg
 - `app/kv.py` - KV config store with TTL support (backed by `config` table)
 - `app/db/__init__.py` - `Database` class with psycopg connection pool, advisory locks, and migration runner
-- `app/sql/migrations/` - Numbered SQL migrations executed once on server startup; version tracked in the `config` table (`schema_version` key). To add a new migration, create a file named `NNN_description.sql` (e.g. `009_add_column.sql`) where `NNN` is the next integer in sequence. The runner in `app/db/__init__.py` (`Database.run_migrations`) sorts files by name, parses the numeric prefix, and applies any migration whose version exceeds the stored `schema_version`.
+- `app/sql/migrations/` - Numbered SQL migrations executed once on server startup; version tracked in the `schema_version` table. To add a new migration, create a file named `NNN_description.sql` (e.g. `009_add_column.sql`) where `NNN` is the next integer in sequence. The runner in `app/db/__init__.py` (`Database.run_migrations`) sorts files by name, parses the numeric prefix, and applies any migration whose version exceeds the stored `schema_version`.
 - `taskfile.yaml` - Standard local commands
 - `pyproject.toml` - Dependency and tooling configuration
 
@@ -33,7 +33,7 @@ This project downloads torrents from M-Team, processes local media files to extr
 - `app/downloader.py` uses `BTClient` abstraction; concrete clients are `QBittorrentClient` (`qbittorrentapi`) and `RTorrentClient` (`rtorrent-rpc`)
 - Downloader loop order matters: heartbeat -> wait for PG notify or timeout -> process RPC commands -> process qBittorrent torrents -> pick new jobs
 - `app/downloader.py` and `app/scrape.py` use psycopg-based sync DB access; `app/server.py` uses asyncpg
-- `app/sql/migrations/` contains all SQL migrations; `001_initial_schema.sql` creates the initial tables; subsequent migrations add columns and indexes; `schema_version` in the `config` table tracks which migrations have run (absent = 0)
+- `app/sql/migrations/` contains all SQL migrations; `001_initial_schema.sql` creates the initial tables; subsequent migrations add columns and indexes; `schema_version` table tracks which migrations have run (absent = 0)
 - The service is designed to run continuously; preserve retry, cooldown, and background-loop behavior when refactoring
 
 ## Key Tables
@@ -68,12 +68,12 @@ Registers downloader nodes with their identity, last heartbeat, alias, and versi
 
 ### `config`
 
-Dual-purpose table: (1) schema migration tracking via `schema_version` key; (2) general-purpose key-value store with optional TTL (`expires_at` column).
+General-purpose key-value store with optional TTL (`expires_at` column).
 
-- **Inserted/Updated**: Upserted by `KVConfig.set()` in `app/kv.py`, by migration runner in `app/db/__init__.py`, and by admin config API in `app/server.py`.
+- **Inserted/Updated**: Upserted by `KVConfig.set()` in `app/kv.py` and by admin config API in `app/server.py`.
 - **Deleted**: By `KVConfig.delete()`, `KVConfig.cleanup()` (expired rows), and admin APIs (single key or prefix group).
-- **Read**: By `KVConfig.get()` (filters expired), migration runner, and server dashboard.
-- **Notable keys**: `schema_version`, `search_cursor:normal`, `search_cursor:adult`, `quota_exhausted.*`, `torrent_dl:{today}:{tid}`, `daily_torrent_dl:{today}`, `last_backup_date`.
+- **Read**: By `KVConfig.get()` (filters expired) and server dashboard.
+- **Notable keys**: `search_cursor:normal`, `search_cursor:adult`, `quota_exhausted.*`, `torrent_dl:{today}:{tid}`, `daily_torrent_dl:{today}`, `last_backup_date`.
 
 ### `daily_stats`
 
@@ -134,6 +134,14 @@ Export workflow:
 4. Marks `thread.exported_at` with the export date int so those rows are excluded from future exports
 5. On exception: marks `export_record` as `failed` with error message; does NOT update `last_export_mediainfo_date`, so the next interval retries
 6. Manual reset (`POST /api/export-records/{export_date}/reset`): deletes the S3 object, resets `thread.exported_at = 0` for affected threads, deletes the `export_record` row — enabling a fresh re-export
+
+### `schema_version`
+
+Tracks which SQL migrations have been applied. Single-row table.
+
+- **Inserted**: By `Database.run_migrations()` in `app/db/__init__.py` on first migration.
+- **Updated**: By `Database.run_migrations()` after each migration is applied.
+- **Read**: By `Database.wait_db_migration()` to block until all migrations are applied.
 
 ## Skills
 

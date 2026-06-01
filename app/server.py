@@ -1489,8 +1489,6 @@ def create_app() -> fastapi.FastAPI:
             return ORJSONResponse({"error": "key is required"}, status_code=422)
         if not value:
             return ORJSONResponse({"error": "value is required"}, status_code=422)
-        if key == "schema_version":
-            return ORJSONResponse({"error": "key is protected"}, status_code=403)
         await pool.execute(
             "insert into config (key, value) values ($1, $2)"
             " on conflict (key) do update set value = excluded.value",
@@ -1501,8 +1499,6 @@ def create_app() -> fastapi.FastAPI:
 
     @app.delete("/api/config/{key}")
     async def delete_config(key: str) -> ORJSONResponse:
-        if key == "schema_version":
-            return ORJSONResponse({"error": "key is protected"}, status_code=403)
         result = await pool.execute("delete from config where key = $1", key)
         if result == "DELETE 0":
             return ORJSONResponse({"error": "key not found"}, status_code=404)
@@ -1513,8 +1509,6 @@ def create_app() -> fastapi.FastAPI:
         prefix = body.prefix.strip()
         if not prefix:
             return ORJSONResponse({"error": "prefix is required"}, status_code=422)
-        if "schema_version".startswith(prefix):
-            return ORJSONResponse({"error": "prefix is protected"}, status_code=403)
         result = await pool.execute(
             "delete from config where starts_with(key, $1)",
             prefix + ":",
