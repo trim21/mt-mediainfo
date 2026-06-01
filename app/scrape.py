@@ -413,13 +413,7 @@ class Scrape:
         for (tid,) in tids:
             handler(tid)
             if status_name:
-                self.__update_status(
-                    status_name,
-                    RunStatus.running,
-                    None,
-                    category="backfill",
-                    detail=f"cursor={tid}",
-                )
+                self.__update_detail(status_name, f"cursor={tid}")
 
         self.__kv.set(cursor_key, str(tids[-1][0]))
         return RunResult.ok
@@ -818,13 +812,19 @@ class Scrape:
             insert into scrape_status (name, last_run_at, last_result, next_allowed_at, category, detail)
             values ($1, current_timestamp, $2, $3, $4, $5)
             on conflict (name) do update set
-              last_run_at = current_timestamp,
+              last_run_at = case when excluded.last_result = 'running' then current_timestamp else scrape_status.last_run_at end,
               last_result = excluded.last_result,
               next_allowed_at = excluded.next_allowed_at,
               category = excluded.category,
               detail = excluded.detail
             """,
             [name, result.value, next_allowed, category, detail],
+        )
+
+    def __update_detail(self, name: str, detail: str) -> None:
+        self.__db.execute(
+            "update scrape_status set detail = $2 where name = $1",
+            [name, detail],
         )
 
     def __run_backfills(
@@ -935,7 +935,8 @@ class Scrape:
             "8-backfill-bdmv": lambda: self.backfill_bdmv(status_name="8-backfill-bdmv"),
         }
 
-        self.__db.execute("delete from scrape_status")
+        all_names = list(runners) + list(backfill_runners)
+        self.__db.execute("delete from scrape_status where not name = any($1)", [all_names])
 
         backfill_done = threading.Event()
 
