@@ -8,6 +8,7 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
+from multiprocessing.pool import ThreadPool
 from typing import Any, LiteralString, cast
 
 import orjson
@@ -390,43 +391,70 @@ class Scrape:
         *,
         args: Sequence[Any] = (),
         status_name: str = "",
+        concurrency: int = 4,
     ) -> RunResult:
-        done_key = f"backfill.{name}.done"
-        cursor_key = f"backfill.{name}.cursor"
+        total = self.__db.fetch_val("select count(*) from backfill_task where name = $1", [name])
 
-        if self.__kv.get(done_key) == "1":
+        if total == 0:
+            query = cast(
+                LiteralString,
+                f"insert into backfill_task (name, tid) select $1, tid from thread where {where} on conflict do nothing",
+            )
+            self.__db.execute(query, [name, *args])
+            total = self.__db.fetch_val(
+                "select count(*) from backfill_task where name = $1", [name]
+            )
+            if total == 0:
+                return RunResult.ok
+
+        pending_count = self.__db.fetch_val(
+            "select count(*) from backfill_task where name = $1 and status = 'pending'",
+            [name],
+        )
+        if pending_count == 0:
+            if status_name:
+                self.__update_detail(status_name, f"done {total}/{total}")
             return RunResult.ok
 
-        cursor = parse_obj(int, self.__kv.get(cursor_key) or "0")
-
-        query = cast(
-            LiteralString,
-            f"select tid from thread where {where} and tid > $1 order by tid limit 1000",
+        batch_size = 100
+        tids: list[tuple[int]] = self.__db.fetch_all(
+            "select tid from backfill_task where name = $1 and status = 'pending' order by tid limit $2",
+            [name, batch_size],
         )
 
-        tids: list[tuple[int]] = self.__db.fetch_all(query, [cursor, *args])
+        done_count = total - pending_count
+        error_count = 0
 
-        if not tids:
-            self.__kv.set(done_key, "1")
-            return RunResult.ok
+        def _run_one(tid: int) -> bool:
+            try:
+                handler(tid)
+                self.__db.execute(
+                    "update backfill_task set status = 'done', updated_at = current_timestamp where name = $1 and tid = $2",
+                    [name, tid],
+                )
+                return True
+            except Exception:
+                logger.exception("backfill {} failed for tid {}", name, tid)
+                self.__db.execute(
+                    "update backfill_task set status = 'error', error = $3, updated_at = current_timestamp where name = $1 and tid = $2",
+                    [name, tid, "handler error"],
+                )
+                return False
 
-        for (tid,) in tids:
-            handler(tid)
-            if status_name:
-                self.__update_detail(status_name, f"cursor={tid}")
+        with ThreadPool(processes=concurrency) as pool:
+            for ok in pool.imap_unordered(_run_one, [tid for (tid,) in tids]):
+                done_count += 1
+                if not ok:
+                    error_count += 1
+                if status_name:
+                    self.__update_detail(status_name, f"{done_count}/{total}")
 
-        self.__kv.set(cursor_key, str(tids[-1][0]))
+        if error_count:
+            return RunResult.error
         return RunResult.ok
 
     def backfill_bdmv(self, status_name: str = "") -> RunResult:
         """Mark existing BDMV torrents as selected_size=-2."""
-
-        old_cursor = self.__kv.get("backfill_bdmv_cursor")
-        if old_cursor is not None and self.__kv.get("backfill.bdmv.cursor") is None:
-            self.__kv.set("backfill.bdmv.cursor", old_cursor)
-        old_done = self.__kv.get("backfill_bdmv_done")
-        if old_done is not None and self.__kv.get("backfill.bdmv.done") is None:
-            self.__kv.set("backfill.bdmv.done", old_done)
 
         def _handle(tid: int) -> None:
             files_data: list[tuple[int, str, int]] | None = None
@@ -452,7 +480,7 @@ class Scrape:
                     [tid, _encode_cached_files(files_data)],
                 )
 
-            if any(name.lower() in ("index.bdmv", "movieobject.bdmv") for _, name, _ in files_data):
+            if any(n.lower() in ("index.bdmv", "movieobject.bdmv") for _, n, _ in files_data):
                 self.__db.execute(
                     """update thread set selected_size = -2 where tid = $1""",
                     [tid],
@@ -837,31 +865,42 @@ class Scrape:
         while True:
             all_done = True
             for name, run in backfill_runners.items():
-                done_key = f"backfill.{name}.done"
-                cursor_key = f"backfill.{name}.cursor"
-                if self.__kv.get(done_key) == "1":
+                total = self.__db.fetch_val(
+                    "select count(*) from backfill_task where name = $1",
+                    [name.removeprefix("8-backfill-")],
+                )
+                pending = self.__db.fetch_val(
+                    "select count(*) from backfill_task where name = $1 and status = 'pending'",
+                    [name.removeprefix("8-backfill-")],
+                )
+                if total > 0 and pending == 0:
                     self.__update_status(
-                        name, RunStatus.ok, None, category="backfill", detail="done"
+                        name,
+                        RunStatus.ok,
+                        None,
+                        category="backfill",
+                        detail=f"done {total}/{total}",
                     )
                     continue
                 all_done = False
-                cursor = self.__kv.get(cursor_key) or "0"
-                self.__update_status(
-                    name, RunStatus.running, None, category="backfill", detail=f"cursor={cursor}"
-                )
+                self.__update_status(name, RunStatus.running, None, category="backfill")
                 try:
                     result = run()
                 except Exception:
                     logger.exception("backfill {} failed", name)
                     self.__update_status(name, RunStatus.error, None, category="backfill")
                     continue
-                cursor = self.__kv.get(cursor_key) or "0"
+                backfill_name = name.removeprefix("8-backfill-")
+                done = self.__db.fetch_val(
+                    "select count(*) from backfill_task where name = $1 and status = 'done'",
+                    [backfill_name],
+                )
                 self.__update_status(
                     name,
                     RunStatus(result.value),
                     None,
                     category="backfill",
-                    detail=f"cursor={cursor}",
+                    detail=f"{done}/{total}",
                 )
             if all_done:
                 logger.info("all backfills completed")

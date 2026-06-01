@@ -143,6 +143,15 @@ Tracks which SQL migrations have been applied. Single-row table.
 - **Updated**: By `Database.run_migrations()` after each migration is applied.
 - **Read**: By `Database.wait_db_migration()` to block until all migrations are applied.
 
+### `backfill_task`
+
+Tracks per-thread work items for oneshot backfill jobs. Each backfill name gets its own set of tids populated from a `WHERE` clause on `thread`.
+
+- **Inserted**: By `run_backfill()` in `app/scrape.py` on first run — `INSERT INTO backfill_task (name, tid) SELECT ... FROM thread WHERE ...`.
+- **Updated**: `status` transitions: `pending` → `done` / `error`; `error` message set on failure.
+- **Deleted**: Never — retained as history.
+- **Read**: By `run_backfill()` to pick pending tasks, by `__run_backfills()` to check completion and display progress (`done/total`).
+
 ## Skills
 
 - `qb-torrent-lifecycle` - qBittorrent state machine, tags, file selection, and cleanup rules for `app/downloader.py`
