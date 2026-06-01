@@ -1019,7 +1019,6 @@ def create_app() -> fastapi.FastAPI:
                 "last_run_at": r["last_run_at"],
                 "last_result": str(r["last_result"]),
                 "next_allowed_at": r["next_allowed_at"],
-                "category": str(r["category"]),
                 "detail": str(r["detail"]),
             }
             for r in scrape_status_rows
