@@ -606,7 +606,13 @@ class Downloader:
                     insert into job (tid, node_id, info_hash, start_download_time, updated_at, status, eta)
                     VALUES ($1, $2, $3, current_timestamp, current_timestamp, $4, $5)
                     """,
-                    [tid, self.config.node_id, info_hash, ItemStatus.DOWNLOADING, ETA_INF],
+                    [
+                        tid,
+                        self.config.node_id,
+                        info_hash,
+                        ItemStatus.DOWNLOADING,
+                        ETA_INF,
+                    ],
                 )
                 conn.execute(
                     """
@@ -625,7 +631,7 @@ class Downloader:
             try:
                 self.__add_torrent(tid, info_hash)
             except Exception as e:
-                logger.error("failed to add torrent tid={}: {}", tid, e)
+                logger.exception("failed to add torrent tid={}: {}", tid, e)
                 self.__update_job_status(
                     status=ItemStatus.FAILED, tid=tid, failed_reason=format_exc(e)
                 )

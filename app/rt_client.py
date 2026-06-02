@@ -196,6 +196,7 @@ class RTorrentClient(BTClient):
     ) -> str:
         for content in torrent_files:
             params: list[str | bytes] = [
+                "",
                 content,
                 'd.tied_to_file.set=""',
                 f'd.directory.set="{save_path}"',
