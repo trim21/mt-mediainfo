@@ -44,7 +44,7 @@ class RTorrentClient(BTClient):
         rows: list[list[Any]] = self._call(  # type: ignore[assignment]
             "d.multicall2",
             [
-                "",
+                "main",
                 "d.name=",
                 "d.hash=",
                 "d.directory_base=",
