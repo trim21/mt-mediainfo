@@ -374,7 +374,7 @@ class Scrape:
     def run_backfill(
         self,
         name: str,
-        where: str,
+        source: str,
         handler: Callable[[int], None],
         *,
         args: Sequence[Any] = (),
@@ -386,7 +386,7 @@ class Scrape:
         if total == 0:
             query = cast(
                 LiteralString,
-                f"insert into backfill_task (name, tid) select $1, tid from thread where {where} on conflict do nothing",
+                f"insert into backfill_task (name, tid) select $1, tid from ({source}) t on conflict do nothing",
             )
             self.__db.execute(query, [name, *args])
             total = self.__db.fetch_val(
@@ -955,14 +955,18 @@ class Scrape:
         backfill_runners: dict[str, Callable[[], RunResult]] = {
             "8-backfill-file-cache": lambda: self.run_backfill(
                 "file-cache",
-                "info_hash != '' and not exists (select 1 from thread_file_cache c where c.tid = thread.tid)",
+                "select tid from thread"
+                " where info_hash != ''"
+                " and not exists (select 1 from thread_file_cache c where c.tid = thread.tid)",
                 self._backfill_file_cache,
                 status_name="8-backfill-file-cache",
                 concurrency=32,
             ),
             "9-backfill-selected-index": lambda: self.run_backfill(
                 "selected-index",
-                "selected_index is null and info_hash != ''",
+                "select t.tid from thread t"
+                " join thread_file_cache c on c.tid = t.tid"
+                " where t.selected_index is null and t.info_hash != ''",
                 self._backfill_selected_index,
                 status_name="9-backfill-selected-index",
                 concurrency=8,
