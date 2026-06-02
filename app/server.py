@@ -21,7 +21,7 @@ from botocore.config import Config as BotoConfig
 from fastapi import Depends, Query, Request
 from fastapi.templating import Jinja2Templates
 from mypy_boto3_s3 import S3Client
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from app.config import ServerConfig, load_s3_config, load_server_config
 from app.const import (
@@ -306,6 +306,248 @@ async def __render(request: Request) -> _Render:
 
 
 type Render = Annotated[_Render, Depends(__render)]
+
+
+async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
+    cursor_key_normal = search_cursor_key("normal")
+    cursor_key_adult = search_cursor_key("adult")
+    (
+        thread_stats,
+        config_rows,
+        pending_download_stats,
+        job_status_rows,
+        downloading_node_rows,
+        done_node_rows,
+        scrape_status_rows,
+        skipped_stats,
+        bdmv_stats,
+        failed_export_dates,
+        node_alias_rows,
+    ) = await asyncio.gather(
+        pool.fetchrow(
+            """
+        select
+          count(1) as scraped_total,
+          count(1) filter (where category = any($1)) as total,
+          coalesce(sum(selected_size) filter (where category = any($1)), 0)::int8 as total_size,
+          count(1) filter (where category = any($1) and deleted = false and seeders != 0 and api_mediainfo_at is null and api_mediainfo = '') as pending_fetch_mediainfo,
+          count(1) filter (where category = any($1) and deleted = false and seeders != 0 and api_mediainfo_at is not null and mediainfo = '' and api_mediainfo = '' and info_hash = '' and torrent_invalid = '') as pending_fetch_torrent,
+          count(1) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')) as done,
+          coalesce(sum(selected_size) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')), 0)::int8 as done_size
+        from thread
+        """,
+            SELECTED_CATEGORY,
+        ),
+        pool.fetch(
+            "select key, value from config where key = any($1)",
+            [[cursor_key_normal, cursor_key_adult]],
+        ),
+        pool.fetchrow(
+            """
+        select count(1)::int as count, coalesce(sum(selected_size), 0)::int8 as size
+        from pending_download_threads
+        left join job on (job.tid = pending_download_threads.tid)
+        where category = any($1) and job.tid is null
+        """,
+            SELECTED_CATEGORY,
+        ),
+        pool.fetch(
+            """
+        select job.status,
+               count(1)::int as count,
+               coalesce(sum(thread.selected_size), 0)::int8 as size
+        from job
+        join thread on (thread.tid = job.tid)
+        where thread.category = any($1)
+          and job.status = any($2)
+        group by job.status
+        """,
+            SELECTED_CATEGORY,
+            [
+                ItemStatus.DOWNLOADING,
+                ItemStatus.DONE,
+                ItemStatus.FAILED,
+                ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
+            ],
+        ),
+        pool.fetch(
+            """
+        select job.node_id,
+               count(1)::int as count,
+               coalesce(sum(thread.selected_size), 0)::int8 as size,
+               coalesce(sum(job.dlspeed), 0)::int8 as dlspeed
+        from job
+        join thread on (thread.tid = job.tid)
+        where thread.category = any($1)
+          and job.status = $2
+        group by job.node_id
+        order by job.node_id
+        """,
+            SELECTED_CATEGORY,
+            ItemStatus.DOWNLOADING,
+        ),
+        pool.fetch(
+            """
+        select job.node_id,
+               count(1)::int as count,
+               coalesce(sum(thread.selected_size), 0)::int8 as size
+        from job
+        join thread on (thread.tid = job.tid)
+        where thread.category = any($1)
+          and job.status = $2
+        group by job.node_id
+        order by job.node_id
+        """,
+            SELECTED_CATEGORY,
+            ItemStatus.DONE,
+        ),
+        pool.fetch("select * from scrape_status order by name"),
+        pool.fetchrow(
+            """
+        select count(1)::int as count,
+               coalesce(sum(selected_size), 0)::int8 as size
+        from dormant_threads
+        where category = any($1)
+        """,
+            SELECTED_CATEGORY,
+        ),
+        pool.fetchrow(
+            """
+        select count(1)::int as count
+        from thread
+        where selected_size = -2 and category = any($1)
+        """,
+            SELECTED_CATEGORY,
+        ),
+        pool.fetch(
+            "select export_date from export_record where status = 'failed' order by export_date desc"
+        ),
+        pool.fetch("select id, alias from node where alias != ''"),
+    )
+
+    thread_stats = cast(asyncpg.Record, thread_stats)
+    scraped_total = cast(int, thread_stats["scraped_total"])
+    total = cast(int, thread_stats["total"])
+    total_size = cast(int, thread_stats["total_size"])
+    pending_fetch_mediainfo = cast(int, thread_stats["pending_fetch_mediainfo"])
+    pending_fetch_torrent = cast(int, thread_stats["pending_fetch_torrent"])
+    done = cast(int, thread_stats["done"])
+    done_size = cast(int, thread_stats["done_size"])
+
+    pending_download_stats = cast(asyncpg.Record, pending_download_stats)
+    pending_to_download = cast(int, pending_download_stats["count"])
+    pending_to_download_size = cast(int, pending_download_stats["size"])
+
+    config_rows = cast(list[asyncpg.Record], config_rows)
+    config_map = {str(r["key"]): str(r["value"]) for r in config_rows}
+
+    job_status_rows = cast(list[asyncpg.Record], job_status_rows)
+    status_stats = {
+        str(r["status"]): {"count": int(r["count"]), "size": int(r["size"])}
+        for r in job_status_rows
+    }
+
+    downloading = status_stats.get(ItemStatus.DOWNLOADING, {}).get("count", 0)
+    downloading_size = status_stats.get(ItemStatus.DOWNLOADING, {}).get("size", 0)
+    failed = status_stats.get(ItemStatus.FAILED, {}).get("count", 0)
+    failed_size = status_stats.get(ItemStatus.FAILED, {}).get("size", 0)
+    removed_by_client = status_stats.get(ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, {}).get(
+        "count", 0
+    )
+    removed_by_client_size = status_stats.get(ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, {}).get(
+        "size", 0
+    )
+
+    node_alias_rows = cast(list[asyncpg.Record], node_alias_rows)
+    node_aliases = {str(r["id"]): str(r["alias"]) for r in node_alias_rows}
+
+    def _node_name(nid: str) -> str:
+        return node_aliases.get(nid, nid[:8])
+
+    downloading_node_rows = cast(list[asyncpg.Record], downloading_node_rows)
+    downloading_nodes = [
+        {
+            "node_id": str(r["node_id"]),
+            "node_name": _node_name(str(r["node_id"])),
+            "count": int(r["count"]),
+            "size_fmt": human_readable_size(int(r["size"])),
+            "dlspeed": human_readable_size(int(r["dlspeed"])) + "/s",
+        }
+        for r in downloading_node_rows
+    ]
+
+    done_node_rows = cast(list[asyncpg.Record], done_node_rows)
+    done_nodes = [
+        {
+            "node_id": str(r["node_id"]),
+            "node_name": _node_name(str(r["node_id"])),
+            "count": int(r["count"]),
+            "size_fmt": human_readable_size(int(r["size"])),
+        }
+        for r in done_node_rows
+    ]
+
+    scrape_status_rows = cast(list[asyncpg.Record], scrape_status_rows)
+    scrape_status = [
+        {
+            "name": str(r["name"]),
+            "last_run_at": r["last_run_at"],
+            "last_result": str(r["last_result"]),
+            "next_allowed_at": r["next_allowed_at"],
+            "detail": str(r["detail"]),
+        }
+        for r in scrape_status_rows
+    ]
+
+    skipped_stats = cast(asyncpg.Record, skipped_stats)
+    skipped = cast(int, skipped_stats["count"])
+    skipped_size = cast(int, skipped_stats["size"])
+
+    bdmv_stats = cast(asyncpg.Record, bdmv_stats)
+    bdmv = cast(int, bdmv_stats["count"])
+
+    failed_export_dates = cast(list[asyncpg.Record], failed_export_dates)
+    failed_exports = [{"export_date": r["export_date"]} for r in failed_export_dates]
+
+    def pct(n: int) -> str:
+        if total == 0:
+            return "0.0"
+        return f"{n / total * 100:.1f}"
+
+    return {
+        "scraped_total": scraped_total,
+        "search_cursor_normal": config_map.get(cursor_key_normal, "N/A"),
+        "search_cursor_adult": config_map.get(cursor_key_adult, "N/A"),
+        "total": total,
+        "total_size": human_readable_size(total_size),
+        "done": done,
+        "done_size": human_readable_size(done_size),
+        "done_pct": pct(done),
+        "done_nodes": done_nodes,
+        "pending_fetch_mediainfo": pending_fetch_mediainfo,
+        "pending_fetch_mediainfo_pct": pct(pending_fetch_mediainfo),
+        "pending_fetch_torrent": pending_fetch_torrent,
+        "pending_fetch_torrent_pct": pct(pending_fetch_torrent),
+        "pending_to_download": pending_to_download,
+        "pending_to_download_size": human_readable_size(pending_to_download_size),
+        "pending_to_download_pct": pct(pending_to_download),
+        "downloading": downloading,
+        "downloading_size": human_readable_size(downloading_size),
+        "downloading_pct": pct(downloading),
+        "downloading_nodes": downloading_nodes,
+        "failed": failed,
+        "failed_size": human_readable_size(failed_size),
+        "failed_pct": pct(failed),
+        "removed_by_client": removed_by_client,
+        "removed_by_client_size": human_readable_size(removed_by_client_size),
+        "removed_by_client_pct": pct(removed_by_client),
+        "skipped": skipped,
+        "skipped_size": human_readable_size(skipped_size),
+        "skipped_pct": pct(skipped),
+        "bdmv": bdmv,
+        "scrape_status": scrape_status,
+        "failed_exports": failed_exports,
+    }
 
 
 PAGE_SIZE = 100
@@ -835,247 +1077,28 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/")
     async def progress(render: Render) -> HTMLResponse:
-        cursor_key_normal = search_cursor_key("normal")
-        cursor_key_adult = search_cursor_key("adult")
-        (
-            thread_stats,
-            config_rows,
-            pending_download_stats,
-            job_status_rows,
-            downloading_node_rows,
-            done_node_rows,
-            scrape_status_rows,
-            skipped_stats,
-            bdmv_stats,
-            failed_export_dates,
-            node_alias_rows,
-        ) = await asyncio.gather(
-            pool.fetchrow(
-                """
-            select
-              count(1) as scraped_total,
-              count(1) filter (where category = any($1)) as total,
-              coalesce(sum(selected_size) filter (where category = any($1)), 0)::int8 as total_size,
-              count(1) filter (where category = any($1) and deleted = false and seeders != 0 and api_mediainfo_at is null and api_mediainfo = '') as pending_fetch_mediainfo,
-              count(1) filter (where category = any($1) and deleted = false and seeders != 0 and api_mediainfo_at is not null and mediainfo = '' and api_mediainfo = '' and info_hash = '' and torrent_invalid = '') as pending_fetch_torrent,
-              count(1) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')) as done,
-              coalesce(sum(selected_size) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')), 0)::int8 as done_size
-            from thread
-            """,
-                SELECTED_CATEGORY,
-            ),
-            pool.fetch(
-                "select key, value from config where key = any($1)",
-                [[cursor_key_normal, cursor_key_adult]],
-            ),
-            pool.fetchrow(
-                """
-            select count(1)::int as count, coalesce(sum(selected_size), 0)::int8 as size
-            from pending_download_threads
-            left join job on (job.tid = pending_download_threads.tid)
-            where category = any($1) and job.tid is null
-            """,
-                SELECTED_CATEGORY,
-            ),
-            pool.fetch(
-                """
-            select job.status,
-                   count(1)::int as count,
-                   coalesce(sum(thread.selected_size), 0)::int8 as size
-            from job
-            join thread on (thread.tid = job.tid)
-            where thread.category = any($1)
-              and job.status = any($2)
-            group by job.status
-            """,
-                SELECTED_CATEGORY,
-                [
-                    ItemStatus.DOWNLOADING,
-                    ItemStatus.DONE,
-                    ItemStatus.FAILED,
-                    ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
-                ],
-            ),
-            pool.fetch(
-                """
-            select job.node_id,
-                   count(1)::int as count,
-                   coalesce(sum(thread.selected_size), 0)::int8 as size,
-                   coalesce(sum(job.dlspeed), 0)::int8 as dlspeed
-            from job
-            join thread on (thread.tid = job.tid)
-            where thread.category = any($1)
-              and job.status = $2
-            group by job.node_id
-            order by job.node_id
-            """,
-                SELECTED_CATEGORY,
-                ItemStatus.DOWNLOADING,
-            ),
-            pool.fetch(
-                """
-            select job.node_id,
-                   count(1)::int as count,
-                   coalesce(sum(thread.selected_size), 0)::int8 as size
-            from job
-            join thread on (thread.tid = job.tid)
-            where thread.category = any($1)
-              and job.status = $2
-            group by job.node_id
-            order by job.node_id
-            """,
-                SELECTED_CATEGORY,
-                ItemStatus.DONE,
-            ),
-            pool.fetch("select * from scrape_status order by name"),
-            pool.fetchrow(
-                """
-            select count(1)::int as count,
-                   coalesce(sum(selected_size), 0)::int8 as size
-            from dormant_threads
-            where category = any($1)
-            """,
-                SELECTED_CATEGORY,
-            ),
-            pool.fetchrow(
-                """
-            select count(1)::int as count
-            from thread
-            where selected_size = -2 and category = any($1)
-            """,
-                SELECTED_CATEGORY,
-            ),
-            pool.fetch(
-                "select export_date from export_record where status = 'failed' order by export_date desc"
-            ),
-            pool.fetch("select id, alias from node where alias != ''"),
-        )
+        ctx = await _fetch_progress_ctx(pool)
+        return render("index.html.j2", ctx=ctx)
 
-        thread_stats = cast(asyncpg.Record, thread_stats)
-        scraped_total = cast(int, thread_stats["scraped_total"])
-        total = cast(int, thread_stats["total"])
-        total_size = cast(int, thread_stats["total_size"])
-        pending_fetch_mediainfo = cast(int, thread_stats["pending_fetch_mediainfo"])
-        pending_fetch_torrent = cast(int, thread_stats["pending_fetch_torrent"])
-        done = cast(int, thread_stats["done"])
-        done_size = cast(int, thread_stats["done_size"])
+    @app.get("/api/progress/stream")
+    async def progress_stream(request: Request) -> StreamingResponse:
+        tmpl = templates.get_template("index_content.html.j2")
 
-        pending_download_stats = cast(asyncpg.Record, pending_download_stats)
-        pending_to_download = cast(int, pending_download_stats["count"])
-        pending_to_download_size = cast(int, pending_download_stats["size"])
+        async def generate() -> AsyncGenerator[str]:
+            while True:
+                if await request.is_disconnected():
+                    break
+                ctx = await _fetch_progress_ctx(pool)
+                ctx["now"] = datetime.now(tz=TZ_SHANGHAI)
+                html = tmpl.render(**ctx)
+                data = orjson.dumps({"html": html}).decode()
+                yield f"data: {data}\n\n"
+                await asyncio.sleep(5)
 
-        config_rows = cast(list[asyncpg.Record], config_rows)
-        config_map = {str(r["key"]): str(r["value"]) for r in config_rows}
-
-        job_status_rows = cast(list[asyncpg.Record], job_status_rows)
-        status_stats = {
-            str(r["status"]): {"count": int(r["count"]), "size": int(r["size"])}
-            for r in job_status_rows
-        }
-
-        downloading = status_stats.get(ItemStatus.DOWNLOADING, {}).get("count", 0)
-        downloading_size = status_stats.get(ItemStatus.DOWNLOADING, {}).get("size", 0)
-        failed = status_stats.get(ItemStatus.FAILED, {}).get("count", 0)
-        failed_size = status_stats.get(ItemStatus.FAILED, {}).get("size", 0)
-        removed_by_client = status_stats.get(ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, {}).get(
-            "count", 0
-        )
-        removed_by_client_size = status_stats.get(ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, {}).get(
-            "size", 0
-        )
-
-        node_alias_rows = cast(list[asyncpg.Record], node_alias_rows)
-        node_aliases = {str(r["id"]): str(r["alias"]) for r in node_alias_rows}
-
-        def _node_name(nid: str) -> str:
-            return node_aliases.get(nid, nid[:8])
-
-        downloading_node_rows = cast(list[asyncpg.Record], downloading_node_rows)
-        downloading_nodes = [
-            {
-                "node_id": str(r["node_id"]),
-                "node_name": _node_name(str(r["node_id"])),
-                "count": int(r["count"]),
-                "size_fmt": human_readable_size(int(r["size"])),
-                "dlspeed": human_readable_size(int(r["dlspeed"])) + "/s",
-            }
-            for r in downloading_node_rows
-        ]
-
-        done_node_rows = cast(list[asyncpg.Record], done_node_rows)
-        done_nodes = [
-            {
-                "node_id": str(r["node_id"]),
-                "node_name": _node_name(str(r["node_id"])),
-                "count": int(r["count"]),
-                "size_fmt": human_readable_size(int(r["size"])),
-            }
-            for r in done_node_rows
-        ]
-
-        scrape_status_rows = cast(list[asyncpg.Record], scrape_status_rows)
-        scrape_status = [
-            {
-                "name": str(r["name"]),
-                "last_run_at": r["last_run_at"],
-                "last_result": str(r["last_result"]),
-                "next_allowed_at": r["next_allowed_at"],
-                "detail": str(r["detail"]),
-            }
-            for r in scrape_status_rows
-        ]
-
-        skipped_stats = cast(asyncpg.Record, skipped_stats)
-        skipped = cast(int, skipped_stats["count"])
-        skipped_size = cast(int, skipped_stats["size"])
-
-        bdmv_stats = cast(asyncpg.Record, bdmv_stats)
-        bdmv = cast(int, bdmv_stats["count"])
-
-        failed_export_dates = cast(list[asyncpg.Record], failed_export_dates)
-        failed_exports = [{"export_date": r["export_date"]} for r in failed_export_dates]
-
-        def pct(n: int) -> str:
-            if total == 0:
-                return "0.0"
-            return f"{n / total * 100:.1f}"
-
-        return render(
-            "index.html.j2",
-            ctx={
-                "scraped_total": scraped_total,
-                "search_cursor_normal": config_map.get(cursor_key_normal, "N/A"),
-                "search_cursor_adult": config_map.get(cursor_key_adult, "N/A"),
-                "total": total,
-                "total_size": human_readable_size(total_size),
-                "done": done,
-                "done_size": human_readable_size(done_size),
-                "done_pct": pct(done),
-                "done_nodes": done_nodes,
-                "pending_fetch_mediainfo": pending_fetch_mediainfo,
-                "pending_fetch_mediainfo_pct": pct(pending_fetch_mediainfo),
-                "pending_fetch_torrent": pending_fetch_torrent,
-                "pending_fetch_torrent_pct": pct(pending_fetch_torrent),
-                "pending_to_download": pending_to_download,
-                "pending_to_download_size": human_readable_size(pending_to_download_size),
-                "pending_to_download_pct": pct(pending_to_download),
-                "downloading": downloading,
-                "downloading_size": human_readable_size(downloading_size),
-                "downloading_pct": pct(downloading),
-                "downloading_nodes": downloading_nodes,
-                "failed": failed,
-                "failed_size": human_readable_size(failed_size),
-                "failed_pct": pct(failed),
-                "removed_by_client": removed_by_client,
-                "removed_by_client_size": human_readable_size(removed_by_client_size),
-                "removed_by_client_pct": pct(removed_by_client),
-                "skipped": skipped,
-                "skipped_size": human_readable_size(skipped_size),
-                "skipped_pct": pct(skipped),
-                "bdmv": bdmv,
-                "scrape_status": scrape_status,
-                "failed_exports": failed_exports,
-            },
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     @app.get("/detail")
