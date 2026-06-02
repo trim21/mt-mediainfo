@@ -59,6 +59,7 @@ dependencies = [
     { name = "regex" },
     { name = "rich" },
     { name = "rtorrent-rpc" },
+    { name = "sse-starlette" },
     { name = "sslog" },
     { name = "tzdata" },
     { name = "uvicorn" },
@@ -98,6 +99,7 @@ requires-dist = [
     { name = "regex", specifier = "==2026.5.9" },
     { name = "rich", specifier = "==15.0.0" },
     { name = "rtorrent-rpc", specifier = "==0.9.6" },
+    { name = "sse-starlette", specifier = ">=3.4.4" },
     { name = "sslog", specifier = "==0.0.0a52" },
     { name = "tzdata", specifier = "==2026.2" },
     { name = "uvicorn", specifier = "==0.48.0" },
@@ -975,6 +977,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "sse-starlette"
+version = "3.4.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "starlette" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f7/2b/58abc2d1fd397e7dde08e947e05c884d8ef2f78d5e2588c17a12d42d6994/sse_starlette-3.4.4.tar.gz", hash = "sha256:07e0fa0460138baf25cdd5fb28683472c3995dc1642225191b3832d62526bcb0", size = 31819, upload-time = "2026-05-12T17:37:17.019Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dc/67/805710444ea8cc75fbf70b920ed431a560c4bf9c57f7d5a3117213189399/sse_starlette-3.4.4-py3-none-any.whl", hash = "sha256:3f4dd50d8aed2771a091f3a83000323fc3844541c16b4fe585ae2420cc6df973", size = 16514, upload-time = "2026-05-12T17:37:15.601Z" },
 ]
 
 [[package]]

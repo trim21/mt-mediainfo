@@ -37,12 +37,12 @@
   function start() {
     if (es) return;
     es = new EventSource("/api/progress/stream");
-    es.onmessage = function(e) {
+    es.addEventListener("update", function(e) {
       try {
         var d = JSON.parse(e.data);
         app.innerHTML = d.html;
       } catch (_) {}
-    };
+    });
     es.onerror = function() {
       es.close();
       es = null;

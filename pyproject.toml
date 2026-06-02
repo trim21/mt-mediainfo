@@ -32,6 +32,7 @@ dependencies = [
   "botocore==1.43.18",
   "boto3==1.43.18",
   "mypy-boto3-s3==1.43.14",
+  "sse-starlette>=3.4.4",
 ]
 
 [dependency-groups]

@@ -21,7 +21,8 @@ from botocore.config import Config as BotoConfig
 from fastapi import Depends, Query, Request
 from fastapi.templating import Jinja2Templates
 from mypy_boto3_s3 import S3Client
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from sse_starlette.sse import EventSourceResponse
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.config import ServerConfig, load_s3_config, load_server_config
 from app.const import (
@@ -1081,25 +1082,18 @@ def create_app() -> fastapi.FastAPI:
         return render("index.html.j2", ctx=ctx)
 
     @app.get("/api/progress/stream")
-    async def progress_stream(request: Request) -> StreamingResponse:
+    async def progress_stream() -> EventSourceResponse:
         tmpl = templates.get_template("index_content.html.j2")
 
-        async def generate() -> AsyncGenerator[str]:
+        async def generate() -> AsyncGenerator[dict[str, str]]:
             while True:
-                if await request.is_disconnected():
-                    break
                 ctx = await _fetch_progress_ctx(pool)
                 ctx["now"] = datetime.now(tz=TZ_SHANGHAI)
                 html = tmpl.render(**ctx)
-                data = orjson.dumps({"html": html}).decode()
-                yield f"data: {data}\n\n"
+                yield {"event": "update", "data": orjson.dumps({"html": html}).decode()}
                 await asyncio.sleep(5)
 
-        return StreamingResponse(
-            generate(),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
+        return EventSourceResponse(generate())
 
     @app.get("/detail")
     async def detail(render: Render, start: Annotated[str | None, Query()] = None) -> HTMLResponse:
