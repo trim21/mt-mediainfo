@@ -555,10 +555,10 @@ class Downloader:
 
         current_total_size = sum(t.size for t in self.client.torrents_info())
         left_size = int(self.config.total_process_size) - current_total_size
-        no_space = left_size <= 0
 
         picked: list[tuple[int, str]] = []
         has_pending = False
+        no_space = False
 
         logger.info("pick lock")
         with (
@@ -579,7 +579,7 @@ class Downloader:
 
             logger.info("fetch {} rows", len(rows))
             if not rows:
-                return PickContext(no_space=no_space)
+                return PickContext()
 
             if self.thread_filter_template is not None:
                 rows = [
@@ -589,19 +589,17 @@ class Downloader:
                 ]
 
             if not rows:
-                return PickContext(no_space=no_space)
+                return PickContext()
 
             has_pending = True
-
-            if no_space:
-                return PickContext(has_pending=True, no_space=True)
 
             for row in rows:
                 tid = row["tid"]
                 info_hash = row["info_hash"]
                 selected_size = row["selected_size"]
                 if left_size - selected_size <= 0:
-                    continue
+                    no_space = True
+                    break
 
                 conn.execute(
                     """
@@ -633,7 +631,7 @@ class Downloader:
                 )
                 with contextlib.suppress(TorrentNotFoundError):
                     self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
-        return PickContext(picked=len(picked), has_pending=has_pending)
+        return PickContext(picked=len(picked), has_pending=has_pending, no_space=no_space)
 
     def __maybe_evict_slowest(self) -> None:
         torrents = self.client.torrents_info()
