@@ -441,9 +441,6 @@ class Scrape:
         return RunResult.ok
 
     def _backfill_file_cache(self, tid: int) -> None:
-        row = self.__db.fetch_one("select 1 from thread_file_cache where tid = $1", [tid])
-        if row is not None:
-            return
         tc = self.__store.read(tid)
         if tc is None:
             return
