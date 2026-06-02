@@ -98,7 +98,7 @@ requires-dist = [
     { name = "rapidocr-onnxruntime", specifier = "==1.4.4" },
     { name = "regex", specifier = "==2026.5.9" },
     { name = "rich", specifier = "==15.0.0" },
-    { name = "rtorrent-rpc", specifier = "==0.9.6" },
+    { name = "rtorrent-rpc", specifier = "==0.9.7" },
     { name = "sse-starlette", specifier = "==3.4.4" },
     { name = "sslog", specifier = "==0.0.0a52" },
     { name = "tzdata", specifier = "==2026.2" },
@@ -926,7 +926,7 @@ wheels = [
 
 [[package]]
 name = "rtorrent-rpc"
-version = "0.9.6"
+version = "0.9.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bencode2" },
@@ -934,9 +934,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/27/a0/a923aa484561126e74dfacf1ffdb076231fb675c6451da942821a2a848d7/rtorrent_rpc-0.9.6.tar.gz", hash = "sha256:ea04a47c980d7414ad73cdcb2e6fc0c8f3c5a6493d3054dbb22dcaf805c71825", size = 490634, upload-time = "2026-05-09T22:59:19.626Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a3/5b/cc56f3ff5ddca573bc0fea133b1ec2eace4c8faed83a628ebefbe9b201ee/rtorrent_rpc-0.9.7.tar.gz", hash = "sha256:33688a217718307f093b1465b1679fab4257111cabe3d5d6c5e2c689b106aab5", size = 487774, upload-time = "2026-06-02T18:56:22.61Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d7/2a/c2f7dea7fc1491a411636f3d38e89506cbf447764787de48929dcec7e92f/rtorrent_rpc-0.9.6-py3-none-any.whl", hash = "sha256:0fb7a1e538950c5d0737943101ef91b4f565bf3f8bacbf68114c367c2b9b1e36", size = 15744, upload-time = "2026-05-09T22:59:18.209Z" },
+    { url = "https://files.pythonhosted.org/packages/37/a0/d5de2c5969db79ab93f6f4df167c08cd3d179c2e37be6e84069e4e91aa98/rtorrent_rpc-0.9.7-py3-none-any.whl", hash = "sha256:2246a1482450186cd8a42a8fbd02539f8378bb666200fb0449b9508c29589e4d", size = 15750, upload-time = "2026-06-02T18:56:21.303Z" },
 ]
 
 [[package]]

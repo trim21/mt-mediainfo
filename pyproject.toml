@@ -8,7 +8,7 @@ dependencies = [
   'rich==15.0.0',
   'xxhash==3.7.0',
   'qbittorrent-api==2026.5.3',
-  'rtorrent-rpc==0.9.6',
+  'rtorrent-rpc==0.9.7',
   'click==8.4.1',
   'pydantic==2.13.4',
   'httpx==0.28.1',
