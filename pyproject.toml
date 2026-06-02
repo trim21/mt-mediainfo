@@ -46,14 +46,6 @@ dev = [
 [tool.uv]
 package = false
 
-[[tool.uv.index]]
-name = "testpypi"
-url = "https://test.pypi.org/simple/"
-explicit = true
-
-[tool.uv.sources]
-opendal = { index = "testpypi" }
-
 [tool.pytest.ini_options]
 cache_dir = '.venv/.cache/pytest'
 

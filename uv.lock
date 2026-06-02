@@ -88,7 +88,7 @@ requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "mypy-boto3-s3", specifier = "==1.43.14" },
-    { name = "opendal", specifier = "==0.47.2", index = "https://test.pypi.org/simple/" },
+    { name = "opendal", specifier = "==0.47.2" },
     { name = "orjson", specifier = "==3.11.9" },
     { name = "pg-dlock", specifier = "==0.0.0a2" },
     { name = "pillow", specifier = "==12.2.0" },
@@ -562,18 +562,18 @@ wheels = [
 [[package]]
 name = "opendal"
 version = "0.47.2"
-source = { registry = "https://test.pypi.org/simple/" }
-sdist = { url = "https://test-files.pythonhosted.org/packages/ea/8e/9207aafbde675d22e4b6d89c5a009ad0247247959697ae03bac1cb6937ac/opendal-0.47.2.tar.gz", hash = "sha256:136fb824cb9b0b466c7b9ef61823543cfac4590c3284eca1ffaf102b718d8830", size = 1325557, upload-time = "2026-05-25T17:43:07.354Z" }
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/18/815e2e7d6b49d6acde880a67854291f40a85d2366ad153259404f488727b/opendal-0.47.2.tar.gz", hash = "sha256:41c80e46eb8210d8a6e1fce9789870ed142a0e78d1c22bc59718c1327a7e5521", size = 1333362, upload-time = "2026-06-01T01:50:20.2Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/99/73/1fbc0b6d5c0cbad23df0d2640cc27ad24c1c2cf2b28987a608ca90a5ad65/opendal-0.47.2-cp311-abi3-macosx_10_12_x86_64.whl", hash = "sha256:7fcba2c775fc44e6a77a5bcd7e74ee998ae7b9b4fcd0ea2cc140f98142ca33e6", size = 19365662, upload-time = "2026-05-25T17:42:47.89Z" },
-    { url = "https://test-files.pythonhosted.org/packages/19/8a/a2e39afa6fe7ca9a9a2292bcd69ce26df6f3a1c8f5e3d90344b9a7ea14ce/opendal-0.47.2-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:e7608a0438a56014a55fe0b165ab78c238cb8e16071e27544dacadd7f0ea41fa", size = 18608439, upload-time = "2026-05-25T17:42:37.132Z" },
-    { url = "https://test-files.pythonhosted.org/packages/f3/54/13a3d90f1b751752e1135e00eb262f877b44ab78fe3a32052878d4f667fa/opendal-0.47.2-cp311-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:9736f80802a71633ec0540fac70f12f2abca584f4b2a7bae3348707a76b35020", size = 18404694, upload-time = "2026-05-25T17:43:11.481Z" },
-    { url = "https://test-files.pythonhosted.org/packages/5b/e3/d230993deab92b950e30f18bcd4e23fbc2ed29b543b48da0c92ca8a9b6c6/opendal-0.47.2-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:83a0389dd44b9a03a8a5764bf93755f65ca7e239e8b847c59bc8dc7dd530e3d1", size = 19909378, upload-time = "2026-05-25T17:42:31.944Z" },
-    { url = "https://test-files.pythonhosted.org/packages/5d/50/3b4ab8646a4be96b954cb8da4e2b773f46e7594b0192bb35dd6fa82de639/opendal-0.47.2-cp311-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:80479250c3ec1d7ce5c32e71b169283138c63160d340a973e655571d6c9d30a6", size = 19019977, upload-time = "2026-05-25T17:41:57.57Z" },
-    { url = "https://test-files.pythonhosted.org/packages/96/84/587d2645f2ad55b0681cde33bcbc33fd69c27b00e99c24bc6af68d8093ee/opendal-0.47.2-cp311-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:c8f01fa1fd194920d073cefff37053d415077e17ccadfc1d21b2b41ce075a0f7", size = 19369423, upload-time = "2026-05-25T17:42:55.095Z" },
-    { url = "https://test-files.pythonhosted.org/packages/2f/35/1cb21412e90c572be5fba276ee307c9e68ca608dcb307892e3d7cda17c96/opendal-0.47.2-cp311-abi3-musllinux_1_1_armv7l.whl", hash = "sha256:b1b7a7ab148db7b6dcb7bdfade0b33079820b15d60523daa0096dbe284d6a2a1", size = 18700978, upload-time = "2026-05-25T17:42:17.356Z" },
-    { url = "https://test-files.pythonhosted.org/packages/92/0b/2911991917586ecd83d0c3e2ecf4fd3c5fa9d67a319549d3647cbb57f41f/opendal-0.47.2-cp311-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:934b7496dca919949d4ecdd70c72b18c29d9f7a31382c91b14e4f175ddf3da97", size = 20118109, upload-time = "2026-05-25T17:42:57.458Z" },
-    { url = "https://test-files.pythonhosted.org/packages/f0/95/aaba6ae666cc1ca949f495124615815e1a21ffca22cfe648587a3eac1169/opendal-0.47.2-cp311-abi3-win_amd64.whl", hash = "sha256:99b3bb1bdd72f9a0ff241e244da9eda3f43bc83c830155d2dd9923867233172a", size = 21993476, upload-time = "2026-05-25T17:42:43.001Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/78/ff68ca8b03b3b4d0a8ca6bd53dbda8cfd325d15f49aa5e227aabbab6c0bc/opendal-0.47.2-cp311-abi3-macosx_10_12_x86_64.whl", hash = "sha256:973650a3c29d869b569a493ac664e7e5bdccb2bc4ba65c972658b7208c74c340", size = 19341918, upload-time = "2026-06-01T01:49:54.265Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/21/8ba895edd4758e4487c13da95565c33be7e004c0c00213539c6864404936/opendal-0.47.2-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:cab3a9247822d71bb7f4a784bef0286548c3c291d016c9c7a7ac28464249c57b", size = 18609330, upload-time = "2026-06-01T01:49:40.54Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/56/be47704dc46ccff179d1bde52c232ee2cf7f4bf80455b844328df65377d8/opendal-0.47.2-cp311-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:4906b253b6ba149e32e7702f9db424a6837ba677dc36f755d4d29500ba7f63d3", size = 18381785, upload-time = "2026-06-01T01:50:26.238Z" },
+    { url = "https://files.pythonhosted.org/packages/75/ac/f8829ae7945a8c82102cd78dd5cffe387e2a82831e35c343531d976dcc31/opendal-0.47.2-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9e16ebd26c72d7b42c09c854ec84f7145e5b116e69952de9a4bb53eb5cc70817", size = 19892595, upload-time = "2026-06-01T01:49:33.816Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/4e/9d2324f5440a5faddcfc8f04144c2f0985595bb131bcda3a283b65750d59/opendal-0.47.2-cp311-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:158022e0ae1bde335f12229a06b51b5ff37311976545f79c37938126d7c15f91", size = 19023844, upload-time = "2026-06-01T01:48:46.96Z" },
+    { url = "https://files.pythonhosted.org/packages/44/20/1fa54406f04e6689655fe719d73edc1c7a03925e99dc434dff0440e8c393/opendal-0.47.2-cp311-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:b034625b8e2080556a8c3d8df1cb39ba2fd408fef2936de632d0f4726b6297e8", size = 19374659, upload-time = "2026-06-01T01:50:04.02Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/f8/ca9354d90049a93a1d586e4980424fbabcc5ec39a6937a0916c67d5802b4/opendal-0.47.2-cp311-abi3-musllinux_1_1_armv7l.whl", hash = "sha256:3d98a127b6302b092dea0eabb03dbab0db43b064711120ed0a6d4b23267d70cf", size = 18685520, upload-time = "2026-06-01T01:49:13.64Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/e0/66bf36f8b9504c560c7f3116909d3a6cfc4c949660cda3545d225494f42a/opendal-0.47.2-cp311-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:ffb51e47c1c291286098f7e5ff76809119ca2db494a50ed58fc819596f15a995", size = 20103581, upload-time = "2026-06-01T01:50:07.617Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/c0/91330fdc919597309155345d726f84a5ac2ed66a16b0d7cde455cfd1a498/opendal-0.47.2-cp311-abi3-win_amd64.whl", hash = "sha256:c4aecaff6005da59e3b5aefe2ee23dfa34a25eb2254489de923000c6f42fe987", size = 21969774, upload-time = "2026-06-01T01:49:47.538Z" },
 ]
 
 [[package]]
