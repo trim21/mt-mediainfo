@@ -940,6 +940,7 @@ class Scrape:
                 "selected_index is null and info_hash != ''",
                 self._backfill_selected_index,
                 status_name="8-backfill-selected-index",
+                concurrency=32,
             ),
         }
 

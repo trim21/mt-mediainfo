@@ -47,14 +47,14 @@ class Connection(psycopg.connection.Connection):
 
 
 class Database:
-    def __init__(self, dsn: str):
+    def __init__(self, dsn: str, max_size: int = 8):
         self.__conn_info = dsn
         self.__locker = Locker(dsn)
 
         self.db = ConnectionPool(
             self.__conn_info,
             kwargs={"cursor_factory": RawCursor},
-            max_size=3,
+            max_size=max_size,
             min_size=1,
             connection_class=Connection,
         )
