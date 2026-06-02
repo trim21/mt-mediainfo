@@ -25,7 +25,7 @@ from app.const import (
     search_cursor_key,
 )
 from app.db import Database
-from app.file_cache import encode_cached_files, get_torrent_files
+from app.file_cache import decode_cached_files, encode_cached_files
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
 from app.torrent import find_largest_video_file, is_bdmv, parse_torrent
@@ -440,10 +440,26 @@ class Scrape:
             return RunResult.error
         return RunResult.ok
 
-    def _backfill_selected_index(self, tid: int) -> None:
-        files_data = get_torrent_files(tid, self.__db, self.__store)
-        if files_data is None:
+    def _backfill_file_cache(self, tid: int) -> None:
+        row = self.__db.fetch_one("select 1 from thread_file_cache where tid = $1", [tid])
+        if row is not None:
             return
+        tc = self.__store.read(tid)
+        if tc is None:
+            return
+        t = parse_torrent(tc)
+        files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
+        self.__db.execute(
+            """insert into thread_file_cache (tid, files) values ($1, $2)
+               on conflict (tid) do update set files = excluded.files""",
+            [tid, encode_cached_files(files_data)],
+        )
+
+    def _backfill_selected_index(self, tid: int) -> None:
+        row = self.__db.fetch_one("select files from thread_file_cache where tid = $1", [tid])
+        if row is None:
+            return
+        files_data = decode_cached_files(row[0])
         keep_idx = find_largest_video_file(files_data)
         self.__db.execute(
             "update thread set selected_index = $1 where tid = $2",
@@ -814,6 +830,11 @@ class Scrape:
             [name, detail],
         )
 
+    @staticmethod
+    def _backfill_task_name(status_name: str) -> str:
+        _, _, name = status_name.partition("-backfill-")
+        return name
+
     def __run_backfills(
         self,
         backfill_runners: dict[str, Callable[[], RunResult]],
@@ -822,13 +843,14 @@ class Scrape:
         while True:
             all_done = True
             for name, run in backfill_runners.items():
+                backfill_name = self._backfill_task_name(name)
                 total = self.__db.fetch_val(
                     "select count(*) from backfill_task where name = $1",
-                    [name.removeprefix("8-backfill-")],
+                    [backfill_name],
                 )
                 pending = self.__db.fetch_val(
                     "select count(*) from backfill_task where name = $1 and status = 'pending'",
-                    [name.removeprefix("8-backfill-")],
+                    [backfill_name],
                 )
                 if total > 0 and pending == 0:
                     self.__update_status(
@@ -847,7 +869,6 @@ class Scrape:
                     logger.exception("backfill {} failed", name)
                     self.__update_status(name, RunStatus.error, None, category="backfill")
                     continue
-                backfill_name = name.removeprefix("8-backfill-")
                 done = self.__db.fetch_val(
                     "select count(*) from backfill_task where name = $1 and status = 'done'",
                     [backfill_name],
@@ -935,17 +956,27 @@ class Scrape:
         }
 
         backfill_runners: dict[str, Callable[[], RunResult]] = {
-            "8-backfill-selected-index": lambda: self.run_backfill(
+            "8-backfill-file-cache": lambda: self.run_backfill(
+                "file-cache",
+                "info_hash != '' and not exists (select 1 from thread_file_cache c where c.tid = thread.tid)",
+                self._backfill_file_cache,
+                status_name="8-backfill-file-cache",
+                concurrency=32,
+            ),
+            "9-backfill-selected-index": lambda: self.run_backfill(
                 "selected-index",
                 "selected_index is null and info_hash != ''",
                 self._backfill_selected_index,
-                status_name="8-backfill-selected-index",
-                concurrency=32,
+                status_name="9-backfill-selected-index",
+                concurrency=8,
             ),
         }
 
         all_names = list(runners) + list(backfill_runners)
         self.__db.execute("delete from scrape_status where not name = any($1)", [all_names])
+
+        backfill_names = [self._backfill_task_name(n) for n in backfill_runners]
+        self.__db.execute("delete from backfill_task where not name = any($1)", [backfill_names])
 
         backfill_done = threading.Event()
 
