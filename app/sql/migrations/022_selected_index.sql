@@ -4,9 +4,12 @@ add
   column if not exists selected_index int[];
 
 
-alter table
+update
   thread
-  drop column selected_files;
+set
+  selected_files = '[]'::jsonb
+where
+  selected_files != '[]'::jsonb;
 
 
 create
