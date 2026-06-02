@@ -94,7 +94,7 @@ requires-dist = [
     { name = "pillow", specifier = "==12.2.0" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.4" },
     { name = "pydantic", specifier = "==2.13.4" },
-    { name = "qbittorrent-api", specifier = "==2026.5.1" },
+    { name = "qbittorrent-api", specifier = "==2026.5.3" },
     { name = "rapidocr-onnxruntime", specifier = "==1.4.4" },
     { name = "regex", specifier = "==2026.5.9" },
     { name = "rich", specifier = "==15.0.0" },
@@ -841,16 +841,16 @@ wheels = [
 
 [[package]]
 name = "qbittorrent-api"
-version = "2026.5.1"
+version = "2026.5.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
     { name = "requests" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/31/ad/a1031a87dc68d80282a3ee7fcdd48d170b79310210350fc118ef1e6eaa14/qbittorrent_api-2026.5.1.tar.gz", hash = "sha256:a42c120feab9bea87f592c60e22db42c1450bfc247504b41ce83730bdc7a0b5b", size = 1323872, upload-time = "2026-05-06T04:59:31.615Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b1/a5/e127046c04dc99fd2a39a71ef4bcbed583de17167f9946dda2af1ec6f747/qbittorrent_api-2026.5.3.tar.gz", hash = "sha256:2fd286be5dfab793dbc94c03182214ddf6d341f454d8c0c95c8a1ae1fd04615a", size = 1325934, upload-time = "2026-05-30T17:30:41.095Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/03/81be01c43881d94e4ac58a589c41c4ab6f9ad2767cbd67e7d632aaaa1463/qbittorrent_api-2026.5.1-py3-none-any.whl", hash = "sha256:904dd74be5bf42e5bb08a814c19c61eb05aeb39ca6a241bb439c5da4df600ff0", size = 67228, upload-time = "2026-05-06T04:59:29.924Z" },
+    { url = "https://files.pythonhosted.org/packages/35/fc/4ef74d565239ba8c3083f48da8d3bb8236db43f87fe020d98e6528aede07/qbittorrent_api-2026.5.3-py3-none-any.whl", hash = "sha256:757b49c88b85784129a2a7313e5353092f45cd9f0e993e68565d0faa0a243321", size = 68181, upload-time = "2026-05-30T17:30:39.447Z" },
 ]
 
 [[package]]
