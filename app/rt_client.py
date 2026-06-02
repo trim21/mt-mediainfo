@@ -246,7 +246,7 @@ class RTorrentClient(BTClient):
         throttle_name = f"_mt_{info_hash[:8]}"
         if limit > 0:
             self._call("d.throttle_name.set", [info_hash, throttle_name])
-            self._call("throttle.down", ["", [throttle_name, limit // 1024]])
+            self._call("throttle.down", ["", throttle_name, limit // 1024])
         else:
             self._call("d.throttle_name.set", [info_hash, ""])
 
