@@ -70,6 +70,13 @@ class Status(enum.IntEnum):
     done = 3
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class PickContext:
+    picked: int = 0
+    has_pending: bool = False
+    no_space: bool = False
+
+
 def _pick_query(config: DownloaderConfig) -> LiteralString:
     order_clause = pick_order_clause(config.pick_strategy, 3)
 
@@ -207,8 +214,10 @@ class Downloader:
         return {"info_hash": payload.info_hash}
 
     def __run_at_interval(self) -> None:
-        self.__process_qb_torrents()
-        self.__pick_and_add_jobs()
+        completed = self.__process_qb_torrents()
+        ctx = self.__pick_and_add_jobs()
+        if not completed and ctx.picked == 0 and ctx.no_space and ctx.has_pending:
+            self.__maybe_evict_slowest()
 
     def __heart_beat(self) -> None:
         self.db.execute(
@@ -275,14 +284,18 @@ class Downloader:
                 removed_reason=removed_reason,
             )
 
-    def __process_qb_torrents(self) -> None:
-        """Process all torrents in qBittorrent in a single pass."""
+    def __process_qb_torrents(self) -> bool:
+        """Process all torrents in qBittorrent in a single pass.
+
+        Returns True if any torrent completed (entered UPLOADING state).
+        """
         logger.info("__process_qb_torrents")
         torrents = self.client.torrents_info()
         now = datetime.now(tz=TZ_SHANGHAI)
+        completed = False
         if not torrents:
             logger.info("qb has no torrents")
-            return
+            return False
         # Mark jobs as removed-from-client if their torrent is no longer in qb
         qb_hashes = [x.hash for x in torrents]
         self.db.execute(
@@ -383,6 +396,7 @@ class Downloader:
 
             # Upload complete → process mediainfo
             if t.state == TorrentState.UPLOADING:
+                completed = True
                 self.__set_tags(t.hash, remove=QB_TAG_DOWNLOADING, add=QB_TAG_PROCESSING)
                 try:
                     self.__process_local_torrent(t)
@@ -445,6 +459,7 @@ class Downloader:
                     """,
                     [t.hash, self.config.node_id, t.completed],
                 )
+        return completed
 
     def __handle_unmanaged_torrent(self, t: Torrent) -> None:
         """Handle a torrent in qB that has no active downloading job.
@@ -535,16 +550,15 @@ class Downloader:
             )
         self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
-    def __pick_and_add_jobs(self) -> None:
+    def __pick_and_add_jobs(self) -> PickContext:
         logger.info("__pick_and_add_jobs")
 
         current_total_size = sum(t.size for t in self.client.torrents_info())
         left_size = int(self.config.total_process_size) - current_total_size
-        if left_size <= 0:
-            logger.info("no left size, skipping")
-            return
+        no_space = left_size <= 0
 
         picked: list[tuple[int, str]] = []
+        has_pending = False
 
         logger.info("pick lock")
         with (
@@ -565,7 +579,7 @@ class Downloader:
 
             logger.info("fetch {} rows", len(rows))
             if not rows:
-                return
+                return PickContext(no_space=no_space)
 
             if self.thread_filter_template is not None:
                 rows = [
@@ -574,12 +588,20 @@ class Downloader:
                     if self.thread_filter_template.render(thread=row).strip() == "true"
                 ]
 
+            if not rows:
+                return PickContext(no_space=no_space)
+
+            has_pending = True
+
+            if no_space:
+                return PickContext(has_pending=True, no_space=True)
+
             for row in rows:
                 tid = row["tid"]
                 info_hash = row["info_hash"]
                 selected_size = row["selected_size"]
                 if left_size - selected_size <= 0:
-                    break
+                    continue
 
                 conn.execute(
                     """
@@ -611,6 +633,70 @@ class Downloader:
                 )
                 with contextlib.suppress(TorrentNotFoundError):
                     self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+        return PickContext(picked=len(picked), has_pending=has_pending)
+
+    def __maybe_evict_slowest(self) -> None:
+        torrents = self.client.torrents_info()
+        if not torrents:
+            return
+
+        downloading = [
+            t
+            for t in torrents
+            if t.state not in (TorrentState.PAUSED, TorrentState.UPLOADING, TorrentState.ERRORED)
+        ]
+        if not downloading:
+            return
+
+        limit = int(self.config.min_download_speed)
+        if sum(t.dlspeed for t in downloading) >= limit:
+            return
+
+        now = datetime.now(tz=TZ_SHANGHAI)
+        cutoff = now - timedelta(hours=24)
+        row = self.db.fetch_one(
+            """
+            with stats as (
+                select
+                    info_hash,
+                    (max(size) - min(size))::float
+                        / greatest(extract(epoch from max(recorded_at) - min(recorded_at)), 1)
+                        as avg_speed
+                from job_download_size
+                where node_id = $1
+                  and recorded_at > $2
+                group by info_hash
+                having count(*) >= 2
+            )
+            select s.info_hash, s.avg_speed
+            from stats s
+            join job j on j.info_hash = s.info_hash and j.node_id = $1
+            where j.start_download_time < $2
+            order by s.avg_speed
+            limit 1
+            """,
+            [self.config.node_id, cutoff],
+        )
+        if row is None:
+            return
+
+        info_hash, avg_speed = row
+        logger.info(
+            "evicting slowest torrent {} (avg_speed={:.0f} B/s, limit={} B/s)",
+            info_hash,
+            avg_speed,
+            limit,
+        )
+        self.__update_job_status(
+            status=ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
+            info_hash=info_hash,
+            removed_reason="slow_download",
+        )
+        self.db.execute(
+            "update thread set torrent_invalid = 'stalled' where info_hash = $1",
+            [info_hash],
+        )
+        self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
 
     def __add_torrent(
         self,

@@ -190,6 +190,11 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         Field(alias="THREAD_FILTER", default=None),
     ]
 
+    min_download_speed: Annotated[
+        ByteSize,
+        Field(alias="MIN_DOWNLOAD_SPEED", default="20MiB", validate_default=True),
+    ]
+
     version: Annotated[
         str,
         Field(alias="APP_VERSION", default="", validate_default=True),
