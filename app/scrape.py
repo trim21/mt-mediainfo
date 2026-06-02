@@ -1,5 +1,4 @@
 import enum
-import gzip
 import io
 import os
 import subprocess
@@ -26,6 +25,7 @@ from app.const import (
     search_cursor_key,
 )
 from app.db import Database
+from app.file_cache import encode_cached_files, get_torrent_files
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
 from app.torrent import find_largest_video_file, is_bdmv, parse_torrent
@@ -44,38 +44,6 @@ class RunStatus(str, enum.Enum):
     ok = "ok"
     rate_limited = "rate_limited"
     error = "error"
-
-
-def _encode_cached_files(files_data: list[tuple[int, str, int]]) -> bytes:
-    return gzip.compress(orjson.dumps(files_data))
-
-
-def _decode_cached_files(data: bytes) -> list[tuple[int, str, int]]:
-    return orjson.loads(gzip.decompress(data))
-
-
-def get_torrent_files(
-    tid: int,
-    db: Database,
-    store: TorrentStore,
-) -> list[tuple[int, str, int]] | None:
-    row = db.fetch_one("select files from thread_file_cache where tid = $1", [tid])
-    if row is not None:
-        try:
-            return _decode_cached_files(row[0])
-        except Exception:
-            logger.warning("failed to decode cached files for tid {}", tid)
-
-    tc = store.read(tid)
-    if tc is None:
-        return None
-    t = parse_torrent(tc)
-    files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
-    db.execute(
-        """insert into thread_file_cache (tid, files) values ($1, $2) on conflict (tid) do update set files = excluded.files""",
-        [tid, _encode_cached_files(files_data)],
-    )
-    return files_data
 
 
 class Scrape:
@@ -361,7 +329,7 @@ class Scrape:
 
             if is_bdmv(torrent=t):
                 logger.info("torrent {} is bdmv, skipping", tid)
-                cached = _encode_cached_files([
+                cached = encode_cached_files([
                     (i, f.name, f.length) for i, f in enumerate(t.as_files())
                 ])
                 with self.__db.connection() as conn, conn.transaction():
@@ -383,22 +351,18 @@ class Scrape:
                 if keep_idx is not None
                 else -1
             )
-            selected_files = [
-                {"index": i, "name": name, "size": size, "selected": i == keep_idx}
-                for i, name, size in files_data
-            ]
-            cached = _encode_cached_files(files_data)
+            cached = encode_cached_files(files_data)
 
             with self.__db.connection() as conn, conn.transaction():
                 self.__store.write(tid, tc)
                 conn.execute(
-                    """update thread set info_hash = $2, size = $3, selected_size = $4, selected_files = $5, torrent_fetched_at = current_timestamp where tid = $1""",
+                    """update thread set info_hash = $2, size = $3, selected_size = $4, selected_index = $5, torrent_fetched_at = current_timestamp where tid = $1""",
                     [
                         tid,
                         info_hash,
                         t.total_length,
                         selected_size,
-                        orjson.dumps(selected_files).decode(),
+                        [keep_idx] if keep_idx is not None else [],
                     ],
                 )
                 conn.execute(
@@ -475,6 +439,16 @@ class Scrape:
         if error_count:
             return RunResult.error
         return RunResult.ok
+
+    def _backfill_selected_index(self, tid: int) -> None:
+        files_data = get_torrent_files(tid, self.__db, self.__store)
+        if files_data is None:
+            return
+        keep_idx = find_largest_video_file(files_data)
+        self.__db.execute(
+            "update thread set selected_index = $1 where tid = $2",
+            [[keep_idx] if keep_idx is not None else [], tid],
+        )
 
     @staticmethod
     def __is_rate_limited(e: MTeamRequestError) -> bool:
@@ -960,7 +934,14 @@ class Scrape:
             "6-export-mediainfo": lambda: self.__run_export_mediainfo(),
         }
 
-        backfill_runners: dict[str, Callable[[], RunResult]] = {}
+        backfill_runners: dict[str, Callable[[], RunResult]] = {
+            "8-backfill-selected-index": lambda: self.run_backfill(
+                "selected-index",
+                "selected_index is null and info_hash != ''",
+                self._backfill_selected_index,
+                status_name="8-backfill-selected-index",
+            ),
+        }
 
         all_names = list(runners) + list(backfill_runners)
         self.__db.execute("delete from scrape_status where not name = any($1)", [all_names])

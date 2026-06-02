@@ -34,6 +34,7 @@ from app.const import (
     search_cursor_key,
 )
 from app.db import Database
+from app.file_cache import get_cached_files
 from app.rpc import PAYLOAD_TYPES, RpcRequest, enqueue_command
 from app.torrent_store import create_operator, generate_presigned_url
 from app.utils import date_to_int, human_readable_byte_rate, human_readable_size, parse_obj
@@ -1373,7 +1374,7 @@ def create_app() -> fastapi.FastAPI:
     async def thread_detail(render: Render, tid: int) -> HTMLResponse:
         row = await pool.fetchrow(
             """
-             select tid, category, size, selected_size, selected_files, seeders, mediainfo, api_mediainfo,
+             select tid, category, size, selected_size, selected_index, seeders, mediainfo, api_mediainfo,
                     info_hash, hard_coded_subtitle, created_at, upload_at, api_mediainfo_at, generated_mediainfo_at,
                     torrent_fetched_at, torrent_invalid
             from thread
@@ -1390,7 +1391,14 @@ def create_app() -> fastapi.FastAPI:
             human_readable_size(thread["selected_size"]) if thread["selected_size"] > 0 else "-"
         )
 
-        selected_files = thread.get("selected_files") or []
+        selected_index = thread.get("selected_index") or []
+        files_data = await get_cached_files(tid, pool, s3_op)
+        selected_files = []
+        if files_data is not None:
+            selected_files = [
+                {"index": i, "name": name, "size": size, "selected": i in selected_index}
+                for i, name, size in files_data
+            ]
         thread["selected_files"] = selected_files
 
         return render(
