@@ -618,8 +618,8 @@ class Downloader:
                     logger.info(
                         "skip tid={} selected_size={} left_size={}: too large",
                         tid,
-                        selected_size,
-                        left_size,
+                        human_readable_size(selected_size),
+                        human_readable_size(left_size),
                     )
                     no_space = True
                     break
