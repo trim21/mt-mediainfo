@@ -743,6 +743,7 @@ class Downloader:
             return
 
         tc = set_torrent_comment(tc, f"https://{MTeamDomain}/detail/{tid}")
+        logger.info("added torrent tid={} info_hash={}", tid, info_hash)
 
         r = self.client.torrents_add(
             torrent_files=[tc],
@@ -758,3 +759,4 @@ class Downloader:
             )
             with contextlib.suppress(TorrentNotFoundError):
                 self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+            return
