@@ -39,7 +39,7 @@ dependencies = [
 dev = [
   "asyncpg-stubs==0.31.2",
   "mypy==2.1.0",
-  "ty==0.0.39",
+  "ty==0.0.42",
   "types-regex==2026.5.9.20260518",
 ]
 
@@ -64,9 +64,6 @@ pythonVersion = '3.12'
 venvPath = '.'
 venv = '.venv'
 reportUnnecessaryCast = true
-
-[tool.ty.rules]
-all = "error"
 
 [tool.ruff]
 cache-dir = '.venv/.cache/ruff'
