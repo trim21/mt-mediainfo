@@ -205,6 +205,8 @@ class RTorrentClient(BTClient):
         is_sequential_download: bool = False,
     ) -> str:
         for content in torrent_files:
+            Path(save_path).mkdir(parents=True, exist_ok=True)
+
             params: list[str | bytes] = [
                 "",
                 content,
