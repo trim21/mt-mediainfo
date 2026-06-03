@@ -53,7 +53,7 @@ from app.rpc import (
 from app.rt_client import RTorrentClient
 from app.torrent import find_largest_video_file
 from app.torrent_store import TorrentStore
-from app.utils import must_find_executable, set_torrent_comment
+from app.utils import human_readable_size, must_find_executable, set_torrent_comment
 
 
 def format_exc(e: Exception) -> str:
@@ -562,9 +562,9 @@ class Downloader:
         if left_size <= 0:
             logger.info(
                 "no space left: current={} total_limit={} left={}",
-                current_total_size,
-                self.config.total_process_size,
-                left_size,
+                human_readable_size(current_total_size),
+                human_readable_size(self.config.total_process_size),
+                human_readable_size(left_size),
             )
             return PickContext(no_space=True)
 
