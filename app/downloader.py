@@ -559,6 +559,15 @@ class Downloader:
         current_total_size = sum(t.size for t in self.client.torrents_info())
         left_size = int(self.config.total_process_size) - current_total_size
 
+        if left_size <= 0:
+            logger.info(
+                "no space left: current={} total_limit={} left={}",
+                current_total_size,
+                self.config.total_process_size,
+                left_size,
+            )
+            return PickContext(no_space=True)
+
         picked: list[tuple[int, str]] = []
         has_pending = False
         no_space = False
@@ -582,17 +591,22 @@ class Downloader:
 
             logger.info("fetch {} rows", len(rows))
             if not rows:
+                logger.info("skip pick: no pending download threads")
                 return PickContext()
 
             if self.thread_filter_template is not None:
+                before_count = len(rows)
                 rows = [
                     row
                     for row in rows
                     if self.thread_filter_template.render(thread=row).strip() == "true"
                 ]
-
-            if not rows:
-                return PickContext()
+                if not rows:
+                    logger.info(
+                        "skip pick: thread filter rejected all {} rows",
+                        before_count,
+                    )
+                    return PickContext()
 
             has_pending = True
 
@@ -601,6 +615,12 @@ class Downloader:
                 info_hash = row["info_hash"]
                 selected_size = row["selected_size"]
                 if left_size - selected_size <= 0:
+                    logger.info(
+                        "skip tid={} selected_size={} left_size={}: too large",
+                        tid,
+                        selected_size,
+                        left_size,
+                    )
                     no_space = True
                     break
 
@@ -627,7 +647,10 @@ class Downloader:
                 left_size -= selected_size
                 picked.append((tid, info_hash))
 
-        logger.info("pick {} items", len(picked))
+        if not picked:
+            logger.info("pick 0 items: left_size={}", left_size)
+        else:
+            logger.info("pick {} items", len(picked))
 
         # add to download client outside the lock to avoid blocking other nodes
         for tid, info_hash in picked:
