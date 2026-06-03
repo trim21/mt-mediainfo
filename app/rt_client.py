@@ -260,7 +260,7 @@ class RTorrentClient(BTClient):
     def torrents_file_priority(self, torrent_hash: str, file_ids: list[int], priority: int) -> None:
         info_hash = torrent_hash.upper()
         for file_id in file_ids:
-            self._call("f.priority.set", [f"{info_hash}:i{file_id}", priority])
+            self._call("f.priority.set", [f"{info_hash}:f{file_id}", priority])
 
     @staticmethod
     def _get_hash_from_content(content: bytes) -> str:
