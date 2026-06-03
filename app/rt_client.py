@@ -250,13 +250,7 @@ class RTorrentClient(BTClient):
         self._call("d.custom1.set", [info_hash, _encode_rt_tags(new_tags)])
 
     def torrents_set_download_limit(self, limit: int, torrent_hashes: str) -> None:
-        info_hash = torrent_hashes.upper()
-        throttle_name = f"_mt_{info_hash[:8]}"
-        if limit > 0:
-            self._call("d.throttle_name.set", [info_hash, throttle_name])
-            self._call("throttle.down", ["", throttle_name, str(limit // 1024)])
-        else:
-            self._call("d.throttle_name.set", [info_hash, ""])
+        pass
 
     def torrents_resume(self, torrent_hashes: str) -> None:
         info_hash = torrent_hashes.upper()
