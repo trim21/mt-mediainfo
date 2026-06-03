@@ -86,7 +86,6 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
     select
         pending_download_threads.tid,
         pending_download_threads.size,
-        pending_download_threads.hard_coded_subtitle,
         pending_download_threads.info_hash,
         pending_download_threads.seeders,
         pending_download_threads.category,
@@ -97,7 +96,6 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
         pending_download_threads.torrent_fetched_at,
         pending_download_threads.selected_size,
         pending_download_threads.torrent_invalid,
-        pending_download_threads.selected_files,
         pending_download_threads.generated_mediainfo_at,
         pending_download_threads.exported_at,
         pending_download_threads.selected_index
