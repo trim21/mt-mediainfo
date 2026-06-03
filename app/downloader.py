@@ -31,7 +31,6 @@ from app.const import (
     BT_TAG_PROCESS_ERROR,
     BT_TAG_PROCESSING,
     BT_TAG_SELECTING_FILES,
-    LOCK_KEY_PICK_RSS_JOB,
     PRIORITY_CATEGORY,
     SELECTED_CATEGORY,
     TZ_SHANGHAI,
@@ -78,36 +77,41 @@ class PickContext:
 
 
 def _pick_query(config: DownloaderConfig) -> LiteralString:
+    # Inline the pending_download_threads view predicates instead of selecting from
+    # the view, because FOR UPDATE cannot be used on views.  The query locks
+    # candidate rows on the thread table directly so that concurrent downloaders
+    # pick disjoint sets without a global advisory lock — PostgreSQL's row-level
+    # SKIP LOCKED handles the coordination natively.  Columns are listed
+    # explicitly to avoid transferring the large mediainfo/api_mediainfo text
+    # columns over the wire.
     order_clause = pick_order_clause(config.pick_strategy, 3)
 
     seeder_clause: LiteralString = cast(LiteralString, config.seeder_condition)
 
     return f"""
     select
-        pending_download_threads.tid,
-        pending_download_threads.size,
-        pending_download_threads.info_hash,
-        pending_download_threads.seeders,
-        pending_download_threads.category,
-        pending_download_threads.deleted,
-        pending_download_threads.created_at,
-        pending_download_threads.upload_at,
-        pending_download_threads.api_mediainfo_at,
-        pending_download_threads.torrent_fetched_at,
-        pending_download_threads.selected_size,
-        pending_download_threads.torrent_invalid,
-        pending_download_threads.generated_mediainfo_at,
-        pending_download_threads.exported_at,
-        pending_download_threads.selected_index
-    from pending_download_threads
-    left join job on (job.tid = pending_download_threads.tid)
+        thread.tid, thread.size, thread.info_hash, thread.seeders,
+        thread.category, thread.deleted, thread.created_at, thread.upload_at,
+        thread.api_mediainfo_at, thread.torrent_fetched_at, thread.selected_size,
+        thread.torrent_invalid, thread.generated_mediainfo_at, thread.exported_at,
+        thread.selected_index
+    from thread
     where
-        selected_size < $1 and
-        category = any ($2) and
-        job.tid is null and
-        ({seeder_clause})
+        thread.deleted = false
+        and thread.seeders != 0
+        and thread.mediainfo = ''
+        and thread.api_mediainfo = ''
+        and thread.info_hash != ''
+        and thread.selected_size > 0
+        and thread.selected_size < $1
+        and thread.category = any ($2)
+        and thread.selected_index is not null
+        and array_length(thread.selected_index, 1) > 0
+        and ({seeder_clause})
+        and not exists (select 1 from job where job.tid = thread.tid)
     {order_clause}
     limit 100
+    for update of thread skip locked
     """
 
 
@@ -588,43 +592,38 @@ class Downloader:
         has_pending = False
         no_space = False
 
-        logger.info("pick lock")
         with (
-            self.db.lock(LOCK_KEY_PICK_RSS_JOB),
+            self.db.connection() as conn,
+            conn.transaction() as _,
         ):
-            logger.info("get lock")
-            with (
-                self.db.connection() as conn,
-                conn.transaction() as _,
-            ):
-                params: list[Any] = [
-                    self.config.single_torrent_size_limit,
-                    SELECTED_CATEGORY,
-                    PRIORITY_CATEGORY,
+            params: list[Any] = [
+                self.config.single_torrent_size_limit,
+                SELECTED_CATEGORY,
+                PRIORITY_CATEGORY,
+            ]
+
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(_pick_query(self.config), params)
+                rows: list[dict[str, Any]] = cur.fetchall()
+
+            logger.info("fetch {} rows", len(rows))
+            if not rows:
+                logger.info("skip pick: no pending download threads")
+                return PickContext()
+
+            if self.thread_filter_template is not None:
+                before_count = len(rows)
+                rows = [
+                    row
+                    for row in rows
+                    if self.thread_filter_template.render(thread=row).strip() == "true"
                 ]
-
-                with conn.cursor(row_factory=dict_row) as cur:
-                    cur.execute(_pick_query(self.config), params)
-                    rows: list[dict[str, Any]] = cur.fetchall()
-
-                logger.info("fetch {} rows", len(rows))
                 if not rows:
-                    logger.info("skip pick: no pending download threads")
+                    logger.info(
+                        "skip pick: thread filter rejected all {} rows",
+                        before_count,
+                    )
                     return PickContext()
-
-                if self.thread_filter_template is not None:
-                    before_count = len(rows)
-                    rows = [
-                        row
-                        for row in rows
-                        if self.thread_filter_template.render(thread=row).strip() == "true"
-                    ]
-                    if not rows:
-                        logger.info(
-                            "skip pick: thread filter rejected all {} rows",
-                            before_count,
-                        )
-                        return PickContext()
 
             has_pending = True
 
