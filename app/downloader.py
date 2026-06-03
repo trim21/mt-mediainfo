@@ -84,10 +84,23 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
 
     return f"""
     select
-        pending_download_threads.tid, size, hard_coded_subtitle, info_hash, seeders, category, deleted,
-        created_at, upload_at, api_mediainfo_at, torrent_fetched_at,
-        selected_size, torrent_invalid, selected_files, generated_mediainfo_at,
-        exported_at, selected_index
+        pending_download_threads.tid,
+        pending_download_threads.size,
+        pending_download_threads.hard_coded_subtitle,
+        pending_download_threads.info_hash,
+        pending_download_threads.seeders,
+        pending_download_threads.category,
+        pending_download_threads.deleted,
+        pending_download_threads.created_at,
+        pending_download_threads.upload_at,
+        pending_download_threads.api_mediainfo_at,
+        pending_download_threads.torrent_fetched_at,
+        pending_download_threads.selected_size,
+        pending_download_threads.torrent_invalid,
+        pending_download_threads.selected_files,
+        pending_download_threads.generated_mediainfo_at,
+        pending_download_threads.exported_at,
+        pending_download_threads.selected_index
     from pending_download_threads
     left join job on (job.tid = pending_download_threads.tid)
     where
