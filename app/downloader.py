@@ -575,38 +575,40 @@ class Downloader:
         logger.info("pick lock")
         with (
             self.db.lock(LOCK_KEY_PICK_RSS_JOB),
-            self.db.connection() as conn,
-            conn.transaction() as _,
         ):
             logger.info("get lock")
-            params: list[Any] = [
-                self.config.single_torrent_size_limit,
-                SELECTED_CATEGORY,
-                PRIORITY_CATEGORY,
-            ]
-
-            with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute(_pick_query(self.config), params)
-                rows: list[dict[str, Any]] = cur.fetchall()
-
-            logger.info("fetch {} rows", len(rows))
-            if not rows:
-                logger.info("skip pick: no pending download threads")
-                return PickContext()
-
-            if self.thread_filter_template is not None:
-                before_count = len(rows)
-                rows = [
-                    row
-                    for row in rows
-                    if self.thread_filter_template.render(thread=row).strip() == "true"
+            with (
+                self.db.connection() as conn,
+                conn.transaction() as _,
+            ):
+                params: list[Any] = [
+                    self.config.single_torrent_size_limit,
+                    SELECTED_CATEGORY,
+                    PRIORITY_CATEGORY,
                 ]
+
+                with conn.cursor(row_factory=dict_row) as cur:
+                    cur.execute(_pick_query(self.config), params)
+                    rows: list[dict[str, Any]] = cur.fetchall()
+
+                logger.info("fetch {} rows", len(rows))
                 if not rows:
-                    logger.info(
-                        "skip pick: thread filter rejected all {} rows",
-                        before_count,
-                    )
+                    logger.info("skip pick: no pending download threads")
                     return PickContext()
+
+                if self.thread_filter_template is not None:
+                    before_count = len(rows)
+                    rows = [
+                        row
+                        for row in rows
+                        if self.thread_filter_template.render(thread=row).strip() == "true"
+                    ]
+                    if not rows:
+                        logger.info(
+                            "skip pick: thread filter rejected all {} rows",
+                            before_count,
+                        )
+                        return PickContext()
 
             has_pending = True
 
