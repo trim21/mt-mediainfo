@@ -648,7 +648,7 @@ class Downloader:
                 picked.append((tid, info_hash))
 
         if not picked:
-            logger.info("pick 0 items: left_size={}", left_size)
+            logger.info("pick 0 items: left_size={}", human_readable_size(left_size))
         else:
             logger.info("pick {} items", len(picked))
 
