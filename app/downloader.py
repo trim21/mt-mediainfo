@@ -91,7 +91,7 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
         job.tid is null and
         ({seeder_clause})
     {order_clause}
-    limit 1000
+    limit 100
     """
 
 
