@@ -270,6 +270,7 @@ class RTorrentClient(BTClient):
             self._call("f.priority.set", [f"{info_hash}:f{file_id}", priority])
 
         self._compute_and_store_selected_size(info_hash)
+        self._call("session.save")
 
     def _compute_and_store_selected_size(self, info_hash: str) -> int:
         rows: list[tuple[int, int]] = self._call(  # type: ignore[assignment]
