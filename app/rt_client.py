@@ -269,11 +269,11 @@ class RTorrentClient(BTClient):
         for file_id in file_ids:
             self._call("f.priority.set", [f"{info_hash}:f{file_id}", priority])
 
-        rows: list[list[Any]] = self._call(  # type: ignore[assignment]
+        rows: list[tuple[int, int]] = self._call(  # type: ignore[assignment]
             "f.multicall",
             [info_hash, "", "f.size_bytes=", "f.priority="],
         )
-        selected_size = sum(int(r[0]) for r in rows if int(r[1]) != 0)
+        selected_size = sum(size for size, priority in rows if priority != 0)
         self._call("d.custom.set", [info_hash, "selected_size", str(selected_size)])
 
     @staticmethod
