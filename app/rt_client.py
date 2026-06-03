@@ -63,6 +63,7 @@ class RTorrentClient(BTClient):
                 "d.timestamp.finished=",
                 "d.message=",
                 "d.hashing_failed=",
+                "d.custom=selected_size=",
             ],
         )
 
@@ -84,8 +85,12 @@ class RTorrentClient(BTClient):
             timestamp_finished = int(r[14])
             message = str(r[15])
             hashing_failed = int(r[16])
+            selected_size_raw = str(r[17])
 
             tags = frozenset(parse_tags(custom1))
+
+            selected_size = int(selected_size_raw) if selected_size_raw else 0
+            size = selected_size if selected_size > 0 else size_bytes
 
             if hashing_failed or (message and message != "" and "hash" in message.lower()):
                 torrent_state = TorrentState.ERRORED
@@ -125,7 +130,7 @@ class RTorrentClient(BTClient):
                     completed=bytes_done,
                     uploaded=up_total,
                     total_size=size_bytes,
-                    size=size_bytes,
+                    size=size,
                     amount_left=left_bytes,
                     num_seeds=peers_complete,
                     progress=progress,
@@ -263,6 +268,13 @@ class RTorrentClient(BTClient):
         info_hash = torrent_hash.upper()
         for file_id in file_ids:
             self._call("f.priority.set", [f"{info_hash}:f{file_id}", priority])
+
+        rows: list[list[Any]] = self._call(  # type: ignore[assignment]
+            "f.multicall",
+            [info_hash, "", "f.size_bytes=", "f.priority="],
+        )
+        selected_size = sum(int(r[0]) for r in rows if int(r[1]) != 0)
+        self._call("d.custom.set", [info_hash, "selected_size", str(selected_size)])
 
     @staticmethod
     def _get_hash_from_content(content: bytes) -> str:
