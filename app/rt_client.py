@@ -230,6 +230,13 @@ class RTorrentClient(BTClient):
             if b"comment" in t:
                 params.append(f'd.custom2.set="VRS24mrker{quote(t[b"comment"].decode().strip())}"')
 
+            info = t[b"info"]
+            if b"files" in info:
+                total_size = sum(f[b"length"] for f in info[b"files"])
+            else:
+                total_size = info[b"length"]
+            custom["selected_size"] = total_size
+
             for key, value in custom.items():
                 params.append(f"d.custom.set={key},{json.dumps(value)}")
 
