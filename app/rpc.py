@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import traceback
 from typing import Any, Final
 
 import asyncpg
@@ -68,8 +69,8 @@ def process_commands(
             payload = parse_obj(payload_cls, raw)
             ret = handler(payload)
             result = orjson.dumps(ret).decode()
-        except Exception as e:
-            error = str(e)
+        except Exception:
+            error = traceback.format_exc()
         db.execute(
             """update node_command
                set executed_at = current_timestamp, result = $1, error = $2

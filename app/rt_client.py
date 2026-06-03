@@ -45,6 +45,7 @@ class RTorrentClient(BTClient):
             "d.multicall2",
             [
                 "",
+                "",
                 "d.name=",
                 "d.hash=",
                 "d.directory_base=",
@@ -62,6 +63,7 @@ class RTorrentClient(BTClient):
                 "d.timestamp.finished=",
                 "d.message=",
                 "d.hashing_failed=",
+                "d.custom=selected_size=",
             ],
         )
 
@@ -83,8 +85,14 @@ class RTorrentClient(BTClient):
             timestamp_finished = int(r[14])
             message = str(r[15])
             hashing_failed = int(r[16])
+            selected_size_raw = str(r[17])
 
             tags = frozenset(parse_tags(custom1))
+
+            selected_size = int(selected_size_raw) if selected_size_raw else 0
+            if selected_size <= 0:
+                selected_size = self._compute_and_store_selected_size(info_hash)
+            size = selected_size if selected_size > 0 else size_bytes
 
             if hashing_failed or (message and message != "" and "hash" in message.lower()):
                 torrent_state = TorrentState.ERRORED
@@ -94,6 +102,15 @@ class RTorrentClient(BTClient):
                 torrent_state = TorrentState.UPLOADING
             else:
                 torrent_state = TorrentState.DOWNLOADING
+
+            if hashing_failed:
+                error_message = "Hashing failed"
+                if message and message != "":
+                    error_message = f"Hashing failed: {message}"
+            elif message and message != "":
+                error_message = message
+            else:
+                error_message = ""
 
             progress = (bytes_done / size_bytes) if size_bytes > 0 else 0.0
 
@@ -115,7 +132,7 @@ class RTorrentClient(BTClient):
                     completed=bytes_done,
                     uploaded=up_total,
                     total_size=size_bytes,
-                    size=size_bytes,
+                    size=size,
                     amount_left=left_bytes,
                     num_seeds=peers_complete,
                     progress=progress,
@@ -123,6 +140,7 @@ class RTorrentClient(BTClient):
                     eta=eta,
                     tags=tags,
                     seen_complete=timestamp_finished or 0,
+                    error_message=error_message,
                 )
             )
 
@@ -194,7 +212,10 @@ class RTorrentClient(BTClient):
         is_sequential_download: bool = False,
     ) -> str:
         for content in torrent_files:
+            Path(save_path).mkdir(parents=True, exist_ok=True)
+
             params: list[str | bytes] = [
+                "",
                 content,
                 'd.tied_to_file.set=""',
                 f'd.directory.set="{save_path}"',
@@ -209,11 +230,16 @@ class RTorrentClient(BTClient):
             if b"comment" in t:
                 params.append(f'd.custom2.set="VRS24mrker{quote(t[b"comment"].decode().strip())}"')
 
+            info = t[b"info"]
+            if b"files" in info:
+                total_size = sum(f[b"length"] for f in info[b"files"])
+            else:
+                total_size = info[b"length"]
+            custom["selected_size"] = total_size
+
             for key, value in custom.items():
                 params.append(f"d.custom.set={key},{json.dumps(value)}")
 
-            if is_sequential_download:
-                params.append("d.down.sequential.set=1")
             self._call("load.raw_start_verbose", params)
 
             if download_limit > 0:
@@ -240,13 +266,7 @@ class RTorrentClient(BTClient):
         self._call("d.custom1.set", [info_hash, _encode_rt_tags(new_tags)])
 
     def torrents_set_download_limit(self, limit: int, torrent_hashes: str) -> None:
-        info_hash = torrent_hashes.upper()
-        throttle_name = f"_mt_{info_hash[:8]}"
-        if limit > 0:
-            self._call("d.throttle_name.set", [info_hash, throttle_name])
-            self._call("throttle.down", ["", [throttle_name, limit // 1024]])
-        else:
-            self._call("d.throttle_name.set", [info_hash, ""])
+        pass
 
     def torrents_resume(self, torrent_hashes: str) -> None:
         info_hash = torrent_hashes.upper()
@@ -256,7 +276,20 @@ class RTorrentClient(BTClient):
     def torrents_file_priority(self, torrent_hash: str, file_ids: list[int], priority: int) -> None:
         info_hash = torrent_hash.upper()
         for file_id in file_ids:
-            self._call("f.priority.set", [info_hash, file_id, priority])
+            self._call("f.priority.set", [f"{info_hash}:f{file_id}", priority])
+
+        self._compute_and_store_selected_size(info_hash)
+        self._call("session.save")
+
+    def _compute_and_store_selected_size(self, info_hash: str) -> int:
+        rows: list[tuple[int, int]] = self._call(  # type: ignore[assignment]
+            "f.multicall",
+            [info_hash, "", "f.size_bytes=", "f.priority="],
+        )
+        selected_size = sum(size for size, priority in rows if priority != 0)
+        if selected_size > 0:
+            self._call("d.custom.set", [info_hash, "selected_size", str(selected_size)])
+        return selected_size
 
     @staticmethod
     def _get_hash_from_content(content: bytes) -> str:

@@ -53,7 +53,7 @@ from app.rpc import (
 from app.rt_client import RTorrentClient
 from app.torrent import find_largest_video_file
 from app.torrent_store import TorrentStore
-from app.utils import must_find_executable, set_torrent_comment
+from app.utils import human_readable_size, must_find_executable, set_torrent_comment
 
 
 def format_exc(e: Exception) -> str:
@@ -91,6 +91,7 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
         job.tid is null and
         ({seeder_clause})
     {order_clause}
+    limit 1000
     """
 
 
@@ -374,7 +375,7 @@ class Downloader:
                 self.__update_job_status(
                     status=ItemStatus.FAILED,
                     info_hash=t.hash,
-                    failed_reason="torrent error",
+                    failed_reason=t.error_message or "torrent error",
                 )
                 self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
@@ -432,13 +433,15 @@ class Downloader:
                       progress = $1,
                       dlspeed = $2,
                       eta = $3,
-                      updated_at = $4
-                    where info_hash = $5 and node_id = $6 and status = $7
+                      error_message = $4,
+                      updated_at = $5
+                    where info_hash = $6 and node_id = $7 and status = $8
                     """,
                     [
                         t.progress,
                         t.dlspeed,
                         t.eta,
+                        t.error_message,
                         now,
                         t.hash,
                         self.config.node_id,
@@ -556,6 +559,15 @@ class Downloader:
         current_total_size = sum(t.size for t in self.client.torrents_info())
         left_size = int(self.config.total_process_size) - current_total_size
 
+        if left_size <= 0:
+            logger.info(
+                "no space left: current={} total_limit={} left={}",
+                human_readable_size(current_total_size),
+                human_readable_size(self.config.total_process_size),
+                human_readable_size(left_size),
+            )
+            return PickContext(no_space=True)
+
         picked: list[tuple[int, str]] = []
         has_pending = False
         no_space = False
@@ -579,17 +591,22 @@ class Downloader:
 
             logger.info("fetch {} rows", len(rows))
             if not rows:
+                logger.info("skip pick: no pending download threads")
                 return PickContext()
 
             if self.thread_filter_template is not None:
+                before_count = len(rows)
                 rows = [
                     row
                     for row in rows
                     if self.thread_filter_template.render(thread=row).strip() == "true"
                 ]
-
-            if not rows:
-                return PickContext()
+                if not rows:
+                    logger.info(
+                        "skip pick: thread filter rejected all {} rows",
+                        before_count,
+                    )
+                    return PickContext()
 
             has_pending = True
 
@@ -598,6 +615,12 @@ class Downloader:
                 info_hash = row["info_hash"]
                 selected_size = row["selected_size"]
                 if left_size - selected_size <= 0:
+                    logger.info(
+                        "skip tid={} selected_size={} left_size={}: too large",
+                        tid,
+                        human_readable_size(selected_size),
+                        human_readable_size(left_size),
+                    )
                     no_space = True
                     break
 
@@ -606,7 +629,13 @@ class Downloader:
                     insert into job (tid, node_id, info_hash, start_download_time, updated_at, status, eta)
                     VALUES ($1, $2, $3, current_timestamp, current_timestamp, $4, $5)
                     """,
-                    [tid, self.config.node_id, info_hash, ItemStatus.DOWNLOADING, ETA_INF],
+                    [
+                        tid,
+                        self.config.node_id,
+                        info_hash,
+                        ItemStatus.DOWNLOADING,
+                        ETA_INF,
+                    ],
                 )
                 conn.execute(
                     """
@@ -618,14 +647,17 @@ class Downloader:
                 left_size -= selected_size
                 picked.append((tid, info_hash))
 
-        logger.info("pick {} items", len(picked))
+        if not picked:
+            logger.info("pick 0 items: left_size={}", human_readable_size(left_size))
+        else:
+            logger.info("pick {} items", len(picked))
 
         # add to download client outside the lock to avoid blocking other nodes
         for tid, info_hash in picked:
             try:
                 self.__add_torrent(tid, info_hash)
             except Exception as e:
-                logger.error("failed to add torrent tid={}: {}", tid, e)
+                logger.exception("failed to add torrent tid={}: {}", tid, e)
                 self.__update_job_status(
                     status=ItemStatus.FAILED, tid=tid, failed_reason=format_exc(e)
                 )

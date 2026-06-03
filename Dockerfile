@@ -11,7 +11,8 @@ ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_PREFERENCE=only-system \
     PATH="/src/.venv/bin:$PATH" \
-    DATA_DIR=/data
+    DATA_DIR=/data \
+    ONNXRUNTIME_DISABLE_GPU_DETECTION=1
 
 VOLUME ["/data"]
 

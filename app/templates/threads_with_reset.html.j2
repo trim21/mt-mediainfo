@@ -1,0 +1,48 @@
+{% extends "threads.html.j2" %}
+
+{% block controls_extra %}
+<button type="button" class="btn btn-outline-danger btn-sm"
+        onclick="resetAll('{{ reset_all_endpoint }}', '{{ reset_all_confirm }}')">{{ reset_all_label or 'Reset All' }}</button>
+{% endblock %}
+
+{% block dialogs %}
+<dialog id="reason-dialog" class="reason-dialog">
+  <div class="reason-dialog-header">
+    <h3 id="reason-dialog-title" class="reason-dialog-title"></h3>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="closeReasonDialog()">Close</button>
+  </div>
+  <pre id="reason-dialog-body" class="reason-dialog-body"></pre>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function resetOne(tid) {
+  if (!confirm('Reset thread ' + tid + '?')) return;
+  const resp = await fetch('/api/thread/' + tid + '/reset', {method: 'POST'});
+  if (resp.ok) { document.getElementById('row-' + tid)?.remove(); }
+  else { alert('Failed to reset'); }
+}
+
+async function resetAll(endpoint, confirmMsg) {
+  if (!confirm(confirmMsg)) return;
+  const resp = await fetch(endpoint, {method: 'POST'});
+  if (resp.ok) { location.reload(); }
+  else { alert('Failed to reset all jobs'); }
+}
+</script>
+
+<script>
+function showReasonDialog(button) {
+  const dialog = document.getElementById('reason-dialog');
+  const title = document.getElementById('reason-dialog-title');
+  const body = document.getElementById('reason-dialog-body');
+  const cell = button.closest('.reason-cell');
+  const source = cell.querySelector('.reason-detail-source');
+  title.textContent = button.dataset.preview || 'Failure reason';
+  body.textContent = source?.content?.textContent || '';
+  dialog.showModal();
+}
+function closeReasonDialog() { document.getElementById('reason-dialog')?.close(); }
+</script>
+{% endblock %}

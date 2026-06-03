@@ -1,0 +1,10 @@
+{% extends "threads.html.j2" %}
+
+{% block controls_extra %}
+<label class="text-muted small mb-0" for="strategy-select">Strategy:</label>
+<select id="strategy-select" class="form-select form-select-sm" style="width:auto" onchange="location.href='?strategy='+this.value">
+  {% for s in pick_strategies %}
+  <option value="{{ s }}"{% if s == current_strategy %} selected{% endif %}>{{ s }}</option>
+  {% endfor %}
+</select>
+{% endblock %}

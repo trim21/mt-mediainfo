@@ -115,12 +115,14 @@ def must_run_command(
 
 def human_readable_size(size: float, decimal_places: int = 1) -> str:
     size = float(size)
+    sign = "-" if size < 0 else ""
+    size = abs(size)
     unit = "B"
     for unit in ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]:
         if size < 1024.0 or unit == "PiB":
             break
         size /= 1024.0
-    return f"{size:.{decimal_places}f} {unit}"
+    return f"{sign}{size:.{decimal_places}f} {unit}"
 
 
 def human_readable_byte_rate(bytes_per_second: float, decimal_places: int = 2) -> str:
