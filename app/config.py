@@ -8,7 +8,7 @@ from typing import Annotated, Any
 
 import durationpy
 import yarl
-from pydantic import BeforeValidator, ByteSize, Field, HttpUrl
+from pydantic import ByteSize, Field, HttpUrl
 
 from app.const import PickStrategy
 from app.utils import parse_obj
@@ -22,6 +22,10 @@ def parse_go_duration_str(s: Any) -> Any:
         return int(durationpy.from_str(s).total_seconds())
 
     return s
+
+
+def _env_dict() -> dict[str, str]:
+    return {k: v for k, v in os.environ.items() if v}
 
 
 def _data_dir() -> Path:
@@ -55,26 +59,10 @@ class BaseConfig:
         str | None, None, Field(alias="PG_PASSWORD", default="postgres", validate_default=True)
     ]
 
-    pg_sslmode: Annotated[
-        str | None,
-        BeforeValidator(lambda x: x or None),
-        Field(alias="PG_SSLMODE", default=None),
-    ]
-    pg_ssl_rootcert: Annotated[
-        str | None,
-        BeforeValidator(lambda x: x or None),
-        Field(alias="PG_SSL_ROOTCERT", default=None),
-    ]
-    pg_ssl_cert: Annotated[
-        str | None,
-        BeforeValidator(lambda x: x or None),
-        Field(alias="PG_SSL_CERT", default=None),
-    ]
-    pg_ssl_key: Annotated[
-        str | None,
-        BeforeValidator(lambda x: x or None),
-        Field(alias="PG_SSL_KEY", default=None),
-    ]
+    pg_sslmode: Annotated[str | None, Field(alias="PG_SSLMODE", default=None)]
+    pg_ssl_rootcert: Annotated[str | None, Field(alias="PG_SSL_ROOTCERT", default=None)]
+    pg_ssl_cert: Annotated[str | None, Field(alias="PG_SSL_CERT", default=None)]
+    pg_ssl_key: Annotated[str | None, Field(alias="PG_SSL_KEY", default=None)]
 
     def pg_dsn(self) -> str:
         url = yarl.URL.build(
@@ -124,11 +112,7 @@ class S3Mixin:
         str,
         Field(alias="S3_SECRET_ACCESS_KEY", min_length=1),
     ]
-    s3_root: Annotated[
-        str | None,
-        BeforeValidator(lambda x: x or None),
-        Field(alias="S3_ROOT", default=None),
-    ]
+    s3_root: Annotated[str | None, Field(alias="S3_ROOT", default=None)]
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -142,17 +126,9 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         ),
     ]
 
-    qb_url: Annotated[
-        HttpUrl | None,
-        BeforeValidator(lambda x: x or None),
-        Field(alias="QB_URL", default=None, validate_default=True),
-    ]
+    qb_url: Annotated[HttpUrl | None, Field(alias="QB_URL", default=None, validate_default=True)]
 
-    rt_url: Annotated[
-        str | None,
-        BeforeValidator(lambda x: x or None),
-        Field(alias="RT_URL", default=None, validate_default=True),
-    ]
+    rt_url: Annotated[str | None, Field(alias="RT_URL", default=None, validate_default=True)]
 
     download_path: Annotated[
         str,
@@ -178,17 +154,9 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         Field(alias="PICK_STRATEGY", default=PickStrategy.seeders, validate_default=True),
     ]
 
-    seeder_condition: Annotated[
-        str,
-        BeforeValidator(lambda x: x or "true"),
-        Field(alias="SEEDER_CONDITION", default="seeders >= 3"),
-    ]
+    seeder_condition: Annotated[str, Field(alias="SEEDER_CONDITION", default="seeders >= 3")]
 
-    thread_filter: Annotated[
-        str | None,
-        BeforeValidator(lambda x: x or None),
-        Field(alias="THREAD_FILTER", default=None),
-    ]
+    thread_filter: Annotated[str | None, Field(alias="THREAD_FILTER", default=None)]
 
     min_download_speed: Annotated[
         ByteSize,
@@ -205,8 +173,7 @@ class DownloaderConfig(BaseConfig, S3Mixin):
 class ScrapeConfig(BaseConfig, S3Mixin):
     mt_token: Annotated[str, Field(alias="MT_API_TOKEN", min_length=1)]
 
-    # filter empty string
-    http_proxy: Annotated[str | None, BeforeValidator(lambda x: x or None)] = None
+    http_proxy: Annotated[str | None, Field(alias="HTTP_PROXY", default=None)] = None
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -220,19 +187,19 @@ class S3Config(S3Mixin):
 
 
 def load_s3_config() -> S3Config:
-    return parse_obj(S3Config, dict(os.environ))
+    return parse_obj(S3Config, _env_dict())
 
 
 def load_downloader_config() -> DownloaderConfig:
-    return parse_obj(DownloaderConfig, dict(os.environ))
+    return parse_obj(DownloaderConfig, _env_dict())
 
 
 def load_scrape_config() -> ScrapeConfig:
-    return parse_obj(ScrapeConfig, dict(os.environ))
+    return parse_obj(ScrapeConfig, _env_dict())
 
 
 def load_server_config() -> ServerConfig:
-    return parse_obj(ServerConfig, dict(os.environ))
+    return parse_obj(ServerConfig, _env_dict())
 
 
 def _copy_key_with_permissions(src: str) -> str:
