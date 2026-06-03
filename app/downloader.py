@@ -83,7 +83,11 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
     seeder_clause: LiteralString = cast(LiteralString, config.seeder_condition)
 
     return f"""
-    select pending_download_threads.*, '' as mediainfo, '' as api_mediainfo
+    select
+        tid, size, hard_coded_subtitle, info_hash, seeders, category, deleted,
+        created_at, upload_at, api_mediainfo_at, torrent_fetched_at,
+        selected_size, torrent_invalid, selected_files, generated_mediainfo_at,
+        exported_at, selected_index
     from pending_download_threads
     left join job on (job.tid = pending_download_threads.tid)
     where
