@@ -224,8 +224,6 @@ class RTorrentClient(BTClient):
             for key, value in custom.items():
                 params.append(f"d.custom.set={key},{json.dumps(value)}")
 
-            if is_sequential_download:
-                params.append("d.down.sequential.set=1")
             self._call("load.raw_start_verbose", params)
 
             if download_limit > 0:
