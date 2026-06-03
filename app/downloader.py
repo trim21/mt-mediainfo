@@ -26,13 +26,13 @@ from app.bt_client import (
 )
 from app.config import DownloaderConfig
 from app.const import (
+    BT_TAG_DOWNLOADING,
+    BT_TAG_NEED_SELECT,
+    BT_TAG_PROCESS_ERROR,
+    BT_TAG_PROCESSING,
+    BT_TAG_SELECTING_FILES,
     LOCK_KEY_PICK_RSS_JOB,
     PRIORITY_CATEGORY,
-    QB_TAG_DOWNLOADING,
-    QB_TAG_NEED_SELECT,
-    QB_TAG_PROCESS_ERROR,
-    QB_TAG_PROCESSING,
-    QB_TAG_SELECTING_FILES,
     SELECTED_CATEGORY,
     TZ_SHANGHAI,
     ItemStatus,
@@ -215,7 +215,7 @@ class Downloader:
         return {"info_hash": payload.info_hash}
 
     def __run_at_interval(self) -> None:
-        completed = self.__process_qb_torrents()
+        completed = self.__process_torrents()
         ctx = self.__pick_and_add_jobs()
         if not completed and ctx.picked == 0 and ctx.no_space and ctx.has_pending:
             self.__maybe_evict_slowest()
@@ -285,20 +285,20 @@ class Downloader:
                 removed_reason=removed_reason,
             )
 
-    def __process_qb_torrents(self) -> bool:
-        """Process all torrents in qBittorrent in a single pass.
+    def __process_torrents(self) -> bool:
+        """Process all torrents in the download client in a single pass.
 
         Returns True if any torrent completed (entered UPLOADING state).
         """
-        logger.info("__process_qb_torrents")
+        logger.info("__process_torrents")
         torrents = self.client.torrents_info()
         now = datetime.now(tz=TZ_SHANGHAI)
         completed = False
         if not torrents:
-            logger.info("qb has no torrents")
+            logger.info("client has no torrents")
             return False
-        # Mark jobs as removed-from-client if their torrent is no longer in qb
-        qb_hashes = [x.hash for x in torrents]
+        # Mark jobs as removed-from-client if their torrent is no longer in client
+        torrent_hashes = [x.hash for x in torrents]
         self.db.execute(
             """
                 update job set
@@ -309,7 +309,7 @@ class Downloader:
                 """,
             [
                 ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
-                qb_hashes,
+                torrent_hashes,
                 self.config.node_id,
                 ItemStatus.DOWNLOADING,
                 now,
@@ -381,7 +381,7 @@ class Downloader:
                 continue
 
             # Skip torrents that failed processing
-            if QB_TAG_PROCESS_ERROR in t.tags:
+            if BT_TAG_PROCESS_ERROR in t.tags:
                 continue
 
             # Cleanup torrents whose category is no longer selected
@@ -398,7 +398,7 @@ class Downloader:
             # Upload complete → process mediainfo
             if t.state == TorrentState.UPLOADING:
                 completed = True
-                self.__set_tags(t.hash, remove=QB_TAG_DOWNLOADING, add=QB_TAG_PROCESSING)
+                self.__set_tags(t.hash, remove=BT_TAG_DOWNLOADING, add=BT_TAG_PROCESSING)
                 try:
                     self.__process_local_torrent(t)
                 except Exception as e:
@@ -407,21 +407,21 @@ class Downloader:
                         info_hash=t.hash,
                         failed_reason=format_exc(e),
                     )
-                    self.client.torrents_add_tags(tags=QB_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
+                    self.client.torrents_add_tags(tags=BT_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
                     logger.error("failed to process local torrent {}", e)
                 continue
 
             # Newly added torrent → select files, clear limit, remove tag
-            if QB_TAG_NEED_SELECT in t.tags:
+            if BT_TAG_NEED_SELECT in t.tags:
                 self.__fix_file_selection(t)
                 self.client.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
-                self.client.torrents_remove_tags(tags=QB_TAG_NEED_SELECT, torrent_hashes=t.hash)
+                self.client.torrents_remove_tags(tags=BT_TAG_NEED_SELECT, torrent_hashes=t.hash)
                 continue
 
             # Paused → resume
             if t.state == TorrentState.PAUSED:
                 logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
-                self.__set_tags(t.hash, remove=QB_TAG_SELECTING_FILES, add=QB_TAG_DOWNLOADING)
+                self.__set_tags(t.hash, remove=BT_TAG_SELECTING_FILES, add=BT_TAG_DOWNLOADING)
                 self.client.torrents_resume(torrent_hashes=t.hash)
                 continue
 
@@ -465,10 +465,10 @@ class Downloader:
         return completed
 
     def __handle_unmanaged_torrent(self, t: Torrent) -> None:
-        """Handle a torrent in qB that has no active downloading job.
+        """Handle a torrent in the download client that has no active downloading job.
 
         Try to reclaim if a job exists with removed-by-client status
-        (e.g. was prematurely marked due to async qB add), otherwise delete it.
+        (e.g. was prematurely marked due to async add), otherwise delete it.
         """
         with self.db.connection() as conn, conn.transaction():
             restored = conn.fetch_val(
@@ -488,7 +488,7 @@ class Downloader:
             logger.info("reclaimed job for torrent {}", t.hash)
             return
 
-        logger.info("{} not managed, deleting from qb", t.hash)
+        logger.info("{} not managed, deleting from client", t.hash)
         self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
 
     def __fix_file_selection(self, t: Torrent) -> None:
@@ -748,7 +748,7 @@ class Downloader:
             torrent_files=[tc],
             save_path=os.path.join(self.config.download_path, info_hash),
             use_auto_torrent_management=False,
-            tags=[QB_TAG_DOWNLOADING, QB_TAG_NEED_SELECT],
+            tags=[BT_TAG_DOWNLOADING, BT_TAG_NEED_SELECT],
             download_limit=1,
             is_sequential_download=True,
         )

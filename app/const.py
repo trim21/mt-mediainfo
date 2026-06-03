@@ -27,11 +27,11 @@ ITEM_STATUS_PROCESSING: Final = (
 
 VIDEO_FILE_EXT = (".mkv", ".mp4", ".avi", ".wmv")
 
-QB_TAG_PROCESS_ERROR: Final = "process-error"
-QB_TAG_SELECTING_FILES: Final = "selecting-files"
-QB_TAG_DOWNLOADING: Final = "downloading"
-QB_TAG_PROCESSING: Final = "processing"
-QB_TAG_NEED_SELECT: Final = "need-select"
+BT_TAG_PROCESS_ERROR: Final = "process-error"
+BT_TAG_SELECTING_FILES: Final = "selecting-files"
+BT_TAG_DOWNLOADING: Final = "downloading"
+BT_TAG_PROCESSING: Final = "processing"
+BT_TAG_NEED_SELECT: Final = "need-select"
 
 
 class PickStrategy(str, enum.Enum):
