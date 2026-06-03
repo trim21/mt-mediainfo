@@ -374,7 +374,7 @@ class Downloader:
                 self.__update_job_status(
                     status=ItemStatus.FAILED,
                     info_hash=t.hash,
-                    failed_reason="torrent error",
+                    failed_reason=t.error_message or "torrent error",
                 )
                 self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 continue
@@ -432,13 +432,15 @@ class Downloader:
                       progress = $1,
                       dlspeed = $2,
                       eta = $3,
-                      updated_at = $4
-                    where info_hash = $5 and node_id = $6 and status = $7
+                      error_message = $4,
+                      updated_at = $5
+                    where info_hash = $6 and node_id = $7 and status = $8
                     """,
                     [
                         t.progress,
                         t.dlspeed,
                         t.eta,
+                        t.error_message,
                         now,
                         t.hash,
                         self.config.node_id,

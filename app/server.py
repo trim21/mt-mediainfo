@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from html import escape
 from math import inf
 from operator import itemgetter
 from pathlib import Path
@@ -581,21 +582,53 @@ def _pagination(page: int, total_count: int) -> dict[str, int | bool | None]:
     }
 
 
-def _thread_row(r: asyncpg.Record, *, show_failed_reason: bool) -> dict[str, Any]:
-    row = dict(r) | {
-        "size_fmt": human_readable_size(r["size"]),
-        "selected_size_fmt": human_readable_size(r["selected_size"])
-        if r["selected_size"] > 0
-        else "-",
-    }
-    if show_failed_reason:
-        failed_reason: str = r["failed_reason"]
-        has_details = "\n" in failed_reason
-        row["failed_reason_preview"] = (
-            failed_reason.partition("\n")[0] if has_details else failed_reason
-        ) or "-"
-        row["failed_reason_has_details"] = has_details
-    return row
+def _thread_cells(
+    r: asyncpg.Record, columns: list[list[str]], *, show_failed_reason: bool
+) -> dict[str, Any]:
+    cells = []
+    for key, _ in columns:
+        if key == "tid":
+            cells.append(f'<td><a href="/thread/{r["tid"]}">{r["tid"]}</a></td>')
+        elif key == "category":
+            cells.append(f"<td>{r['category']}</td>")
+        elif key == "size":
+            cells.append(f"<td>{human_readable_size(r['size'])}</td>")
+        elif key == "selected_size":
+            s = human_readable_size(r["selected_size"]) if r["selected_size"] > 0 else "-"
+            cells.append(f"<td>{s}</td>")
+        elif key == "seeders":
+            cells.append(f"<td>{r['seeders']}</td>")
+        elif key == "progress":
+            cells.append(f"<td>{'%.1f' % (r['progress'] * 100)}%</td>")
+        elif key == "reason":
+            reason: str = r["failed_reason"] if show_failed_reason else ""
+            has_details = "\n" in reason
+            preview = (reason.partition("\n")[0] if has_details else reason) or "-"
+            if has_details:
+                cells.append(
+                    f'<td class="reason-cell"><div class="reason-inline">'
+                    f'<div class="reason-summary" title="{escape(preview)}">{escape(preview)}</div>'
+                    f'<button type="button" class="reason-link" data-preview="{escape(preview)}" '
+                    f'onclick="showReasonDialog(this)">Details</button>'
+                    f'<template class="reason-detail-source">{escape(reason)}</template>'
+                    f"</div></td>"
+                )
+            else:
+                cells.append(
+                    f'<td class="reason-cell"><div class="reason-inline"><div class="reason-summary">{escape(preview)}</div></div></td>'
+                )
+        elif key == "created":
+            cells.append(f"<td>{_fmt_dt(r['created_at'])}</td>")
+        elif key == "link":
+            cells.append(
+                f'<td><a href="https://kp.m-team.cc/detail/{r["tid"]}" target="_blank">MT</a></td>'
+            )
+        elif key == "action":
+            cells.append(
+                f'<td><button class="btn btn-outline-primary btn-sm" '
+                f'onclick="resetOne({r["tid"]})">Reset</button></td>'
+            )
+    return {"tid": r["tid"], "cells": cells}
 
 
 def _today_start() -> datetime:
@@ -810,6 +843,7 @@ def create_app() -> fastapi.FastAPI:
         show_reset_all: bool = False,
         extra_ctx: dict[str, Any] | None = None,
         count_params: list[Any] | None = None,
+        template_name: str = "threads.html.j2",
     ) -> HTMLResponse:
         total_count = cast(
             int,
@@ -818,25 +852,41 @@ def create_app() -> fastapi.FastAPI:
         )
         pager = _pagination(page, total_count)
         rows = await pool.fetch(rows_sql, pager["page_size"], pager["offset"], *params)
-        ctx = {
+        columns = [
+            ["tid", "TID"],
+            ["category", "Category"],
+            ["size", "Size"],
+            ["selected_size", "Selected Size"],
+            ["seeders", "Seeders"],
+        ]
+        if show_progress:
+            columns.append(["progress", "Progress"])
+        if show_failed_reason:
+            columns.append(["reason", "Reason"])
+        columns += [["created", "Created"], ["link", "Link"]]
+        if show_reset:
+            columns.append(["action", "Action"])
+        ctx: dict[str, Any] = {
             "title": title,
-            "show_progress": show_progress,
-            "show_failed_reason": show_failed_reason,
-            "show_reset": show_reset,
-            "show_reset_all": show_reset_all,
-            "threads": [_thread_row(r, show_failed_reason=show_failed_reason) for r in rows],
-            "page": pager["page"],
-            "page_size": pager["page_size"],
+            "headers": [label for _, label in columns],
+            "thread_rows": [
+                _thread_cells(r, columns, show_failed_reason=show_failed_reason) for r in rows
+            ],
             "total_count": pager["total_count"],
+            "page": pager["page"],
             "total_pages": pager["total_pages"],
             "has_prev": pager["has_prev"],
             "has_next": pager["has_next"],
             "prev_page": pager["prev_page"],
             "next_page": pager["next_page"],
+            "pagination_qs": extra_ctx.get("pagination_qs", "") if extra_ctx else "",
+            "show_failed_reason": show_failed_reason,
+            "show_reset": show_reset,
+            "show_reset_all": show_reset_all,
         }
         if extra_ctx:
             ctx.update(extra_ctx)
-        return render("threads.html.j2", ctx=ctx)
+        return render(template_name, ctx=ctx)
 
     _backfill_lock = asyncio.Lock()
 
@@ -1206,9 +1256,11 @@ def create_app() -> fastapi.FastAPI:
             page=page,
             show_progress=False,
             show_failed_reason=False,
+            template_name="threads_pending_download.html.j2",
             extra_ctx={
                 "pick_strategies": [s.value for s in PickStrategy],
                 "current_strategy": strategy.value,
+                "pagination_qs": f"strategy={strategy.value}&",
             },
         )
 
@@ -1287,6 +1339,13 @@ def create_app() -> fastapi.FastAPI:
             show_progress=False,
             show_failed_reason=True,
             show_reset=True,
+            show_reset_all=True,
+            template_name="threads_with_reset.html.j2",
+            extra_ctx={
+                "reset_all_endpoint": "/api/threads/failed/reset-all",
+                "reset_all_confirm": "Reset all failed jobs? This will delete all failed job records, allowing torrents to be re-picked.",
+                "reset_all_label": "Reset All Failed",
+            },
         )
 
     @app.get("/threads/removed")
@@ -1315,6 +1374,12 @@ def create_app() -> fastapi.FastAPI:
             show_failed_reason=True,
             show_reset=True,
             show_reset_all=True,
+            template_name="threads_with_reset.html.j2",
+            extra_ctx={
+                "reset_all_endpoint": "/api/threads/removed/reset-all",
+                "reset_all_confirm": "Reset all removed jobs? This affects every job with removed-by-client status.",
+                "reset_all_label": "Reset All Removed",
+            },
         )
 
     @app.get("/threads/errors")
@@ -1446,6 +1511,17 @@ def create_app() -> fastapi.FastAPI:
             where status = $1
             """,
             ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
+        )
+        return ORJSONResponse({"deleted": result})
+
+    @app.post("/api/threads/failed/reset-all")
+    async def reset_all_failed_threads() -> ORJSONResponse:
+        result = await pool.execute(
+            """
+            delete from job
+            where status = $1
+            """,
+            ItemStatus.FAILED,
         )
         return ORJSONResponse({"deleted": result})
 
@@ -1667,7 +1743,7 @@ def create_app() -> fastapi.FastAPI:
             ),
             pool.fetch(
                 f"""
-                select job.tid, job.status, job.progress, job.failed_reason,
+                select job.tid, job.status, job.progress, job.failed_reason, job.error_message,
                        job.start_download_time, job.updated_at,
                        job.dlspeed, job.eta, job.info_hash,
                        job.completed_at,

@@ -45,6 +45,7 @@ class Torrent:
     eta: int
     tags: frozenset[str]
     seen_complete: int = 0
+    error_message: str = ""
 
 
 class TorrentNotFoundError(Exception):
