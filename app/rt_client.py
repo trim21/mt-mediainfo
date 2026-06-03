@@ -271,12 +271,7 @@ class RTorrentClient(BTClient):
         for file_id in file_ids:
             self._call("f.priority.set", [f"{info_hash}:f{file_id}", priority])
 
-        rows: list[tuple[int, int]] = self._call(  # type: ignore[assignment]
-            "f.multicall",
-            [info_hash, "", "f.size_bytes=", "f.priority="],
-        )
-        selected_size = sum(size for size, priority in rows if priority != 0)
-        self._call("d.custom.set", [info_hash, "selected_size", str(selected_size)])
+        self._compute_and_store_selected_size(info_hash)
 
     def _compute_and_store_selected_size(self, info_hash: str) -> int:
         rows: list[tuple[int, int]] = self._call(  # type: ignore[assignment]
