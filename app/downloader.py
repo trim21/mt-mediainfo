@@ -84,7 +84,7 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
 
     return f"""
     select
-        tid, size, hard_coded_subtitle, info_hash, seeders, category, deleted,
+        pending_download_threads.tid, size, hard_coded_subtitle, info_hash, seeders, category, deleted,
         created_at, upload_at, api_mediainfo_at, torrent_fetched_at,
         selected_size, torrent_invalid, selected_files, generated_mediainfo_at,
         exported_at, selected_index
