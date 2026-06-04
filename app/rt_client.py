@@ -63,7 +63,7 @@ class RTorrentClient(BTClient):
                 "d.timestamp.finished=",
                 "d.message=",
                 "d.hashing_failed=",
-                "d.custom=selected_size=",
+                "d.custom=selected_size",
             ],
         )
 
