@@ -106,7 +106,7 @@ class RTorrentClient(BTClient):
                 if message and message != "":
                     error_message = f"Hashing failed: {message}"
                 else:
-                    error_message = f"Hashing failed: completed={bytes_done}/{size_bytes} left={left_bytes} state={state} complete={complete} is_open={is_open}"
+                    error_message = f"Hashing failed:\n completed={bytes_done}/{size_bytes} left={left_bytes} state={state} complete={complete} is_open={is_open}"
             elif message and message != "":
                 error_message = message
             else:

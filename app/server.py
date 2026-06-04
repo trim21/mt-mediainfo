@@ -1483,10 +1483,22 @@ def create_app() -> fastapi.FastAPI:
             ]
         thread["selected_files"] = selected_files
 
+        jobs = await pool.fetch(
+            """
+            select node_id, status, progress, failed_reason, removed_reason,
+                   start_download_time, updated_at, completed_at
+            from job
+            where tid = $1
+            order by updated_at desc
+            """,
+            tid,
+        )
+
         return render(
             "thread_detail.html.j2",
             ctx={
                 "thread": thread,
+                "jobs": [dict(r) for r in jobs],
                 "title": f"Thread {tid}",
             },
         )

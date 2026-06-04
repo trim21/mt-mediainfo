@@ -68,6 +68,31 @@
   <h4 class="mt-4">API Mediainfo</h4>
   <pre class="mediainfo">{{ thread.api_mediainfo }}</pre>
   {% endif %}
+
+  <h4 class="mt-4">Jobs</h4>
+  {% if jobs %}
+  <table class="table table-bordered table-sm" style="max-width: 960px;">
+    <thead class="table-light">
+      <tr><th>Node</th><th>Status</th><th>Progress</th><th>Failed Reason</th><th>Removed Reason</th><th>Started</th><th>Updated</th><th>Completed</th></tr>
+    </thead>
+    <tbody>
+      {% for j in jobs %}
+      <tr>
+        <td><a href="/nodes/{{ j.node_id }}">{{ j.node_id }}</a></td>
+        <td>{{ j.status }}</td>
+        <td>{{ "%.1f%%" | format(j.progress * 100) }}</td>
+        <td>{{ j.failed_reason or '-' }}</td>
+        <td>{{ j.removed_reason or '-' }}</td>
+        <td>{{ j.start_download_time | fmt_dt }}</td>
+        <td>{{ j.updated_at | fmt_dt }}</td>
+        <td>{{ j.completed_at | fmt_dt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">No jobs.</p>
+  {% endif %}
 </div>
 </body>
 </html>
