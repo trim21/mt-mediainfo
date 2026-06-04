@@ -386,6 +386,7 @@ class Downloader:
         )
 
         counts: dict[str, int] = {}
+        downloading_updates: list[Torrent] = []
         for t in torrents:
             # Torrent not in managed (downloading) jobs — check if it has a job at all
             if t.hash not in managed_hashes:
@@ -474,42 +475,54 @@ class Downloader:
 
             # Downloading — update progress
             counts["downloading"] = counts.get("downloading", 0) + 1
+            downloading_updates.append(t)
+            continue
+
+        # Batch update all downloading torrents in one transaction
+        if downloading_updates:
+            t_db = time.monotonic()
             with self.db.connection() as conn, conn.transaction():
-                conn.execute(
-                    """
-                    update job set
-                      progress = $1,
-                      dlspeed = $2,
-                      eta = $3,
-                      error_message = $4,
-                      updated_at = $5
-                    where info_hash = $6 and node_id = $7 and status = $8
-                    """,
-                    [
-                        t.progress,
-                        t.dlspeed,
-                        t.eta,
-                        t.error_message,
-                        now,
-                        t.hash,
-                        self.config.node_id,
-                        ItemStatus.DOWNLOADING,
-                    ],
-                )
-                conn.execute(
-                    """
-                    insert into job_download_size (info_hash, node_id, size)
-                    select $1, $2, $3
-                    where (
-                        select size
-                        from job_download_size
-                        where info_hash = $1 and node_id = $2
-                        order by recorded_at desc
-                        limit 1
-                    ) is distinct from $3
-                    """,
-                    [t.hash, self.config.node_id, t.completed],
-                )
+                for t in downloading_updates:
+                    conn.execute(
+                        """
+                        update job set
+                          progress = $1,
+                          dlspeed = $2,
+                          eta = $3,
+                          error_message = $4,
+                          updated_at = $5
+                        where info_hash = $6 and node_id = $7 and status = $8
+                        """,
+                        [
+                            t.progress,
+                            t.dlspeed,
+                            t.eta,
+                            t.error_message,
+                            now,
+                            t.hash,
+                            self.config.node_id,
+                            ItemStatus.DOWNLOADING,
+                        ],
+                    )
+                    conn.execute(
+                        """
+                        insert into job_download_size (info_hash, node_id, size)
+                        select $1, $2, $3
+                        where (
+                            select size
+                            from job_download_size
+                            where info_hash = $1 and node_id = $2
+                            order by recorded_at desc
+                            limit 1
+                        ) is distinct from $3
+                        """,
+                        [t.hash, self.config.node_id, t.completed],
+                    )
+            logger.info(
+                "batch update {} downloading torrents in {:.1f}s",
+                len(downloading_updates),
+                time.monotonic() - t_db,
+            )
         t3 = time.monotonic()
         logger.info(
             "process_torrents done in {:.1f}s (loop={:.1f}s) counts={}", t3 - t0, t3 - t2, counts
