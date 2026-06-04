@@ -232,7 +232,7 @@ class RTorrentClient(BTClient):
             for key, value in custom.items():
                 params.append(f"d.custom.set={key},{json.dumps(value)}")
 
-            self._call("load.raw_start_verbose", params)
+            self._call("load.raw", params)
 
             if download_limit > 0:
                 self.torrents_set_download_limit(

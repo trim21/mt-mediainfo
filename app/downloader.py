@@ -462,6 +462,8 @@ class Downloader:
                 self.__fix_file_selection(t)
                 self.client.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
                 self.client.torrents_remove_tags(tags=BT_TAG_NEED_SELECT, torrent_hashes=t.hash)
+                if t.state == TorrentState.PAUSED:
+                    self.client.torrents_resume(torrent_hashes=t.hash)
                 counts["need_select"] = counts.get("need_select", 0) + 1
                 continue
 
