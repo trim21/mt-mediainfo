@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import time
 from collections.abc import Iterable
 from pathlib import Path
@@ -17,6 +16,7 @@ from app.bt_client import (
     BTClient,
     Torrent,
     TorrentFile,
+    TorrentNotFoundError,
     TorrentState,
 )
 
@@ -188,14 +188,12 @@ class RTorrentClient(BTClient):
 
     def torrents_delete(self, torrent_hashes: str, *, delete_files: bool = True) -> None:
         info_hash = torrent_hashes.upper()
-
-        save_path = Path(str(self._call("d.directory", [info_hash])))
-        self._call("d.stop", [info_hash])
-        self._call("d.close", [info_hash])
-        self._call("d.erase", [info_hash])
-
-        if delete_files:
-            shutil.rmtree(save_path)
+        try:
+            self._call("d.stop", [info_hash])
+            self._call("d.close", [info_hash])
+            self._call("d.erase", [info_hash])
+        except Exception:
+            raise TorrentNotFoundError(torrent_hashes) from None
 
     def torrents_add(
         self,

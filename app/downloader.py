@@ -5,6 +5,7 @@ import dataclasses
 import enum
 import io
 import os.path
+import shutil
 import sys
 import time
 from datetime import datetime, timedelta
@@ -225,8 +226,13 @@ class Downloader:
     def __handle_cmd_ping(_payload: PingPayload) -> dict[str, str]:
         return {"pong": "ok"}
 
+    def _delete_torrent_files(self, info_hash: str) -> None:
+        save_path = Path(self.config.download_path) / info_hash.lower()
+        shutil.rmtree(save_path, ignore_errors=True)
+
     def __handle_cmd_delete_torrent(self, payload: DeleteTorrentPayload) -> dict[str, str]:
         self.client.torrents_delete(torrent_hashes=payload.info_hash, delete_files=True)
+        self._delete_torrent_files(payload.info_hash)
         self.__update_job_status(
             status=ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
             info_hash=payload.info_hash,
@@ -387,6 +393,7 @@ class Downloader:
                     [t.hash],
                 )
                 self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+                self._delete_torrent_files(t.hash)
                 continue
 
             # Torrent in error state → mark failed and delete
@@ -398,6 +405,7 @@ class Downloader:
                     failed_reason=t.error_message or "torrent error",
                 )
                 self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+                self._delete_torrent_files(t.hash)
                 continue
 
             # Skip torrents that failed processing
@@ -413,9 +421,8 @@ class Downloader:
                     failed_reason="category no longer selected",
                 )
                 self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
-                continue
-
-            # Upload complete → process mediainfo
+                self._delete_torrent_files(t.hash)
+                continue  # Upload complete → process mediainfo
             if t.state == TorrentState.UPLOADING:
                 completed = True
                 self.__set_tags(t.hash, remove=BT_TAG_DOWNLOADING, add=BT_TAG_PROCESSING)
@@ -510,6 +517,7 @@ class Downloader:
 
         logger.info("{} not managed, deleting from client", t.hash)
         self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+        self._delete_torrent_files(t.hash)
 
     def __fix_file_selection(self, t: Torrent) -> None:
         """Fix file priorities for torrents that are downloading all files."""
@@ -536,6 +544,7 @@ class Downloader:
 
         if selected_idx is None:
             self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+            self._delete_torrent_files(t.hash)
             return
 
         selected_file = next(f for f in files if f.index == selected_idx)
@@ -572,6 +581,7 @@ class Downloader:
                 [t.hash, self.config.node_id],
             )
         self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
+        self._delete_torrent_files(t.hash)
 
     def __pick_and_add_jobs(self) -> PickContext:
         logger.info("__pick_and_add_jobs")
@@ -680,6 +690,7 @@ class Downloader:
                 )
                 with contextlib.suppress(TorrentNotFoundError):
                     self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+                self._delete_torrent_files(info_hash)
         return PickContext(picked=len(picked), has_pending=has_pending, no_space=no_space)
 
     def __maybe_evict_slowest(self) -> None:
@@ -776,4 +787,5 @@ class Downloader:
             )
             with contextlib.suppress(TorrentNotFoundError):
                 self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+            self._delete_torrent_files(info_hash)
             return
