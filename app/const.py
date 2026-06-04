@@ -31,7 +31,7 @@ BT_TAG_PROCESS_ERROR: Final = "process-error"
 BT_TAG_SELECTING_FILES: Final = "selecting-files"
 BT_TAG_DOWNLOADING: Final = "downloading"
 BT_TAG_PROCESSING: Final = "processing"
-BT_TAG_FILE_SELECTED: Final = "file-selected-3"
+BT_TAG_FILE_SELECTED: Final = "file-selected-4"
 
 
 class PickStrategy(str, enum.Enum):
