@@ -104,9 +104,10 @@ class RTorrentClient(BTClient):
                 torrent_state = TorrentState.DOWNLOADING
 
             if hashing_failed:
-                error_message = "Hashing failed"
                 if message and message != "":
                     error_message = f"Hashing failed: {message}"
+                else:
+                    error_message = f"Hashing failed: completed={bytes_done}/{size_bytes} left={left_bytes} state={state} complete={complete} is_open={is_open}"
             elif message and message != "":
                 error_message = message
             else:
