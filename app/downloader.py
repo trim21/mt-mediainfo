@@ -481,43 +481,51 @@ class Downloader:
         # Batch update all downloading torrents in one transaction
         if downloading_updates:
             t_db = time.monotonic()
+            hashes = [t.hash for t in downloading_updates]
+            progresses = [t.progress for t in downloading_updates]
+            dlspeeds = [t.dlspeed for t in downloading_updates]
+            etas = [t.eta for t in downloading_updates]
+            errors = [t.error_message for t in downloading_updates]
+            completeds = [t.completed for t in downloading_updates]
             with self.db.connection() as conn, conn.transaction():
-                for t in downloading_updates:
-                    conn.execute(
-                        """
-                        update job set
-                          progress = $1,
-                          dlspeed = $2,
-                          eta = $3,
-                          error_message = $4,
-                          updated_at = $5
-                        where info_hash = $6 and node_id = $7 and status = $8
-                        """,
-                        [
-                            t.progress,
-                            t.dlspeed,
-                            t.eta,
-                            t.error_message,
-                            now,
-                            t.hash,
-                            self.config.node_id,
-                            ItemStatus.DOWNLOADING,
-                        ],
-                    )
-                    conn.execute(
-                        """
-                        insert into job_download_size (info_hash, node_id, size)
-                        select $1, $2, $3
-                        where (
-                            select size
-                            from job_download_size
-                            where info_hash = $1 and node_id = $2
-                            order by recorded_at desc
-                            limit 1
-                        ) is distinct from $3
-                        """,
-                        [t.hash, self.config.node_id, t.completed],
-                    )
+                conn.execute(
+                    """
+                    update job set
+                      progress = data.progress,
+                      dlspeed = data.dlspeed,
+                      eta = data.eta,
+                      error_message = data.error_message,
+                      updated_at = $1
+                    from unnest($2::text[], $3::float[], $4::int[], $5::int[], $6::text[])
+                      as data(info_hash, progress, dlspeed, eta, error_message)
+                    where job.info_hash = data.info_hash
+                      and job.node_id = $7
+                      and job.status = $8
+                    """,
+                    [
+                        now,
+                        hashes,
+                        progresses,
+                        dlspeeds,
+                        etas,
+                        errors,
+                        self.config.node_id,
+                        ItemStatus.DOWNLOADING,
+                    ],
+                )
+                conn.execute(
+                    """
+                    insert into job_download_size (info_hash, node_id, size)
+                    select data.info_hash, $1, data.size
+                    from unnest($2::text[], $3::int8[]) as data(info_hash, size)
+                    where (
+                        select jds.size from job_download_size jds
+                        where jds.info_hash = data.info_hash and jds.node_id = $1
+                        order by jds.recorded_at desc limit 1
+                    ) is distinct from data.size
+                    """,
+                    [self.config.node_id, hashes, completeds],
+                )
             logger.info(
                 "batch update {} downloading torrents in {:.1f}s",
                 len(downloading_updates),
