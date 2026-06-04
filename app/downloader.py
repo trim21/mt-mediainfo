@@ -316,8 +316,11 @@ class Downloader:
 
         Returns True if any torrent completed (entered UPLOADING state).
         """
+        t0 = time.monotonic()
         logger.info("__process_torrents")
         torrents = self.client.torrents_info()
+        t1 = time.monotonic()
+        logger.info("torrents_info: {} torrents in {:.1f}s", len(torrents), t1 - t0)
         now = datetime.now(tz=TZ_SHANGHAI)
         completed = False
         if not torrents:
@@ -373,11 +376,21 @@ class Downloader:
             [self.config.node_id, list(managed_hashes), stale_cutoff],
         )
         stalled_hashes: set[str] = {r[0] for r in stalled_rows}
+        t2 = time.monotonic()
+        logger.info(
+            "db queries done in {:.1f}s, managed={} unselected={} stalled={}",
+            t2 - t1,
+            len(managed_hashes),
+            len(unselected_hashes),
+            len(stalled_hashes),
+        )
 
+        counts: dict[str, int] = {}
         for t in torrents:
             # Torrent not in managed (downloading) jobs — check if it has a job at all
             if t.hash not in managed_hashes:
                 self.__handle_unmanaged_torrent(t)
+                counts["unmanaged"] = counts.get("unmanaged", 0) + 1
                 continue
 
             # Cleanup stalled torrents (no download size recorded for 3+ days)
@@ -394,6 +407,7 @@ class Downloader:
                 )
                 self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 self._delete_torrent_files(t.hash)
+                counts["stalled"] = counts.get("stalled", 0) + 1
                 continue
 
             # Torrent in error state → mark failed and delete
@@ -406,10 +420,12 @@ class Downloader:
                 )
                 self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 self._delete_torrent_files(t.hash)
+                counts["errored"] = counts.get("errored", 0) + 1
                 continue
 
             # Skip torrents that failed processing
             if BT_TAG_PROCESS_ERROR in t.tags:
+                counts["process_error"] = counts.get("process_error", 0) + 1
                 continue
 
             # Cleanup torrents whose category is no longer selected
@@ -422,6 +438,7 @@ class Downloader:
                 )
                 self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
                 self._delete_torrent_files(t.hash)
+                counts["unselected"] = counts.get("unselected", 0) + 1
                 continue  # Upload complete → process mediainfo
             if t.state == TorrentState.UPLOADING:
                 completed = True
@@ -436,6 +453,7 @@ class Downloader:
                     )
                     self.client.torrents_add_tags(tags=BT_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
                     logger.error("failed to process local torrent {}", e)
+                counts["uploading"] = counts.get("uploading", 0) + 1
                 continue
 
             # Newly added torrent → select files, clear limit, remove tag
@@ -443,6 +461,7 @@ class Downloader:
                 self.__fix_file_selection(t)
                 self.client.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
                 self.client.torrents_remove_tags(tags=BT_TAG_NEED_SELECT, torrent_hashes=t.hash)
+                counts["need_select"] = counts.get("need_select", 0) + 1
                 continue
 
             # Paused → resume
@@ -450,9 +469,11 @@ class Downloader:
                 logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
                 self.__set_tags(t.hash, remove=BT_TAG_SELECTING_FILES, add=BT_TAG_DOWNLOADING)
                 self.client.torrents_resume(torrent_hashes=t.hash)
+                counts["paused"] = counts.get("paused", 0) + 1
                 continue
 
             # Downloading — update progress
+            counts["downloading"] = counts.get("downloading", 0) + 1
             with self.db.connection() as conn, conn.transaction():
                 conn.execute(
                     """
@@ -489,6 +510,10 @@ class Downloader:
                     """,
                     [t.hash, self.config.node_id, t.completed],
                 )
+        t3 = time.monotonic()
+        logger.info(
+            "process_torrents done in {:.1f}s (loop={:.1f}s) counts={}", t3 - t0, t3 - t2, counts
+        )
         return completed
 
     def __handle_unmanaged_torrent(self, t: Torrent) -> None:
