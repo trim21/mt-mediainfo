@@ -269,9 +269,9 @@ class RTorrentClient(BTClient):
         info_hash = torrent_hash.upper()
         for file_id in file_ids:
             self._call("f.priority.set", [f"{info_hash}:f{file_id}", priority])
-
+        self._call("d.update_priorities", [info_hash])
         self._compute_and_store_selected_size(info_hash)
-        self._call("session.save")
+        self._call("d.save_resume", [info_hash])
 
     def _compute_and_store_selected_size(self, info_hash: str) -> int:
         rows: list[tuple[int, int]] = self._call(  # type: ignore[assignment]
