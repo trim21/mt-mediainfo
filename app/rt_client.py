@@ -89,8 +89,6 @@ class RTorrentClient(BTClient):
             tags = frozenset(parse_tags(custom1))
 
             selected_size = int(selected_size_raw) if selected_size_raw else 0
-            if selected_size <= 0:
-                selected_size = self._compute_and_store_selected_size(info_hash)
             size = selected_size if selected_size > 0 else size_bytes
 
             if hashing_failed or (message and message != "" and "hash" in message.lower()):
@@ -283,6 +281,7 @@ class RTorrentClient(BTClient):
         selected_size = sum(size for size, priority in rows if priority != 0)
         if selected_size > 0:
             self._call("d.custom.set", [info_hash, "selected_size", str(selected_size)])
+            self._call("d.save_resume", [info_hash])
         return selected_size
 
     @staticmethod
