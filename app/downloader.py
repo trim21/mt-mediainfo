@@ -581,11 +581,11 @@ class Downloader:
         file_ids = [f.index for f in files if f.index != keep_idx and f.priority != 0]
         if file_ids:
             logger.info("fixing file selection for torrent {}", t.name)
-            self.client.torrents_file_priority(
-                torrent_hash=t.hash,
-                file_ids=file_ids,
-                priority=0,
-            )
+        self.client.torrents_file_priority(
+            torrent_hash=t.hash,
+            file_ids=file_ids,
+            priority=0,
+        )
 
     def __process_local_torrent(self, t: Torrent) -> None:
         files = self.client.torrents_files(torrent_hash=t.hash)
