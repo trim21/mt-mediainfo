@@ -89,10 +89,10 @@ class QBittorrentClient(BTClient):
         )
         return str(r)
 
-    def torrents_remove_tags(self, tags: str, torrent_hashes: str) -> None:
+    def torrents_remove_tags(self, tags: list[str], torrent_hashes: str) -> None:
         self._client.torrents_remove_tags(tags=tags, torrent_hashes=torrent_hashes)
 
-    def torrents_add_tags(self, tags: str, torrent_hashes: str) -> None:
+    def torrents_add_tags(self, tags: list[str], torrent_hashes: str) -> None:
         self._client.torrents_add_tags(tags=tags, torrent_hashes=torrent_hashes)
 
     def torrents_set_download_limit(self, limit: int, torrent_hashes: str) -> None:

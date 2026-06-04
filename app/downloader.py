@@ -28,7 +28,7 @@ from app.bt_client import (
 from app.config import DownloaderConfig
 from app.const import (
     BT_TAG_DOWNLOADING,
-    BT_TAG_NEED_SELECT,
+    BT_TAG_FILE_SELECTED,
     BT_TAG_PROCESS_ERROR,
     BT_TAG_PROCESSING,
     BT_TAG_SELECTING_FILES,
@@ -257,8 +257,8 @@ class Downloader:
 
     def __set_tags(self, info_hash: str, *, remove: str, add: str) -> None:
         """Swap informational tags on a torrent."""
-        self.client.torrents_remove_tags(tags=remove, torrent_hashes=info_hash)
-        self.client.torrents_add_tags(tags=add, torrent_hashes=info_hash)
+        self.client.torrents_remove_tags(tags=[remove], torrent_hashes=info_hash)
+        self.client.torrents_add_tags(tags=[add], torrent_hashes=info_hash)
 
     @staticmethod
     def __update_job_on_conn(
@@ -452,16 +452,18 @@ class Downloader:
                         info_hash=t.hash,
                         failed_reason=format_exc(e),
                     )
-                    self.client.torrents_add_tags(tags=BT_TAG_PROCESS_ERROR, torrent_hashes=t.hash)
+                    self.client.torrents_add_tags(
+                        tags=[BT_TAG_PROCESS_ERROR], torrent_hashes=t.hash
+                    )
                     logger.error("failed to process local torrent {}", e)
                 counts["uploading"] = counts.get("uploading", 0) + 1
                 continue
 
-            # Newly added torrent → select files, clear limit, remove tag
-            if BT_TAG_NEED_SELECT in t.tags:
+            # File not yet selected → select files, clear limit
+            if BT_TAG_FILE_SELECTED not in t.tags:
                 self.__fix_file_selection(t)
                 self.client.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
-                self.client.torrents_remove_tags(tags=BT_TAG_NEED_SELECT, torrent_hashes=t.hash)
+                self.client.torrents_add_tags(tags=[BT_TAG_FILE_SELECTED], torrent_hashes=t.hash)
                 if t.state == TorrentState.PAUSED:
                     self.client.torrents_resume(torrent_hashes=t.hash)
                 counts["need_select"] = counts.get("need_select", 0) + 1
@@ -825,7 +827,7 @@ class Downloader:
             torrent_files=[tc],
             save_path=os.path.join(self.config.download_path, info_hash),
             use_auto_torrent_management=False,
-            tags=[BT_TAG_DOWNLOADING, BT_TAG_NEED_SELECT],
+            tags=[BT_TAG_DOWNLOADING],
             download_limit=1,
             is_sequential_download=True,
         )

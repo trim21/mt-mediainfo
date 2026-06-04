@@ -241,19 +241,19 @@ class RTorrentClient(BTClient):
 
         return "Ok."
 
-    def torrents_remove_tags(self, tags: str, torrent_hashes: str) -> None:
+    def torrents_remove_tags(self, tags: list[str], torrent_hashes: str) -> None:
         info_hash = torrent_hashes.upper()
         raw = str(self._call("d.custom1", [info_hash]))
         current_tags = parse_tags(raw)
-        remove_set = {t.strip() for t in tags.split(",")}
+        remove_set = {t.strip() for t in tags}
         new_tags = current_tags - remove_set
         self._call("d.custom1.set", [info_hash, _encode_rt_tags(new_tags)])
 
-    def torrents_add_tags(self, tags: str, torrent_hashes: str) -> None:
+    def torrents_add_tags(self, tags: list[str], torrent_hashes: str) -> None:
         info_hash = torrent_hashes.upper()
         raw = str(self._call("d.custom1", [info_hash]))
         current_tags = parse_tags(raw)
-        add_set = {t.strip() for t in tags.split(",")}
+        add_set = {t.strip() for t in tags}
         new_tags = current_tags | add_set
         self._call("d.custom1.set", [info_hash, _encode_rt_tags(new_tags)])
 
