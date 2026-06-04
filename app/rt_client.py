@@ -10,6 +10,7 @@ from urllib.parse import quote
 import bencode2
 from rtorrent_rpc import RTorrent
 from rtorrent_rpc.helper import get_torrent_info_hash, parse_tags
+from sslog import logger
 
 from app.bt_client import (
     ETA_INF,
@@ -90,6 +91,16 @@ class RTorrentClient(BTClient):
 
             selected_size = int(selected_size_raw) if selected_size_raw else 0
             size = selected_size if selected_size > 0 else size_bytes
+            logger.info(
+                "[torrents_info] hash={} name={} selected_size_raw={} selected_size={} size_bytes={} size={} tags={}",
+                info_hash,
+                name,
+                selected_size_raw,
+                selected_size,
+                size_bytes,
+                size,
+                tags,
+            )
 
             if hashing_failed or (message and message != "" and "hash" in message.lower()):
                 torrent_state = TorrentState.ERRORED
@@ -267,10 +278,16 @@ class RTorrentClient(BTClient):
 
     def torrents_file_priority(self, torrent_hash: str, file_ids: list[int], priority: int) -> None:
         info_hash = torrent_hash.upper()
+        logger.info(
+            "[file_priority] hash={} file_ids={} priority={}", info_hash, file_ids, priority
+        )
         for file_id in file_ids:
             self._call("f.priority.set", [f"{info_hash}:f{file_id}", priority])
         self._call("d.update_priorities", [info_hash])
-        self._compute_and_store_selected_size(info_hash)
+        selected_size = self._compute_and_store_selected_size(info_hash)
+        logger.info(
+            "[file_priority] computed selected_size={} for hash={}", selected_size, info_hash
+        )
         self._call("d.save_resume", [info_hash])
 
     def _compute_and_store_selected_size(self, info_hash: str) -> int:
@@ -278,10 +295,15 @@ class RTorrentClient(BTClient):
             "f.multicall",
             [info_hash, "", "f.size_bytes=", "f.priority="],
         )
+        logger.info("[selected_size] hash={} file_rows={}", info_hash, rows)
         selected_size = sum(size for size, priority in rows if priority != 0)
+        logger.info("[selected_size] hash={} computed={}", info_hash, selected_size)
         if selected_size > 0:
             self._call("d.custom.set", [info_hash, "selected_size", str(selected_size)])
             self._call("d.save_resume", [info_hash])
+            logger.info("[selected_size] hash={} stored={}", info_hash, selected_size)
+        else:
+            logger.warning("[selected_size] hash={} selected_size is 0, not storing!", info_hash)
         return selected_size
 
     @staticmethod
