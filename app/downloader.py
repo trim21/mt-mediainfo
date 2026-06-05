@@ -461,13 +461,6 @@ class Downloader:
 
             # File not yet selected → select files, clear limit
             if BT_TAG_FILE_SELECTED not in t.tags:
-                logger.info(
-                    "[file_select] torrent={} tags={} size={} selected_size_from_rt={}",
-                    t.name,
-                    t.tags,
-                    t.size,
-                    t.completed,
-                )
                 self.__fix_file_selection(t)
                 self.client.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
                 self.client.torrents_add_tags(tags=[BT_TAG_FILE_SELECTED], torrent_hashes=t.hash)
@@ -579,35 +572,15 @@ class Downloader:
     def __fix_file_selection(self, t: Torrent) -> None:
         """Fix file priorities for torrents that are downloading all files."""
         files = self.client.torrents_files(torrent_hash=t.hash)
-        logger.info(
-            "[fix_file_selection] torrent={} total_files={} save_path={}",
-            t.name,
-            len(files),
-            t.save_path,
-        )
         if len(files) <= 1:
-            logger.info("[fix_file_selection] skipping: only {} files", len(files))
             return
         files_data = [(f.index, f.name, f.size) for f in files]
         keep_idx = find_largest_video_file(files_data)
         if keep_idx is None:
-            logger.info("[fix_file_selection] skipping: no video file found")
             return
         file_ids = [f.index for f in files if f.index != keep_idx and f.priority != 0]
-        logger.info(
-            "[fix_file_selection] keep_idx={} file_ids_to_disable={} total_files_with_nonzero_priority={}",
-            keep_idx,
-            file_ids,
-            sum(1 for f in files if f.priority != 0),
-        )
-        for f in files:
-            logger.info(
-                "[fix_file_selection] file={} name={} size={} priority={}",
-                f.index,
-                f.name,
-                f.size,
-                f.priority,
-            )
+        if file_ids:
+            logger.info("fixing file selection for torrent {}", t.name)
         self.client.torrents_file_priority(
             torrent_hash=t.hash,
             file_ids=file_ids,
