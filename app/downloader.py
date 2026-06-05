@@ -498,6 +498,9 @@ class Downloader:
             etas = [t.eta for t in downloading_updates]
             errors = [t.error_message for t in downloading_updates]
             completeds = [t.completed for t in downloading_updates]
+            debug_infos = [
+                json.dumps(self.client.get_torrent_debug_info(t.hash)) for t in downloading_updates
+            ]
             with self.db.connection() as conn, conn.transaction():
                 conn.execute(
                     """
@@ -506,9 +509,10 @@ class Downloader:
                       dlspeed = data.dlspeed,
                       eta = data.eta,
                       error_message = data.error_message,
+                      debug_info = data.debug_info::jsonb,
                       updated_at = $1
-                    from unnest($2::text[], $3::float[], $4::int[], $5::int[], $6::text[])
-                      as data(info_hash, progress, dlspeed, eta, error_message)
+                    from unnest($2::text[], $3::float[], $4::int[], $5::int[], $6::text[], $9::text[])
+                      as data(info_hash, progress, dlspeed, eta, error_message, debug_info)
                     where job.info_hash = data.info_hash
                       and job.node_id = $7
                       and job.status = $8
@@ -522,6 +526,7 @@ class Downloader:
                         errors,
                         self.config.node_id,
                         ItemStatus.DOWNLOADING,
+                        debug_infos,
                     ],
                 )
                 conn.execute(
