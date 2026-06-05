@@ -30,6 +30,7 @@
       <th>Failed</th>
       <th>Removed</th>
       <th>Total</th>
+      <th>Debug Info</th>
       <th>Actions</th>
     </tr>
     </thead>
@@ -57,6 +58,15 @@
       <td>{{ n.failed }}</td>
       <td>{{ n.removed }}</td>
       <td>{{ n.total }}</td>
+      <td>
+        {% if n.debug_info %}
+          {% for key, value in n.debug_info.items() %}
+            <div><code>{{ key }}</code>: <code>{{ value }}</code></div>
+          {% endfor %}
+        {% else %}
+          <span class="text-muted">-</span>
+        {% endif %}
+      </td>
       <td>
         <button class="btn btn-sm btn-outline-primary" onclick="pingNode('{{ n.id }}', this)">Ping</button>
       </td>

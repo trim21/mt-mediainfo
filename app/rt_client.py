@@ -287,3 +287,21 @@ class RTorrentClient(BTClient):
     @staticmethod
     def _get_hash_from_content(content: bytes) -> str:
         return get_torrent_info_hash(content).upper()
+
+    def get_node_debug_info(self) -> dict[str, Any]:
+        try:
+            file_allocate = self._call("system.file.allocate")
+        except Exception:
+            file_allocate = None
+        return {"system.file.allocate": file_allocate}
+
+    def get_torrent_debug_info(self, torrent_hash: str) -> dict[str, Any]:
+        try:
+            files = self.torrents_files(torrent_hash)
+            file_selection = [
+                {"index": f.index, "name": f.name, "size": f.size, "priority": f.priority}
+                for f in files
+            ]
+        except Exception:
+            file_selection = []
+        return {"file_selection": file_selection}

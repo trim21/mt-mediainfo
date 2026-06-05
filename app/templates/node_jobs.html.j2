@@ -17,6 +17,14 @@
   <p><a href="/nodes">&larr; Back to Nodes</a></p>
   <h2>Node <code>{{ node_name }}</code> <small class="text-muted fs-6">({{ jobs | length }} jobs)</small></h2>
   <p class="text-muted">Full ID: <code>{{ node_id }}</code> &mdash; Version: <code>{{ version or '-' }}</code> &mdash; Last seen: {{ last_seen | fmt_dt }}</p>
+  {% if node_debug_info %}
+  <div class="mb-3">
+    <strong>Node Debug Info:</strong>
+    {% for key, value in node_debug_info.items() %}
+      <span class="badge bg-light text-dark border me-1"><code>{{ key }}</code>: <code>{{ value }}</code></span>
+    {% endfor %}
+  </div>
+  {% endif %}
   <button id="ping-btn" class="btn btn-sm btn-outline-primary mb-3" onclick="pingNode('{{ node_id }}')">Ping</button>
   <span id="ping-result" class="ms-2 small"></span>
 
@@ -71,6 +79,7 @@
        <th>{{ sort_link('started', 'Started') }}</th>
        <th>{{ sort_link('completed' if status == 'done' else 'updated', 'Completed' if status == 'done' else 'Updated') }}</th>
        <th>Link</th>
+       <th>Debug Info</th>
        <th>Actions</th>
      </tr>
     </thead>
@@ -99,6 +108,32 @@
        <td>{{ j.start_download_time | fmt_dt }}</td>
        <td>{{ (j.completed_at if status == 'done' else j.updated_at) | fmt_dt }}</td>
       <td><a href="https://kp.m-team.cc/detail/{{ j.tid }}" target="_blank">MT</a></td>
+      <td>
+        {% if j.debug_info and j.debug_info != '{}' %}
+          {% if j.debug_info.file_selection %}
+            <details>
+              <summary>Files ({{ j.debug_info.file_selection | length }})</summary>
+              <table class="table table-sm table-bordered mb-0" style="font-size: 0.75rem;">
+                <thead><tr><th>#</th><th>Name</th><th>Size</th><th>Priority</th></tr></thead>
+                <tbody>
+                {% for f in j.debug_info.file_selection %}
+                  <tr{% if f.priority == 0 %} class="text-muted"{% endif %}>
+                    <td>{{ f.index }}</td>
+                    <td style="word-break: break-all;">{{ f.name }}</td>
+                    <td>{{ f.size }}</td>
+                    <td>{{ f.priority }}</td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </details>
+          {% else %}
+            <span class="text-muted small">{{ j.debug_info }}</span>
+          {% endif %}
+        {% else %}
+          <span class="text-muted">-</span>
+        {% endif %}
+      </td>
       <td>
         <button class="btn btn-sm btn-outline-danger" onclick="deleteTorrent('{{ node_id }}', '{{ j.info_hash }}')">Delete</button>
       </td>

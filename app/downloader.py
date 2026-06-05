@@ -4,6 +4,7 @@ import contextlib
 import dataclasses
 import enum
 import io
+import json
 import os.path
 import shutil
 import sys
@@ -247,12 +248,18 @@ class Downloader:
             self.__maybe_evict_slowest()
 
     def __heart_beat(self) -> None:
+        debug_info = self.client.get_node_debug_info()
         self.db.execute(
             """
-            insert into node (id, last_seen, version) values ($1, $2, $3)
-            on conflict (id) do update set last_seen = excluded.last_seen, version = excluded.version
+            insert into node (id, last_seen, version, debug_info) values ($1, $2, $3, $4)
+            on conflict (id) do update set last_seen = excluded.last_seen, version = excluded.version, debug_info = excluded.debug_info
             """,
-            [self.config.node_id, datetime.now(tz=TZ_SHANGHAI), self.config.version],
+            [
+                self.config.node_id,
+                datetime.now(tz=TZ_SHANGHAI),
+                self.config.version,
+                json.dumps(debug_info),
+            ],
         )
 
     def __set_tags(self, info_hash: str, *, remove: str, add: str) -> None:
@@ -585,6 +592,11 @@ class Downloader:
             torrent_hash=t.hash,
             file_ids=file_ids,
             priority=0,
+        )
+        debug_info = self.client.get_torrent_debug_info(t.hash)
+        self.db.execute(
+            "update job set debug_info = $1 where info_hash = $2 and node_id = $3 and status = $4",
+            [json.dumps(debug_info), t.hash, self.config.node_id, ItemStatus.DOWNLOADING],
         )
 
     def __process_local_torrent(self, t: Torrent) -> None:
