@@ -132,7 +132,10 @@ class Downloader:
 
     @classmethod
     def new(cls, cfg: DownloaderConfig) -> Downloader:
+        logger.info("initializing downloader {}, node_id={}", cfg.version, cfg.node_id)
+        logger.info("connecting to database...")
         db = Database(cfg.pg_dsn())
+        logger.info("database pool created")
         if cfg.rt_url:
             from rtorrent_rpc import RTorrent
 
@@ -155,19 +158,25 @@ class Downloader:
         else:
             raise ValueError("no download client configured: set RT_URL or QB_URL")
 
+        logger.info("download client created, type={}", type(client).__name__)
+
         thread_filter_template: jinja2.Template | None = None
         if cfg.thread_filter:
             thread_filter_template = jinja2.Environment().from_string(cfg.thread_filter)
+
+        store = TorrentStore(cfg)
+        logger.info("torrent store created")
 
         return Downloader(
             config=cfg,
             db=db,
             client=client,
-            store=TorrentStore(cfg),
+            store=store,
             thread_filter_template=thread_filter_template,
         )
 
     def __post_init__(self) -> None:
+        logger.info("testing database connection...")
         try:
             self.db.fetch_val("select version()")
         except Exception:
@@ -176,8 +185,10 @@ class Downloader:
 
         logger.info("successfully connect to database")
 
+        logger.info("waiting for database migrations...")
         self.db.wait_db_migration()
 
+        logger.info("connecting to download client...")
         version = self.client.app_version()
         logger.info("successfully connect to download client {}", version)
 
@@ -186,6 +197,7 @@ class Downloader:
         logger.info("using ffmpeg at {}", self.ffmpeg_bin)
 
     def start(self) -> None:
+        logger.info("downloader started, entering main loop")
         interval = 1
         while True:
             self.__heart_beat()
