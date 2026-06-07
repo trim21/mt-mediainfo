@@ -213,6 +213,8 @@ class Downloader:
             except Exception:
                 logger.exception("failed to run")
 
+            logger.info("loop done, sleeping for {}s", interval)
+
     def __wait_for_notify(self, timeout: float) -> None:
         """Wait for a PG notification or until timeout expires."""
         try:
