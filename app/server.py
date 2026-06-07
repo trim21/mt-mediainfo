@@ -1588,6 +1588,7 @@ def create_app() -> fastapi.FastAPI:
                 REMOVED_NODE_ID,
                 node_id,
             )
+            await conn.execute("delete from node where id = $1", node_id)
         return ORJSONResponse({"moved": result})
 
     @app.post("/api/node/{node_id}/rpc")
