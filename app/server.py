@@ -1552,6 +1552,44 @@ def create_app() -> fastapi.FastAPI:
         )
         return ORJSONResponse({"deleted": result})
 
+    REMOVED_NODE_ID = "removed"
+
+    @app.post("/api/node/{node_id}/move-jobs-to-removed")
+    async def move_node_jobs_to_removed(node_id: str) -> ORJSONResponse:
+        if node_id == REMOVED_NODE_ID:
+            return ORJSONResponse(
+                {"error": "cannot move jobs from the removed node"}, status_code=400
+            )
+        node_row = await pool.fetchrow("select id from node where id = $1", node_id)
+        if node_row is None:
+            return ORJSONResponse({"error": "node not found"}, status_code=404)
+        async with pool.acquire() as conn, conn.transaction():
+            await conn.execute(
+                """
+                    delete from job
+                    where node_id = $1
+                      and tid in (select tid from job where node_id = $2)
+                    """,
+                node_id,
+                REMOVED_NODE_ID,
+            )
+            result = await conn.execute(
+                "update job set node_id = $1 where node_id = $2",
+                REMOVED_NODE_ID,
+                node_id,
+            )
+            await conn.execute(
+                "update job_download_size set node_id = $1 where node_id = $2",
+                REMOVED_NODE_ID,
+                node_id,
+            )
+            await conn.execute(
+                "update node_command set node_id = $1 where node_id = $2 and executed_at is null",
+                REMOVED_NODE_ID,
+                node_id,
+            )
+        return ORJSONResponse({"moved": result})
+
     @app.post("/api/node/{node_id}/rpc")
     async def node_rpc(node_id: str, body: RpcRequest) -> ORJSONResponse:
         payload_cls = PAYLOAD_TYPES.get(body.method)

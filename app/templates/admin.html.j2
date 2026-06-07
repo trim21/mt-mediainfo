@@ -53,6 +53,24 @@
 
   <div class="card mt-3">
     <div class="card-body">
+      <h5 class="card-title">Move Node Jobs to Removed</h5>
+      <p class="card-text">Move all jobs from a node to the dummy "removed" node. Use this to clean up deleted nodes.</p>
+      <div class="d-flex align-items-center gap-2">
+        <select id="moveNodeSelect" class="form-select form-select-sm" style="width: auto;">
+          {% for n in nodes %}
+            {% if n.id != 'removed' %}
+            <option value="{{ n.id }}">{{ n.name }} ({{ n.downloading }} downloading)</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+        <button type="button" class="btn btn-outline-danger" onclick="moveNodeJobs()">Move to Removed</button>
+        <span id="moveResult" class="text-success" style="display:none;">Done!</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-3">
+    <div class="card-body">
       <h5 class="card-title">Config</h5>
       <table id="configTree" class="table table-sm table-bordered mb-3">
         <thead>
@@ -195,6 +213,34 @@
     }
     btn.disabled = false;
     btn.textContent = 'Reset Jobs';
+  }
+
+  async function moveNodeJobs() {
+    var select = document.getElementById('moveNodeSelect');
+    var nodeId = select.value;
+    var label = select.options[select.selectedIndex].text;
+    if (!confirm('Move ALL jobs from ' + label + ' to "removed" node?')) return;
+    var btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      var resp = await fetch('/api/node/' + nodeId + '/move-jobs-to-removed', {method: 'POST'});
+      var data = await resp.json();
+      if (!resp.ok) {
+        alert('Error: ' + (data.error || resp.statusText));
+        btn.disabled = false;
+        btn.textContent = 'Move to Removed';
+        return;
+      }
+      var el = document.getElementById('moveResult');
+      el.textContent = 'Moved ' + data.moved + ' jobs!';
+      el.style.display = 'inline';
+      setTimeout(function() { el.style.display = 'none'; location.reload(); }, 2000);
+    } catch (e) {
+      alert('Request failed: ' + e);
+      btn.disabled = false;
+      btn.textContent = 'Move to Removed';
+    }
   }
 
   document.getElementById('addConfigForm').addEventListener('submit', async function(e) {
