@@ -205,6 +205,11 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         Field(alias="MIN_DOWNLOAD_SPEED", default="20MiB/s", validate_default=True),
     ]
 
+    max_downloading_count: Annotated[
+        int,
+        Field(alias="MAX_DOWNLOADING_COUNT", default=0, validate_default=True),
+    ]
+
     version: Annotated[
         str,
         Field(alias="APP_VERSION", default="", validate_default=True),

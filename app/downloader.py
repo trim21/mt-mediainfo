@@ -654,7 +654,18 @@ class Downloader:
     def __pick_and_add_jobs(self) -> PickContext:
         logger.info("__pick_and_add_jobs")
 
-        current_total_size = sum(t.size for t in self.client.torrents_info())
+        torrents = self.client.torrents_info()
+        current_total_size = sum(t.size for t in torrents)
+
+        max_count = self.config.max_downloading_count
+        if max_count > 0 and len(torrents) >= max_count:
+            logger.info(
+                "at downloading count limit: current={} limit={}",
+                len(torrents),
+                max_count,
+            )
+            return PickContext(no_space=True)
+
         left_size = int(self.config.total_process_size) - current_total_size
 
         if left_size <= 0:
