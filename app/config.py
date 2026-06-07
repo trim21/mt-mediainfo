@@ -8,10 +8,51 @@ from typing import Annotated, Any
 
 import durationpy
 import yarl
-from pydantic import ByteSize, Field, HttpUrl
+from pydantic import BeforeValidator, ByteSize, Field, HttpUrl
 
 from app.const import PickStrategy
 from app.utils import parse_obj
+
+_DURATION_UNITS: dict[str, float] = {
+    "s": 1,
+    "sec": 1,
+    "second": 1,
+    "seconds": 1,
+    "m": 60,
+    "min": 60,
+    "minute": 60,
+    "minutes": 60,
+    "h": 3600,
+    "hr": 3600,
+    "hour": 3600,
+    "hours": 3600,
+    "d": 86400,
+    "day": 86400,
+    "days": 86400,
+}
+
+
+def parse_byte_speed(s: Any) -> Any:
+    if isinstance(s, float | int):
+        return float(s)
+
+    if not isinstance(s, str):
+        return s
+
+    parts = s.split("/")
+    if len(parts) == 2:
+        size_part, duration_part = parts
+        size = parse_obj(ByteSize, size_part.strip())
+        duration = duration_part.strip().lower()
+        if duration not in _DURATION_UNITS:
+            raise ValueError(f"unknown duration unit: {duration_part.strip()}")
+        return float(size) / _DURATION_UNITS[duration]
+
+    if len(parts) == 1:
+        size = parse_obj(ByteSize, s.strip())
+        return float(size)
+
+    raise ValueError(f"invalid byte speed string: {s!r}")
 
 
 def parse_go_duration_str(s: Any) -> Any:
@@ -159,8 +200,9 @@ class DownloaderConfig(BaseConfig, S3Mixin):
     thread_filter: Annotated[str | None, Field(alias="THREAD_FILTER", default=None)]
 
     min_download_speed: Annotated[
-        ByteSize,
-        Field(alias="MIN_DOWNLOAD_SPEED", default="20MiB", validate_default=True),
+        float,
+        BeforeValidator(parse_byte_speed),
+        Field(alias="MIN_DOWNLOAD_SPEED", default="20MiB/s", validate_default=True),
     ]
 
     version: Annotated[
