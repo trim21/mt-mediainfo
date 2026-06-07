@@ -4,7 +4,6 @@ import contextlib
 import dataclasses
 import enum
 import io
-import json
 import os.path
 import shutil
 import sys
@@ -262,17 +261,15 @@ class Downloader:
             self.__maybe_evict_slowest()
 
     def __heart_beat(self) -> None:
-        debug_info = self.client.get_node_debug_info()
         self.db.execute(
             """
-            insert into node (id, last_seen, version, debug_info) values ($1, $2, $3, $4)
-            on conflict (id) do update set last_seen = excluded.last_seen, version = excluded.version, debug_info = excluded.debug_info
+            insert into node (id, last_seen, version) values ($1, $2, $3)
+            on conflict (id) do update set last_seen = excluded.last_seen, version = excluded.version
             """,
             [
                 self.config.node_id,
                 datetime.now(tz=TZ_SHANGHAI),
                 self.config.version,
-                json.dumps(debug_info),
             ],
         )
 
@@ -512,9 +509,6 @@ class Downloader:
             etas = [t.eta for t in downloading_updates]
             errors = [t.error_message for t in downloading_updates]
             completeds = [t.completed for t in downloading_updates]
-            debug_infos = [
-                json.dumps(self.client.get_torrent_debug_info(t.hash)) for t in downloading_updates
-            ]
             with self.db.connection() as conn, conn.transaction():
                 conn.execute(
                     """
@@ -523,10 +517,9 @@ class Downloader:
                       dlspeed = data.dlspeed,
                       eta = data.eta,
                       error_message = data.error_message,
-                      debug_info = data.debug_info::jsonb,
                       updated_at = $1
-                    from unnest($2::text[], $3::float[], $4::int[], $5::int[], $6::text[], $9::text[])
-                      as data(info_hash, progress, dlspeed, eta, error_message, debug_info)
+                    from unnest($2::text[], $3::float[], $4::int[], $5::int[], $6::text[])
+                      as data(info_hash, progress, dlspeed, eta, error_message)
                     where job.info_hash = data.info_hash
                       and job.node_id = $7
                       and job.status = $8
@@ -540,7 +533,6 @@ class Downloader:
                         errors,
                         self.config.node_id,
                         ItemStatus.DOWNLOADING,
-                        debug_infos,
                     ],
                 )
                 conn.execute(
@@ -611,11 +603,6 @@ class Downloader:
             torrent_hash=t.hash,
             file_ids=file_ids,
             priority=0,
-        )
-        debug_info = self.client.get_torrent_debug_info(t.hash)
-        self.db.execute(
-            "update job set debug_info = $1 where info_hash = $2 and node_id = $3 and status = $4",
-            [json.dumps(debug_info), t.hash, self.config.node_id, ItemStatus.DOWNLOADING],
         )
 
     def __process_local_torrent(self, t: Torrent) -> None:

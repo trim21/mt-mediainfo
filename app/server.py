@@ -1693,7 +1693,7 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/nodes")
     async def nodes_page(render: Render) -> HTMLResponse:
         node_rows = await pool.fetch(
-            "select id, last_seen, alias, version, debug_info from node order by id asc"
+            "select id, last_seen, alias, version from node order by id asc"
         )
         job_rows = await pool.fetch(
             "select node_id, status, count(1) as cnt, coalesce(sum(dlspeed), 0) as total_dlspeed from job group by node_id, status"
@@ -1714,7 +1714,6 @@ def create_app() -> fastapi.FastAPI:
                 "alias": n["alias"],
                 "last_seen": n["last_seen"],
                 "version": n["version"],
-                "debug_info": n.get("debug_info") or {},
                 "downloading": counts.get(str(n["id"]), {}).get(ItemStatus.DOWNLOADING, 0),
                 "dlspeed_fmt": human_readable_byte_rate(speeds.get(str(n["id"]), 0)),
                 "done": counts.get(str(n["id"]), {}).get(ItemStatus.DONE, 0),
@@ -1741,7 +1740,7 @@ def create_app() -> fastapi.FastAPI:
         order: Annotated[Literal["asc", "desc"], Query()] = "asc",
     ) -> HTMLResponse:
         node_row = await pool.fetchrow(
-            "select id, last_seen, alias, version, debug_info from node where id = $1", node_id
+            "select id, last_seen, alias, version from node where id = $1", node_id
         )
         if node_row is None:
             return render(
@@ -1749,7 +1748,6 @@ def create_app() -> fastapi.FastAPI:
                 ctx={
                     "node_id": node_id,
                     "node_name": "",
-                    "node_debug_info": {},
                     "jobs": [],
                     "status": status,
                 },
@@ -1804,7 +1802,7 @@ def create_app() -> fastapi.FastAPI:
                 select job.tid, job.status, job.progress, job.failed_reason, job.error_message,
                        job.start_download_time, job.updated_at,
                        job.dlspeed, job.eta, job.info_hash,
-                       job.completed_at, job.debug_info,
+                       job.completed_at,
                        thread.size, thread.selected_size, thread.seeders
                 from job
                 join thread on (thread.tid = job.tid)
@@ -1883,7 +1881,6 @@ def create_app() -> fastapi.FastAPI:
                 "node_name": node_row["alias"] or str(node_row["id"])[:8],
                 "last_seen": node_row["last_seen"],
                 "version": node_row["version"],
-                "node_debug_info": node_row.get("debug_info") or {},
                 "jobs": jobs,
                 "status": status,
                 "sort": effective_sort,
