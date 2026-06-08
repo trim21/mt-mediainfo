@@ -63,6 +63,7 @@ class RTorrentClient(BTClient):
                 "d.message=",
                 "d.hashing_failed=",
                 "d.custom=selected_size",
+                "d.is_partially_done=",
             ],
         )
 
@@ -85,6 +86,7 @@ class RTorrentClient(BTClient):
             message = str(r[15])
             hashing_failed = int(r[16])
             selected_size_raw = str(r[17])
+            is_partially_done = int(r[18])
 
             tags = frozenset(parse_tags(custom1))
 
@@ -95,7 +97,7 @@ class RTorrentClient(BTClient):
                 torrent_state = TorrentState.ERRORED
             elif state == 0 or not is_open:
                 torrent_state = TorrentState.PAUSED
-            elif complete:
+            elif complete or is_partially_done:
                 torrent_state = TorrentState.UPLOADING
             else:
                 torrent_state = TorrentState.DOWNLOADING
