@@ -24,7 +24,7 @@ from fastapi import Depends, Query, Request
 from fastapi.templating import Jinja2Templates
 from mypy_boto3_s3 import S3Client
 from sse_starlette.sse import EventSourceResponse
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from app.config import ServerConfig, load_s3_config, load_server_config
 from app.const import (
@@ -39,7 +39,7 @@ from app.const import (
 from app.db import Database
 from app.file_cache import get_cached_files
 from app.rpc import PAYLOAD_TYPES, RpcRequest, enqueue_command
-from app.torrent_store import create_operator, generate_presigned_url
+from app.torrent_store import _s3_key, create_operator, generate_presigned_url
 from app.utils import date_to_int, human_readable_byte_rate, human_readable_size, parse_obj
 
 
@@ -1509,6 +1509,19 @@ def create_app() -> fastapi.FastAPI:
                 "jobs": jobs,
                 "title": f"Thread {tid}",
             },
+        )
+
+    @app.get("/api/thread/{tid}/torrent")
+    async def download_torrent(tid: int) -> Response:
+        key = _s3_key(tid)
+        try:
+            content = await asyncio.to_thread(s3_op.read, key)
+        except Exception:
+            return ORJSONResponse({"error": "torrent not found"}, status_code=404)
+        return Response(
+            content=content,
+            media_type="application/x-bittorrent",
+            headers={"Content-Disposition": f'attachment; filename="{tid}.torrent"'},
         )
 
     @app.post("/api/thread/{tid}/reset")
