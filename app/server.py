@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -1483,10 +1484,10 @@ def create_app() -> fastapi.FastAPI:
             ]
         thread["selected_files"] = selected_files
 
-        jobs = await pool.fetch(
+        jobs_raw = await pool.fetch(
             """
             select node_id, status, progress, failed_reason, removed_reason,
-                   start_download_time, updated_at, completed_at
+                   start_download_time, updated_at, completed_at, debug_info
             from job
             where tid = $1
             order by updated_at desc
@@ -1494,11 +1495,18 @@ def create_app() -> fastapi.FastAPI:
             tid,
         )
 
+        jobs = []
+        for r in jobs_raw:
+            j = dict(r)
+            di = j.get("debug_info")
+            j["debug_info"] = json.dumps(di, indent=2, ensure_ascii=False) if di else None
+            jobs.append(j)
+
         return render(
             "thread_detail.html.j2",
             ctx={
                 "thread": thread,
-                "jobs": [dict(r) for r in jobs],
+                "jobs": jobs,
                 "title": f"Thread {tid}",
             },
         )

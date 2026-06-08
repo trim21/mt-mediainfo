@@ -287,3 +287,33 @@ class RTorrentClient(BTClient):
     @staticmethod
     def _get_hash_from_content(content: bytes) -> str:
         return get_torrent_info_hash(content).upper()
+
+    def get_node_debug_info(self) -> dict[str, str]:
+        return {}
+
+    def get_torrent_debug_info(self, torrent_hash: str) -> dict[str, str]:
+        try:
+            rows: list[list[Any]] = self._call(
+                "f.multicall",
+                [
+                    torrent_hash.upper(),
+                    "",
+                    "f.path=",
+                    "f.priority=",
+                    "f.completed_chunks=",
+                    "f.size_chunks=",
+                ],
+            )
+            files = [
+                {
+                    "index": i,
+                    "path": str(r[0]),
+                    "priority": int(r[1]),
+                    "completed_chunks": int(r[2]),
+                    "size_chunks": int(r[3]),
+                }
+                for i, r in enumerate(rows)
+            ]
+        except Exception:
+            files = []
+        return {"files": files}

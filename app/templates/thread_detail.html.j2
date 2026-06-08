@@ -87,6 +87,16 @@
         <td>{{ j.updated_at | fmt_dt }}</td>
         <td>{{ j.completed_at | fmt_dt }}</td>
       </tr>
+      {% if j.debug_info and j.debug_info != '{}' %}
+      <tr>
+        <td colspan="8">
+          <details>
+            <summary>Debug Info</summary>
+            <pre class="mediainfo">{{ j.debug_info }}</pre>
+          </details>
+        </td>
+      </tr>
+      {% endif %}
       {% endfor %}
     </tbody>
   </table>
