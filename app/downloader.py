@@ -119,7 +119,7 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
         and ({seeder_clause})
         and not exists (select 1 from job where job.tid = thread.tid)
     {order_clause}
-    limit 100
+    limit $4
     for update of thread skip locked
     """
 
@@ -694,16 +694,6 @@ class Downloader:
 
         torrents = self.client.torrents_info()
         current_total_size = sum(t.size for t in torrents)
-        downloading_count = sum(1 for t in torrents if t.state == TorrentState.DOWNLOADING)
-
-        max_count = self.config.max_downloading_count
-        if max_count > 0 and downloading_count >= max_count:
-            logger.info(
-                "at downloading count limit: downloading={} limit={}",
-                downloading_count,
-                max_count,
-            )
-            return PickContext(no_space=True)
 
         left_size = int(self.config.total_process_size) - current_total_size
 
@@ -715,6 +705,20 @@ class Downloader:
                 human_readable_size(left_size),
             )
             return PickContext(no_space=True)
+
+        max_count = self.config.max_downloading_count
+        if max_count > 0:
+            current_downloading = sum(1 for t in torrents if t.state == TorrentState.DOWNLOADING)
+            pick_limit = max(0, max_count - current_downloading)
+            if pick_limit == 0:
+                logger.info(
+                    "at downloading count limit: downloading={} limit={}",
+                    current_downloading,
+                    max_count,
+                )
+                return PickContext(no_space=True)
+        else:
+            pick_limit = 100
 
         picked: list[tuple[int, str]] = []
         has_pending = False
@@ -728,6 +732,7 @@ class Downloader:
                 self.config.single_torrent_size_limit,
                 SELECTED_CATEGORY,
                 PRIORITY_CATEGORY,
+                pick_limit,
             ]
 
             with conn.cursor(row_factory=dict_row) as cur:
