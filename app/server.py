@@ -464,7 +464,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
     node_aliases = {str(r["id"]): str(r["alias"]) for r in node_alias_rows}
 
     def _node_name(nid: str) -> str:
-        return node_aliases.get(nid, nid[:8])
+        return node_aliases.get(nid, nid[:10])
 
     downloading_node_rows = cast(list[asyncpg.Record], downloading_node_rows)
     downloading_nodes = [
