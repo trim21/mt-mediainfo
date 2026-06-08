@@ -1743,16 +1743,7 @@ def create_app() -> fastapi.FastAPI:
             "select id, last_seen, alias, version from node where id = $1", node_id
         )
         if node_row is None:
-            return render(
-                "node_jobs.html.j2",
-                ctx={
-                    "node_id": node_id,
-                    "node_name": "",
-                    "jobs": [],
-                    "status": status,
-                },
-                status_code=404,
-            )
+            return HTMLResponse("node not found", status_code=404)
 
         _sort_cols_downloading: dict[str, str] = {
             "tid": "job.tid",
