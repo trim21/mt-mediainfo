@@ -1786,14 +1786,14 @@ def create_app() -> fastapi.FastAPI:
         if sort and sort in sort_cols:
             sort_expr = sort_cols[sort]
             nulls = " nulls last" if sort in ("eta", "no_progress") else ""
-            order_by = f"{sort_expr} {order}{nulls}, job.start_download_time desc"
+            order_by = f"{sort_expr} {order}{nulls}, job.start_download_time desc, job.tid asc"
             effective_sort = sort
             effective_order = order
         else:
             order_by = (
-                "job.completed_at desc nulls last, job.start_download_time desc"
+                "job.completed_at desc nulls last, job.start_download_time desc, job.tid asc"
                 if status == ItemStatus.DONE
-                else "job.eta asc nulls last, job.start_download_time desc"
+                else "job.eta asc nulls last, job.start_download_time desc, job.tid asc"
             )
             effective_sort = ""
             effective_order = "asc"

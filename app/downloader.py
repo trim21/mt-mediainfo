@@ -802,6 +802,14 @@ class Downloader:
         for tid, info_hash in picked:
             try:
                 self.__add_torrent(tid, info_hash)
+            except TimeoutError:
+                logger.warning("timeout adding torrent tid={}, will retry", tid)
+                with contextlib.suppress(TorrentNotFoundError):
+                    self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+                self.db.execute(
+                    "delete from job where tid = $1 and node_id = $2",
+                    [tid, self.config.node_id],
+                )
             except Exception as e:
                 logger.exception("failed to add torrent tid={}: {}", tid, e)
                 self.__update_job_status(
