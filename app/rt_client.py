@@ -305,28 +305,49 @@ class RTorrentClient(BTClient):
         }
 
     def get_torrent_debug_info(self, torrent_hash: str) -> dict[str, Any]:
-        try:
-            rows: list[list[Any]] = self._call(
-                "f.multicall",
-                [
-                    torrent_hash.upper(),
-                    "",
-                    "f.path=",
-                    "f.priority=",
-                    "f.completed_chunks=",
-                    "f.size_chunks=",
-                ],
-            )
-            files = [
-                {
-                    "index": i,
-                    "path": str(r[0]),
-                    "priority": int(r[1]),
-                    "completed_chunks": int(r[2]),
-                    "size_chunks": int(r[3]),
-                }
-                for i, r in enumerate(rows)
-            ]
-        except Exception:
-            files = []
-        return {"files": files}
+        info_hash = torrent_hash.upper()
+        d_fields = [
+            "d.name=",
+            "d.hash=",
+            "d.directory_base=",
+            "d.custom1=",
+            "d.is_open=",
+            "d.size_bytes=",
+            "d.state=",
+            "d.complete=",
+            "d.hashing=",
+            "d.bytes_done=",
+            "d.down.rate=",
+            "d.left_bytes=",
+            "d.peers_complete=",
+            "d.up.total=",
+            "d.timestamp.finished=",
+            "d.message=",
+            "d.hashing_failed=",
+            "d.custom=selected_size",
+            "d.is_partially_done=",
+        ]
+        result: dict[str, Any] = {}
+        rows: list[list[Any]] = self._call(
+            "d.multicall2",
+            ["", f"d.hash={info_hash}", *d_fields],
+        )
+        if rows:
+            for key, val in zip(d_fields, rows[0]):
+                result[key] = val
+
+        f_rows: list[list[Any]] = self._call(
+            "f.multicall",
+            [info_hash, "", "f.path=", "f.priority=", "f.completed_chunks=", "f.size_chunks="],
+        )
+        result["f.multicall"] = [
+            {
+                "index": i,
+                "path": str(r[0]),
+                "priority": int(r[1]),
+                "completed_chunks": int(r[2]),
+                "size_chunks": int(r[3]),
+            }
+            for i, r in enumerate(f_rows)
+        ]
+        return result

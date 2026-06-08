@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import json
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -1495,12 +1494,7 @@ def create_app() -> fastapi.FastAPI:
             tid,
         )
 
-        jobs = []
-        for r in jobs_raw:
-            j = dict(r)
-            di = j.get("debug_info")
-            j["debug_info"] = json.dumps(di, indent=2, ensure_ascii=False) if di else None
-            jobs.append(j)
+        jobs = [dict(r) for r in jobs_raw]
 
         return render(
             "thread_detail.html.j2",

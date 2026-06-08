@@ -272,7 +272,7 @@ class Downloader:
                 self.config.node_id,
                 datetime.now(tz=TZ_SHANGHAI),
                 self.config.version,
-                json.dumps(debug_info),
+                json.dumps(debug_info, indent=2, ensure_ascii=False),
             ],
         )
 
@@ -512,9 +512,15 @@ class Downloader:
             etas = [t.eta for t in downloading_updates]
             errors = [t.error_message for t in downloading_updates]
             completeds = [t.completed for t in downloading_updates]
-            debug_infos = [
-                json.dumps(self.client.get_torrent_debug_info(t.hash)) for t in downloading_updates
-            ]
+
+            def _debug_info(t: Torrent) -> str:
+                try:
+                    data = self.client.get_torrent_debug_info(t.hash)
+                    return json.dumps(data, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    return format_exc(e)
+
+            debug_infos = [_debug_info(t) for t in downloading_updates]
             with self.db.connection() as conn, conn.transaction():
                 conn.execute(
                     """
@@ -523,7 +529,7 @@ class Downloader:
                       dlspeed = data.dlspeed,
                       eta = data.eta,
                       error_message = data.error_message,
-                      debug_info = data.debug_info::jsonb,
+                      debug_info = data.debug_info,
                       updated_at = $1
                     from unnest($2::text[], $3::float[], $4::int[], $5::int[], $6::text[], $9::text[])
                       as data(info_hash, progress, dlspeed, eta, error_message, debug_info)
@@ -612,10 +618,14 @@ class Downloader:
             file_ids=file_ids,
             priority=0,
         )
-        debug_info = self.client.get_torrent_debug_info(t.hash)
+        try:
+            data = self.client.get_torrent_debug_info(t.hash)
+            raw = json.dumps(data, indent=2, ensure_ascii=False)
+        except Exception as e:
+            raw = format_exc(e)
         self.db.execute(
             "update job set debug_info = $1 where info_hash = $2 and node_id = $3 and status = $4",
-            [json.dumps(debug_info), t.hash, self.config.node_id, ItemStatus.DOWNLOADING],
+            [raw, t.hash, self.config.node_id, ItemStatus.DOWNLOADING],
         )
 
     def __process_local_torrent(self, t: Torrent) -> None:
