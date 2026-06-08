@@ -78,6 +78,11 @@ class PickContext:
     no_space: bool = False
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class LoopContext:
+    min_eta: float = 300
+
+
 def _pick_query(config: DownloaderConfig) -> LiteralString:
     # Inline the pending_download_threads view predicates instead of selecting from
     # the view, because FOR UPDATE cannot be used on views.  The query locks
@@ -209,9 +214,12 @@ class Downloader:
                 logger.exception("failed to process commands")
 
             try:
-                self.__run_at_interval()
+                loop_ctx = self.__run_at_interval()
             except Exception:
                 logger.exception("failed to run")
+                loop_ctx = LoopContext()
+
+            interval = max(60, min(int(loop_ctx.min_eta), 300))
 
             logger.info("loop done, sleeping for {}s", interval)
 
@@ -255,11 +263,12 @@ class Downloader:
         )
         return {"info_hash": payload.info_hash}
 
-    def __run_at_interval(self) -> None:
-        completed = self.__process_torrents()
+    def __run_at_interval(self) -> LoopContext:
+        completed, min_eta = self.__process_torrents()
         ctx = self.__pick_and_add_jobs()
         if not completed and ctx.picked == 0 and ctx.no_space and ctx.has_pending:
             self.__maybe_evict_slowest()
+        return LoopContext(min_eta=min_eta)
 
     def __heart_beat(self) -> None:
         debug_info = self.client.get_node_debug_info()
@@ -332,10 +341,11 @@ class Downloader:
                 removed_reason=removed_reason,
             )
 
-    def __process_torrents(self) -> bool:
+    def __process_torrents(self) -> tuple[bool, float]:
         """Process all torrents in the download client in a single pass.
 
-        Returns True if any torrent completed (entered UPLOADING state).
+        Returns (completed, min_eta) where min_eta is the smallest ETA
+        among downloading torrents (seconds), or 300 if none.
         """
         t0 = time.monotonic()
         logger.info("__process_torrents")
@@ -346,7 +356,7 @@ class Downloader:
         completed = False
         if not torrents:
             logger.info("client has no torrents")
-            return False
+            return False, 300
         # Mark jobs as removed-from-client if their torrent is no longer in client
         torrent_hashes = [x.hash for x in torrents]
         self.db.execute(
@@ -408,6 +418,7 @@ class Downloader:
 
         counts: dict[str, int] = {}
         downloading_updates: list[Torrent] = []
+        min_eta = 300.0
         for t in torrents:
             # Torrent not in managed (downloading) jobs — check if it has a job at all
             if t.hash not in managed_hashes:
@@ -501,6 +512,8 @@ class Downloader:
             # Downloading — update progress
             counts["downloading"] = counts.get("downloading", 0) + 1
             downloading_updates.append(t)
+            if 0 < t.eta < ETA_INF:
+                min_eta = min(min_eta, t.eta)
             continue
 
         # Batch update all downloading torrents in one transaction
@@ -569,9 +582,13 @@ class Downloader:
             )
         t3 = time.monotonic()
         logger.info(
-            "process_torrents done in {:.1f}s (loop={:.1f}s) counts={}", t3 - t0, t3 - t2, counts
+            "process_torrents done in {:.1f}s (loop={:.1f}s) counts={} min_eta={:.0f}s",
+            t3 - t0,
+            t3 - t2,
+            counts,
+            min_eta,
         )
-        return completed
+        return completed, min_eta
 
     def __handle_unmanaged_torrent(self, t: Torrent) -> None:
         """Handle a torrent in the download client that has no active downloading job.
