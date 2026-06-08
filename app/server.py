@@ -1708,7 +1708,7 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/nodes")
     async def nodes_page(render: Render) -> HTMLResponse:
         node_rows = await pool.fetch(
-            "select id, last_seen, alias, version from node order by id asc"
+            "select id, last_seen, alias, version, debug_info from node order by id asc"
         )
         job_rows = await pool.fetch(
             "select node_id, status, count(1) as cnt, coalesce(sum(dlspeed), 0) as total_dlspeed from job group by node_id, status"
@@ -1729,6 +1729,7 @@ def create_app() -> fastapi.FastAPI:
                 "alias": n["alias"],
                 "last_seen": n["last_seen"],
                 "version": n["version"],
+                "debug_info": n["debug_info"] or "",
                 "downloading": counts.get(str(n["id"]), {}).get(ItemStatus.DOWNLOADING, 0),
                 "dlspeed_fmt": human_readable_byte_rate(speeds.get(str(n["id"]), 0)),
                 "done": counts.get(str(n["id"]), {}).get(ItemStatus.DONE, 0),

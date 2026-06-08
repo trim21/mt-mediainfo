@@ -59,6 +59,9 @@
       <td>{{ n.total }}</td>
       <td>
         <button class="btn btn-sm btn-outline-primary" onclick="pingNode('{{ n.id }}', this)">Ping</button>
+        {% if n.debug_info %}
+        <button class="btn btn-sm btn-outline-secondary" onclick="showDebugInfo('{{ n.id }}', this)">Debug</button>
+        {% endif %}
       </td>
     </tr>
     {% endfor %}
@@ -66,7 +69,34 @@
   </table>
 </div>
 
+<div class="modal fade" id="debugModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Debug Info — <span id="debugNodeId"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <pre class="mb-0" style="white-space: pre-wrap; word-break: break-word; font-size: 0.8rem;" id="debugContent"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+var DEBUG_INFO = {
+  {% for n in nodes %}
+  "{{ n.id }}": {{ n.debug_info | tojson }},
+  {% endfor %}
+};
+
+function showDebugInfo(nodeId, btn) {
+  document.getElementById('debugNodeId').textContent = nodeId;
+  document.getElementById('debugContent').textContent = DEBUG_INFO[nodeId] || '';
+  new bootstrap.Modal(document.getElementById('debugModal')).show();
+}
+
 async function saveAlias(nodeId, alias, btn) {
   btn.disabled = true;
   btn.textContent = '...';
