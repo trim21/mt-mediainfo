@@ -1458,7 +1458,7 @@ def create_app() -> fastapi.FastAPI:
             """
              select tid, category, size, selected_size, selected_index, seeders, mediainfo, api_mediainfo,
                     info_hash, hard_coded_subtitle, created_at, upload_at, api_mediainfo_at, generated_mediainfo_at,
-                    torrent_fetched_at, torrent_invalid
+                    torrent_fetched_at, torrent_invalid, priority
             from thread
             where tid = $1
             """,
