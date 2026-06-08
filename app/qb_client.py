@@ -106,8 +106,8 @@ class QBittorrentClient(BTClient):
             torrent_hash=torrent_hash, file_ids=file_ids, priority=priority
         )
 
-    def get_node_debug_info(self) -> dict[str, str]:
+    def get_node_debug_info(self) -> dict[str, Any]:
         return {}
 
-    def get_torrent_debug_info(self, torrent_hash: str) -> dict[str, str]:
+    def get_torrent_debug_info(self, torrent_hash: str) -> dict[str, Any]:
         return {}

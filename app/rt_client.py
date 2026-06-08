@@ -288,10 +288,21 @@ class RTorrentClient(BTClient):
     def _get_hash_from_content(content: bytes) -> str:
         return get_torrent_info_hash(content).upper()
 
-    def get_node_debug_info(self) -> dict[str, str]:
-        return {}
+    def get_node_debug_info(self) -> dict[str, Any]:
+        try:
+            file_allocate = self._call("system.file.allocate")
+        except Exception:
+            file_allocate = None
+        try:
+            hash_on_completion = self._call("pieces.hash.on_completion")
+        except Exception:
+            hash_on_completion = None
+        return {
+            "system.file.allocate": file_allocate,
+            "pieces.hash.on_completion": hash_on_completion,
+        }
 
-    def get_torrent_debug_info(self, torrent_hash: str) -> dict[str, str]:
+    def get_torrent_debug_info(self, torrent_hash: str) -> dict[str, Any]:
         try:
             rows: list[list[Any]] = self._call(
                 "f.multicall",
