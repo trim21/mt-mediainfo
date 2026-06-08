@@ -25,10 +25,10 @@ from app.const import (
     search_cursor_key,
 )
 from app.db import Database
-from app.file_cache import encode_cached_files
+from app.file_cache import decode_cached_files, encode_cached_files
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
-from app.torrent import find_largest_video_file, is_bdmv, parse_torrent
+from app.torrent import File, compute_priority, find_largest_video_file, is_bdmv, parse_torrent
 from app.torrent_store import TorrentStore, create_operator
 from app.utils import date_to_int, get_info_hash_v1_from_content, parse_obj
 
@@ -351,18 +351,20 @@ class Scrape:
                 if keep_idx is not None
                 else -1
             )
+            priority = compute_priority(list(t.info.files))
             cached = encode_cached_files(files_data)
 
             with self.__db.connection() as conn, conn.transaction():
                 self.__store.write(tid, tc)
                 conn.execute(
-                    """update thread set info_hash = $2, size = $3, selected_size = $4, selected_index = $5, torrent_fetched_at = current_timestamp where tid = $1""",
+                    """update thread set info_hash = $2, size = $3, selected_size = $4, selected_index = $5, priority = $6, torrent_fetched_at = current_timestamp where tid = $1""",
                     [
                         tid,
                         info_hash,
                         t.total_length,
                         selected_size,
                         [keep_idx] if keep_idx is not None else [],
+                        priority,
                     ],
                 )
                 conn.execute(
@@ -370,6 +372,16 @@ class Scrape:
                     [tid, cached],
                 )
         return False
+
+    def _backfill_priority(self, tid: int) -> None:
+        row = self.__db.fetch_one("select files from thread_file_cache where tid = $1", [tid])
+        if row is None:
+            return
+
+        files = decode_cached_files(row[0])
+        file_objs = [File(length=sz, path=(name,)) for _, name, sz in files]
+        priority = compute_priority(file_objs)
+        self.__db.execute("update thread set priority = $2 where tid = $1", [tid, priority])
 
     def run_backfill(
         self,
@@ -929,7 +941,13 @@ class Scrape:
             "6-export-mediainfo": lambda: self.__run_export_mediainfo(),
         }
 
-        backfill_runners: dict[str, Callable[[], RunResult]] = {}
+        backfill_runners: dict[str, Callable[[], RunResult]] = {
+            "7-backfill-priority": lambda: self.run_backfill(
+                "priority",
+                "select tid from thread where selected_index is not null and priority = 0",
+                self._backfill_priority,
+            ),
+        }
 
         all_names = list(runners) + list(backfill_runners)
         self.__db.execute("delete from scrape_status where not name = any($1)", [all_names])

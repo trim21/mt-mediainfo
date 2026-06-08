@@ -15,8 +15,10 @@ from typing import Any, LiteralString, cast
 
 import jinja2
 import psycopg
+import qbittorrentapi
 from psycopg.rows import dict_row
 from rich.console import Console
+from rtorrent_rpc import RTorrent
 from sslog import logger
 
 from app.bt_client import (
@@ -142,12 +144,8 @@ class Downloader:
         db = Database(cfg.pg_dsn())
         logger.info("database pool created")
         if cfg.rt_url:
-            from rtorrent_rpc import RTorrent
-
             client: BTClient = RTorrentClient(RTorrent(cfg.rt_url))
         elif cfg.qb_url:
-            import qbittorrentapi
-
             client = QBittorrentClient(
                 qbittorrentapi.Client(
                     host=str(cfg.qb_url),
@@ -696,12 +694,13 @@ class Downloader:
 
         torrents = self.client.torrents_info()
         current_total_size = sum(t.size for t in torrents)
+        downloading_count = sum(1 for t in torrents if t.state == TorrentState.DOWNLOADING)
 
         max_count = self.config.max_downloading_count
-        if max_count > 0 and len(torrents) >= max_count:
+        if max_count > 0 and downloading_count >= max_count:
             logger.info(
-                "at downloading count limit: current={} limit={}",
-                len(torrents),
+                "at downloading count limit: downloading={} limit={}",
+                downloading_count,
                 max_count,
             )
             return PickContext(no_space=True)

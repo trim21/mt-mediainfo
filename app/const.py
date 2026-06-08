@@ -43,11 +43,11 @@ def pick_order_clause(strategy: PickStrategy, priority_category_param: int) -> L
     if strategy == PickStrategy.seeders:
         return cast(
             LiteralString,
-            f"order by seeders desc, (category = any(${priority_category_param})) desc, selected_size asc, tid asc",
+            f"order by seeders desc, (category = any(${priority_category_param})) desc, priority desc, selected_size asc, tid asc",
         )
     return cast(
         LiteralString,
-        f"order by tid asc, (category = any(${priority_category_param})) desc",
+        f"order by tid asc, (category = any(${priority_category_param})) desc, priority desc",
     )
 
 

@@ -178,3 +178,4 @@ Tracks per-thread work items for oneshot backfill jobs. Each backfill name gets 
 - When adding server-to-downloader actions, update `app/rpc.py`, `app/downloader.py`, and `app/server.py` together
 - Keep subsystem-specific procedures in skills rather than expanding `AGENTS.md`
 - when adding query argument to fastapi handler, prefer to use `Annotated[T, Query()]`.
+- All imports must be at the top level of the file. Never use inline imports inside functions or methods.
