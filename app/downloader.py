@@ -45,6 +45,7 @@ from app.db import Connection, Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_mediainfo_from_file
 from app.mt import MTeamDomain
+from app.neptune_client import NeptuneClient
 from app.qb_client import QBittorrentClient
 from app.rpc import (
     RPC_DELETE_TORRENT,
@@ -145,6 +146,8 @@ class Downloader:
         logger.info("database pool created")
         if cfg.rt_url:
             client: BTClient = RTorrentClient(RTorrent(cfg.rt_url))
+        elif cfg.neptune_url and cfg.neptune_token:
+            client = NeptuneClient(cfg.neptune_url, cfg.neptune_token)
         elif cfg.qb_url:
             client = QBittorrentClient(
                 qbittorrentapi.Client(

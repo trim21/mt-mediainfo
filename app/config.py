@@ -171,6 +171,18 @@ class DownloaderConfig(BaseConfig, S3Mixin):
 
     rt_url: Annotated[str | None, Field(alias="RT_URL", default=None, validate_default=True)]
 
+    neptune_url: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(alias="NEPTUNE_URL", default=None, validate_default=True),
+    ]
+
+    neptune_token: Annotated[
+        str | None,
+        BeforeValidator(lambda x: x or None),
+        Field(alias="NEPTUNE_TOKEN", default=None, validate_default=True),
+    ]
+
     download_path: Annotated[
         str,
         Field(
