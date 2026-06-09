@@ -11,7 +11,9 @@ from psycopg import RawCursor
 from psycopg_pool import ConnectionPool
 from sslog import logger
 
-_MIGRATIONS_DIR = Path(__file__, "../../sql/migrations").resolve()
+_SQL_DIR = Path(__file__, "../../sql").resolve()
+_MIGRATIONS_DIR = _SQL_DIR / "migrations"
+_VIEWS_FILE = _SQL_DIR / "views.sql"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -124,6 +126,10 @@ class Database:
             else:
                 self.execute("update schema_version set version = $1", [m.version])
             current = m.version
+
+        if _VIEWS_FILE.exists():
+            print("refreshing views")
+            self.execute(cast(LiteralString, _VIEWS_FILE.read_text(encoding="utf-8")))
 
     def wait_db_migration(self) -> None:
         expected = _expected_schema_version()

@@ -24,6 +24,7 @@ This project downloads torrents from M-Team, processes local media files to extr
 - `app/kv.py` - KV config store with TTL support (backed by `config` table)
 - `app/db/__init__.py` - `Database` class with psycopg connection pool, advisory locks, and migration runner
 - `app/sql/migrations/` - Numbered SQL migrations executed once on server startup; version tracked in the `schema_version` table. To add a new migration, create a file named `NNN_description.sql` (e.g. `009_add_column.sql`) where `NNN` is the next integer in sequence. The runner in `app/db/__init__.py` (`Database.run_migrations`) sorts files by name, parses the numeric prefix, and applies any migration whose version exceeds the stored `schema_version`.
+- `app/sql/views.sql` - View definitions (`CREATE OR REPLACE VIEW`) executed on every server startup after migrations. All pipeline views (`pending_mediainfo_threads`, `pending_torrent_threads`, `pending_download_threads`, `completed_threads`, `skipped_threads`, `dormant_threads`) are defined here. When adding columns to the `thread` table, no migration is needed for views — just update `views.sql`.
 - `taskfile.yaml` - Standard local commands
 - `pyproject.toml` - Dependency and tooling configuration
 
