@@ -941,13 +941,7 @@ class Scrape:
             "6-export-mediainfo": lambda: self.__run_export_mediainfo(),
         }
 
-        backfill_runners: dict[str, Callable[[], RunResult]] = {
-            "7-backfill-priority": lambda: self.run_backfill(
-                "priority",
-                "select tid from thread where selected_index is not null and priority = 0",
-                self._backfill_priority,
-            ),
-        }
+        backfill_runners: dict[str, Callable[[], RunResult]] = {}
 
         all_names = list(runners) + list(backfill_runners)
         self.__db.execute("delete from scrape_status where not name = any($1)", [all_names])

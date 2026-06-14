@@ -43,6 +43,7 @@ from app.const import (
 )
 from app.db import Connection, Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
+from app.kv import KVConfig
 from app.mediainfo import extract_mediainfo_from_file
 from app.mt import MTeamDomain
 from app.qb_client import QBittorrentClient
@@ -130,6 +131,7 @@ class Downloader:
     config: DownloaderConfig
     client: BTClient
     store: TorrentStore
+    kv: KVConfig
     mediainfo_bin: str = dataclasses.field(
         default_factory=lambda: must_find_executable("mediainfo")
     )
@@ -170,11 +172,14 @@ class Downloader:
         store = TorrentStore(cfg)
         logger.info("torrent store created")
 
+        kv = KVConfig(db)
+
         return Downloader(
             config=cfg,
             db=db,
             client=client,
             store=store,
+            kv=kv,
             thread_filter_template=thread_filter_template,
         )
 
@@ -261,7 +266,80 @@ class Downloader:
         )
         return {"info_hash": payload.info_hash}
 
+    def __cleanup_orphan_files(self) -> None:
+        """Delete download directories that have no corresponding active job.
+
+        Runs once per day. Scans download_path for info_hash directories
+        and removes any that don't have an active job in the database.
+        """
+        today = datetime.now(tz=TZ_SHANGHAI).date().isoformat()
+        kv_key = f"orphan-files:{self.config.node_id}"
+        last = self.kv.get(kv_key)
+        if last == today:
+            return
+
+        download_path = Path(self.config.download_path)
+        if not download_path.is_dir():
+            return
+
+        logger.info("starting orphan file cleanup")
+
+        # Get all info_hashes with active jobs (any status except terminal ones)
+        active_hashes: set[str] = {
+            row[0]
+            for row in self.db.fetch_all(
+                """
+                select distinct info_hash from job
+                where status not in ('done', 'failed', 'removed_from_download_client', 'skipped')
+                """
+            )
+        }
+
+        # Also include hashes with completed jobs (files might still be needed briefly)
+        # and hashes currently in the download client
+        try:
+            client_hashes = {t.hash for t in self.client.torrents_info()}
+        except Exception:
+            logger.exception("failed to get torrents info for orphan cleanup")
+            return
+
+        protected_hashes = active_hashes | client_hashes
+
+        removed_count = 0
+        removed_size = 0
+
+        for entry in download_path.iterdir():
+            if not entry.is_dir():
+                continue
+
+            info_hash = entry.name.lower()
+            if info_hash in protected_hashes:
+                continue
+
+            try:
+                dir_size = sum(f.stat().st_size for f in entry.rglob("*") if f.is_file())
+                shutil.rmtree(entry)
+                removed_count += 1
+                removed_size += dir_size
+                logger.info(
+                    "removed orphan directory {} ({})", entry.name, human_readable_size(dir_size)
+                )
+            except Exception:
+                logger.exception("failed to remove orphan directory {}", entry.name)
+
+        if removed_count > 0:
+            logger.info(
+                "orphan cleanup done: removed {} directories, freed {}",
+                removed_count,
+                human_readable_size(removed_size),
+            )
+        else:
+            logger.info("orphan cleanup done: no orphan files found")
+
+        self.kv.set(kv_key, today, ttl=timedelta(days=7))
+
     def __run_at_interval(self) -> LoopContext:
+        self.__cleanup_orphan_files()
         completed, min_eta = self.__process_torrents()
         ctx = self.__pick_and_add_jobs()
         if not completed and ctx.picked == 0 and ctx.no_space and ctx.has_pending:
