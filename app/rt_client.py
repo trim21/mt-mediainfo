@@ -16,7 +16,6 @@ from app.bt_client import (
     BTClient,
     Torrent,
     TorrentFile,
-    TorrentNotFoundError,
     TorrentState,
 )
 
@@ -188,12 +187,9 @@ class RTorrentClient(BTClient):
 
     def torrents_delete(self, torrent_hashes: str, *, delete_files: bool = True) -> None:
         info_hash = torrent_hashes.upper()
-        try:
-            self._call("d.stop", [info_hash])
-            self._call("d.close", [info_hash])
-            self._call("d.erase", [info_hash])
-        except Exception:
-            raise TorrentNotFoundError(torrent_hashes) from None
+        self._call("d.stop", [info_hash])
+        self._call("d.close", [info_hash])
+        self._call("d.erase", [info_hash])
 
     def torrents_add(
         self,
