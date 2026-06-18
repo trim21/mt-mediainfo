@@ -269,13 +269,13 @@ class Downloader:
     def __cleanup_orphan_files(self) -> None:
         """Delete download directories that have no corresponding active job.
 
-        Runs once per day. Scans download_path for info_hash directories
+        Runs every 3 hours. Scans download_path for info_hash directories
         and removes any that don't have an active job in the database.
         """
-        today = datetime.now(tz=TZ_SHANGHAI).date().isoformat()
-        kv_key = f"orphan-files:{self.config.node_id}"
-        last = self.kv.get(kv_key)
-        if last == today:
+        now = datetime.now(tz=TZ_SHANGHAI)
+        bucket = now.hour // 3
+        kv_key = f"orphan-files:{self.config.node_id}:{now.date().isoformat()}:{bucket}"
+        if self.kv.get(kv_key):
             return
 
         download_path = Path(self.config.download_path)
@@ -336,7 +336,7 @@ class Downloader:
         else:
             logger.info("orphan cleanup done: no orphan files found")
 
-        self.kv.set(kv_key, today, ttl=timedelta(days=7))
+        self.kv.set(kv_key, "1", ttl=timedelta(days=2))
 
     def __run_at_interval(self) -> LoopContext:
         self.__cleanup_orphan_files()
@@ -527,8 +527,7 @@ class Downloader:
                     info_hash=t.hash,
                     failed_reason=t.error_message or "torrent error",
                 )
-                self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
-                self._delete_torrent_files(t.hash)
+                self._delete_torrent_with_retry(t.hash)
                 counts["errored"] = counts.get("errored", 0) + 1
                 continue
 
@@ -545,8 +544,7 @@ class Downloader:
                     info_hash=t.hash,
                     failed_reason="category no longer selected",
                 )
-                self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
-                self._delete_torrent_files(t.hash)
+                self._delete_torrent_with_retry(t.hash)
                 counts["unselected"] = counts.get("unselected", 0) + 1
                 continue  # Upload complete → process mediainfo
             if t.state == TorrentState.UPLOADING:
@@ -727,8 +725,7 @@ class Downloader:
         selected_idx = find_largest_video_file(active_files)
 
         if selected_idx is None:
-            self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
-            self._delete_torrent_files(t.hash)
+            self._delete_torrent_with_retry(t.hash)
             return
 
         selected_file = next(f for f in files if f.index == selected_idx)
@@ -764,8 +761,23 @@ class Downloader:
                 "delete from job_download_size where info_hash = $1 and node_id = $2",
                 [t.hash, self.config.node_id],
             )
-        self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
-        self._delete_torrent_files(t.hash)
+        self._delete_torrent_with_retry(t.hash)
+
+    def _delete_torrent_with_retry(self, info_hash: str) -> None:
+        for attempt in range(3):
+            try:
+                self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+                self._delete_torrent_files(info_hash)
+                return
+            except Exception:
+                logger.warning(
+                    "failed to delete torrent %s (attempt %d/3), will retry",
+                    info_hash,
+                    attempt + 1,
+                )
+                if attempt < 2:
+                    time.sleep(2)
+        logger.error("failed to delete torrent %s after 3 attempts, skipping cleanup", info_hash)
 
     def __pick_and_add_jobs(self) -> PickContext:
         logger.info("__pick_and_add_jobs")
