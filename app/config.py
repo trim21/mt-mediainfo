@@ -171,6 +171,11 @@ class DownloaderConfig(BaseConfig, S3Mixin):
 
     rt_url: Annotated[str | None, Field(alias="RT_URL", default=None, validate_default=True)]
 
+    rt_timeout: Annotated[
+        float,
+        Field(alias="RT_TIMEOUT", default=30.0, validate_default=True),
+    ]
+
     download_path: Annotated[
         str,
         Field(

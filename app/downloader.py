@@ -146,7 +146,7 @@ class Downloader:
         db = Database(cfg.pg_dsn())
         logger.info("database pool created")
         if cfg.rt_url:
-            client: BTClient = RTorrentClient(RTorrent(cfg.rt_url))
+            client: BTClient = RTorrentClient(RTorrent(cfg.rt_url, timeout=cfg.rt_timeout))
         elif cfg.qb_url:
             client = QBittorrentClient(
                 qbittorrentapi.Client(
