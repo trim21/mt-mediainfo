@@ -180,3 +180,4 @@ Tracks per-thread work items for oneshot backfill jobs. Each backfill name gets 
 - Keep subsystem-specific procedures in skills rather than expanding `AGENTS.md`
 - when adding query argument to fastapi handler, prefer to use `Annotated[T, Query()]`.
 - All imports must be at the top level of the file. Never use inline imports inside functions or methods.
+- When deprecating a database column, never drop it. Instead, create a migration that sets all existing values to an empty/inert value (e.g. `''` for text columns, `'{}'::jsonb` for jsonb) and fix the default accordingly. The column stays in the schema indefinitely.

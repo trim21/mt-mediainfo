@@ -4,7 +4,6 @@ import contextlib
 import dataclasses
 import enum
 import io
-import json
 import os.path
 import shutil
 import sys
@@ -354,17 +353,15 @@ class Downloader:
         return LoopContext(min_eta=min_eta)
 
     def __heart_beat(self) -> None:
-        debug_info = self.client.get_node_debug_info()
         self.db.execute(
             """
-            insert into node (id, last_seen, version, debug_info) values ($1, $2, $3, $4)
-            on conflict (id) do update set last_seen = excluded.last_seen, version = excluded.version, debug_info = excluded.debug_info
+            insert into node (id, last_seen, version) values ($1, $2, $3)
+            on conflict (id) do update set last_seen = excluded.last_seen, version = excluded.version
             """,
             [
                 self.config.node_id,
                 datetime.now(tz=TZ_SHANGHAI),
                 self.config.version,
-                json.dumps(debug_info, indent=2, ensure_ascii=False),
             ],
         )
 
@@ -500,7 +497,6 @@ class Downloader:
         )
 
         counts: dict[str, int] = {}
-        downloading_updates: list[Torrent] = []
         min_eta = 300.0
         for t in torrents:
             # Torrent not in managed (downloading) jobs — check if it has a job at all
@@ -592,75 +588,34 @@ class Downloader:
 
             # Downloading — update progress
             counts["downloading"] = counts.get("downloading", 0) + 1
-            downloading_updates.append(t)
+            self.db.execute(
+                "update job set progress=$1, dlspeed=$2, eta=$3, error_message=$4, updated_at=$5"
+                " where info_hash=$6 and node_id=$7 and status=$8",
+                [
+                    t.progress,
+                    t.dlspeed,
+                    t.eta,
+                    t.error_message,
+                    now,
+                    t.hash,
+                    self.config.node_id,
+                    ItemStatus.DOWNLOADING,
+                ],
+            )
+            self.db.execute(
+                "insert into job_download_size (info_hash, node_id, size)"
+                " select $1, $2, $3"
+                " where ("
+                "   select jds.size from job_download_size jds"
+                "   where jds.info_hash = $1 and jds.node_id = $2"
+                "   order by jds.recorded_at desc limit 1"
+                " ) is distinct from $3",
+                [t.hash, self.config.node_id, t.completed],
+            )
             if 0 < t.eta < ETA_INF:
                 min_eta = min(min_eta, t.eta)
             continue
 
-        # Batch update all downloading torrents in one transaction
-        if downloading_updates:
-            t_db = time.monotonic()
-            hashes = [t.hash for t in downloading_updates]
-            progresses = [t.progress for t in downloading_updates]
-            dlspeeds = [t.dlspeed for t in downloading_updates]
-            etas = [t.eta for t in downloading_updates]
-            errors = [t.error_message for t in downloading_updates]
-            completeds = [t.completed for t in downloading_updates]
-
-            def _debug_info(t: Torrent) -> str:
-                try:
-                    data = self.client.get_torrent_debug_info(t.hash)
-                    return json.dumps(data, indent=2, ensure_ascii=False)
-                except Exception as e:
-                    return format_exc(e)
-
-            debug_infos = [_debug_info(t) for t in downloading_updates]
-            with self.db.connection() as conn, conn.transaction():
-                conn.execute(
-                    """
-                    update job set
-                      progress = data.progress,
-                      dlspeed = data.dlspeed,
-                      eta = data.eta,
-                      error_message = data.error_message,
-                      debug_info = data.debug_info,
-                      updated_at = $1
-                    from unnest($2::text[], $3::float[], $4::int[], $5::int[], $6::text[], $9::text[])
-                      as data(info_hash, progress, dlspeed, eta, error_message, debug_info)
-                    where job.info_hash = data.info_hash
-                      and job.node_id = $7
-                      and job.status = $8
-                    """,
-                    [
-                        now,
-                        hashes,
-                        progresses,
-                        dlspeeds,
-                        etas,
-                        errors,
-                        self.config.node_id,
-                        ItemStatus.DOWNLOADING,
-                        debug_infos,
-                    ],
-                )
-                conn.execute(
-                    """
-                    insert into job_download_size (info_hash, node_id, size)
-                    select data.info_hash, $1, data.size
-                    from unnest($2::text[], $3::int8[]) as data(info_hash, size)
-                    where (
-                        select jds.size from job_download_size jds
-                        where jds.info_hash = data.info_hash and jds.node_id = $1
-                        order by jds.recorded_at desc limit 1
-                    ) is distinct from data.size
-                    """,
-                    [self.config.node_id, hashes, completeds],
-                )
-            logger.info(
-                "batch update {} downloading torrents in {:.1f}s",
-                len(downloading_updates),
-                time.monotonic() - t_db,
-            )
         t3 = time.monotonic()
         logger.info(
             "process_torrents done in {:.1f}s (loop={:.1f}s) counts={} min_eta={:.0f}s",
@@ -734,15 +689,6 @@ class Downloader:
             torrent_hash=t.hash,
             file_ids=file_ids,
             priority=0,
-        )
-        try:
-            data = self.client.get_torrent_debug_info(t.hash)
-            raw = json.dumps(data, indent=2, ensure_ascii=False)
-        except Exception as e:
-            raw = format_exc(e)
-        self.db.execute(
-            "update job set debug_info = $1 where info_hash = $2 and node_id = $3 and status = $4",
-            [raw, t.hash, self.config.node_id, ItemStatus.DOWNLOADING],
         )
 
     def __process_local_torrent(self, t: Torrent, bdmv_hashes: set[str]) -> None:

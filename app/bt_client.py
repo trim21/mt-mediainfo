@@ -4,7 +4,6 @@ import abc
 import dataclasses
 import enum
 from collections.abc import Sequence
-from typing import Any
 
 ETA_INF = (1 << 31) - 1
 
@@ -94,9 +93,3 @@ class BTClient(abc.ABC):
     def torrents_file_priority(
         self, torrent_hash: str, file_ids: list[int], priority: int
     ) -> None: ...
-
-    @abc.abstractmethod
-    def get_node_debug_info(self) -> dict[str, Any]: ...
-
-    @abc.abstractmethod
-    def get_torrent_debug_info(self, torrent_hash: str) -> dict[str, Any]: ...
