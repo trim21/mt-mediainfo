@@ -437,6 +437,7 @@ class Downloader:
         if not torrents:
             logger.info("client has no torrents")
             return False, 300
+        min_eta = min((t.eta for t in torrents if 0 < t.eta < ETA_INF), default=300.0)
         # Mark jobs as removed-from-client if their torrent is no longer in client
         torrent_hashes = [x.hash for x in torrents]
         self.db.execute(
@@ -497,7 +498,6 @@ class Downloader:
         )
 
         counts: dict[str, int] = {}
-        min_eta = 300.0
         for t in torrents:
             # Torrent not in managed (downloading) jobs — check if it has a job at all
             if t.hash not in managed_hashes:
@@ -612,8 +612,6 @@ class Downloader:
                 " ) is distinct from $3",
                 [t.hash, self.config.node_id, t.completed],
             )
-            if 0 < t.eta < ETA_INF:
-                min_eta = min(min_eta, t.eta)
             continue
 
         t3 = time.monotonic()
