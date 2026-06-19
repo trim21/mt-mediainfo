@@ -25,10 +25,16 @@ from app.const import (
     search_cursor_key,
 )
 from app.db import Database
-from app.file_cache import decode_cached_files, encode_cached_files
+from app.file_cache import encode_cached_files, get_torrent_files
 from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
-from app.torrent import File, compute_priority, find_largest_video_file, is_bdmv, parse_torrent
+from app.torrent import (
+    compute_bdmv_selection,
+    compute_selection,
+    is_bdmv,
+    is_bdmv_from_files,
+    parse_torrent,
+)
 from app.torrent_store import TorrentStore, create_operator
 from app.utils import date_to_int, get_info_hash_v1_from_content, parse_obj
 
@@ -327,44 +333,29 @@ class Scrape:
 
             info_hash = get_info_hash_v1_from_content(tc)
 
-            if is_bdmv(torrent=t):
-                logger.info("torrent {} is bdmv, skipping", tid)
-                cached = encode_cached_files([
-                    (i, f.name, f.length) for i, f in enumerate(t.as_files())
-                ])
-                with self.__db.connection() as conn, conn.transaction():
-                    self.__store.write(tid, tc)
-                    conn.execute(
-                        """update thread set info_hash = $2, selected_size = -2, torrent_fetched_at = current_timestamp where tid = $1""",
-                        [tid, info_hash],
-                    )
-                    conn.execute(
-                        """insert into thread_file_cache (tid, files) values ($1, $2) on conflict (tid) do update set files = excluded.files""",
-                        [tid, cached],
-                    )
-                continue
+            files = t.as_files()
 
-            files_data = [(i, f.name, f.length) for i, f in enumerate(t.as_files())]
-            keep_idx = find_largest_video_file(files_data)
-            selected_size = (
-                next((size for i, _, size in files_data if i == keep_idx), -1)
-                if keep_idx is not None
-                else -1
-            )
-            priority = compute_priority(list(t.info.files))
-            cached = encode_cached_files(files_data)
+            typ = "bdmv" if is_bdmv(torrent=t) else ""
+            if typ:
+                logger.info("torrent {} is bdmv", tid)
+                selected_size, selected_index, priority = compute_bdmv_selection(files)
+            else:
+                selected_size, selected_index, priority = compute_selection(files)
+
+            cached = encode_cached_files(files)
 
             with self.__db.connection() as conn, conn.transaction():
                 self.__store.write(tid, tc)
                 conn.execute(
-                    """update thread set info_hash = $2, size = $3, selected_size = $4, selected_index = $5, priority = $6, torrent_fetched_at = current_timestamp where tid = $1""",
+                    """update thread set info_hash = $2, size = $3, selected_size = $4, selected_index = $5, priority = $6, type = $7, torrent_fetched_at = current_timestamp where tid = $1""",
                     [
                         tid,
                         info_hash,
                         t.total_length,
                         selected_size,
-                        [keep_idx] if keep_idx is not None else [],
+                        selected_index,
                         priority,
+                        typ,
                     ],
                 )
                 conn.execute(
@@ -373,15 +364,22 @@ class Scrape:
                 )
         return False
 
-    def _backfill_priority(self, tid: int) -> None:
-        row = self.__db.fetch_one("select files from thread_file_cache where tid = $1", [tid])
-        if row is None:
+    def _backfill_bdmv(self, tid: int) -> None:
+        """Re-identify BDMV threads: update selected_size and selected_index from cached files."""
+        files = get_torrent_files(tid, self.__db, self.__store)
+        if not files:
             return
 
-        files = decode_cached_files(row[0])
-        file_objs = [File(length=sz, path=(name,)) for _, name, sz in files]
-        priority = compute_priority(file_objs)
-        self.__db.execute("update thread set priority = $2 where tid = $1", [tid, priority])
+        typ = "bdmv" if is_bdmv_from_files(files) else ""
+        total_length = sum(f.length for f in files)
+        if typ:
+            selected_size, selected_index, _priority = compute_bdmv_selection(files)
+        else:
+            selected_size, selected_index, _priority = compute_selection(files)
+        self.__db.execute(
+            """update thread set selected_size = $2, selected_index = $3, size = $4, type = $5 where tid = $1""",
+            [tid, selected_size, selected_index, total_length, typ],
+        )
 
     def run_backfill(
         self,
@@ -941,7 +939,14 @@ class Scrape:
             "6-export-mediainfo": lambda: self.__run_export_mediainfo(),
         }
 
-        backfill_runners: dict[str, Callable[[], RunResult]] = {}
+        backfill_runners: dict[str, Callable[[], RunResult]] = {
+            "7-backfill-bdmv": lambda: self.run_backfill(
+                name="bdmv",
+                source="select tid from thread where selected_size = -2",
+                handler=self._backfill_bdmv,
+                status_name="7-backfill-bdmv",
+            ),
+        }
 
         all_names = list(runners) + list(backfill_runners)
         self.__db.execute("delete from scrape_status where not name = any($1)", [all_names])

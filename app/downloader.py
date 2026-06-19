@@ -44,7 +44,7 @@ from app.const import (
 from app.db import Connection, Database
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.kv import KVConfig
-from app.mediainfo import extract_mediainfo_from_file
+from app.mediainfo import extract_bdinfo_from_dir, extract_mediainfo_from_file
 from app.mt import MTeamDomain
 from app.qb_client import QBittorrentClient
 from app.rpc import (
@@ -55,7 +55,12 @@ from app.rpc import (
     process_commands,
 )
 from app.rt_client import RTorrentClient
-from app.torrent import find_largest_video_file
+from app.torrent import (
+    File,
+    bdmv_disc_path,
+    find_largest_video_file,
+    pick_bdmv_selection,
+)
 from app.torrent_store import TorrentStore
 from app.utils import human_readable_size, must_find_executable, set_torrent_comment
 
@@ -137,6 +142,7 @@ class Downloader:
     )
     ffprobe_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("ffprobe"))
     ffmpeg_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("ffmpeg"))
+    bdinfocli_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("BDInfo"))
     thread_filter_template: jinja2.Template | None = None
 
     @classmethod
@@ -203,6 +209,7 @@ class Downloader:
         logger.info("using mediainfo at {}", self.mediainfo_bin)
         logger.info("using ffprobe at {}", self.ffprobe_bin)
         logger.info("using ffmpeg at {}", self.ffmpeg_bin)
+        logger.info("using bdinfocli at {}", self.bdinfocli_bin)
 
     def start(self) -> None:
         logger.info("downloader started, entering main loop")
@@ -454,20 +461,20 @@ class Downloader:
         )
 
         # Fetch all downloading jobs for this node, and which ones have unselected category
-        job_rows: list[tuple[str, bool]] = self.db.fetch_all(
+        job_rows = self.db.fetch_all(
             """
             select job.info_hash,
-                   not (thread.category = any($3)) as unselected
+                   not (thread.category = any($3)) as unselected,
+                   thread.type
             from job
             join thread on (thread.tid = job.tid)
             where job.node_id = $1 and job.status = $2
             """,
             [self.config.node_id, ItemStatus.DOWNLOADING, SELECTED_CATEGORY],
         )
-        managed_hashes: set[str] = {info_hash for info_hash, _ in job_rows}
-        unselected_hashes: set[str] = {
-            info_hash for info_hash, unselected in job_rows if unselected
-        }
+        managed_hashes: set[str] = {r[0] for r in job_rows}
+        unselected_hashes: set[str] = {r[0] for r in job_rows if r[1]}
+        bdmv_hashes: set[str] = {r[0] for r in job_rows if r[2] == "bdmv"}
 
         stale_cutoff = now - timedelta(days=2)
 
@@ -551,7 +558,7 @@ class Downloader:
                 completed = True
                 self.__set_tags(t.hash, remove=BT_TAG_DOWNLOADING, add=BT_TAG_PROCESSING)
                 try:
-                    self.__process_local_torrent(t)
+                    self.__process_local_torrent(t, bdmv_hashes)
                 except Exception as e:
                     self.__update_job_status(
                         status=ItemStatus.FAILED,
@@ -567,7 +574,7 @@ class Downloader:
 
             # File not yet selected → select files, clear limit
             if BT_TAG_FILE_SELECTED not in t.tags:
-                self.__fix_file_selection(t)
+                self.__fix_file_selection(t, bdmv_hashes)
                 self.client.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
                 self.client.torrents_add_tags(tags=[BT_TAG_FILE_SELECTED], torrent_hashes=t.hash)
                 if t.state == TorrentState.PAUSED:
@@ -692,13 +699,32 @@ class Downloader:
         self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
         self._delete_torrent_files(t.hash)
 
-    def __fix_file_selection(self, t: Torrent) -> None:
+    def __fix_file_selection(self, t: Torrent, bdmv_hashes: set[str]) -> None:
         """Fix file priorities for torrents that are downloading all files."""
         files = self.client.torrents_files(torrent_hash=t.hash)
         if len(files) <= 1:
             return
-        files_data = [(f.index, f.name, f.size) for f in files]
-        keep_idx = find_largest_video_file(files_data)
+        file_objs = [File(length=f.size, path=tuple(f.name.split("/"))) for f in files]
+
+        if t.hash in bdmv_hashes:
+            _selected_size, selected_index = pick_bdmv_selection(file_objs)
+            if not selected_index:
+                logger.warning(
+                    "bdmv torrent {} has no selectable disc, skipping file selection", t.name
+                )
+                return
+            keep = set(selected_index)
+            file_ids = [f.index for f in files if f.index not in keep and f.priority != 0]
+            if file_ids:
+                logger.info("fixing bdmv file selection for torrent {}", t.name)
+                self.client.torrents_file_priority(
+                    torrent_hash=t.hash,
+                    file_ids=file_ids,
+                    priority=0,
+                )
+            return
+
+        keep_idx = find_largest_video_file(file_objs)
         if keep_idx is None:
             return
         file_ids = [f.index for f in files if f.index != keep_idx and f.priority != 0]
@@ -719,23 +745,32 @@ class Downloader:
             [raw, t.hash, self.config.node_id, ItemStatus.DOWNLOADING],
         )
 
-    def __process_local_torrent(self, t: Torrent) -> None:
+    def __process_local_torrent(self, t: Torrent, bdmv_hashes: set[str]) -> None:
         files = self.client.torrents_files(torrent_hash=t.hash)
-        active_files = [(f.index, f.name, f.size) for f in files if f.priority != 0]
-        selected_idx = find_largest_video_file(active_files)
+        active = [f for f in files if f.priority != 0]
+        active_objs = [File(length=f.size, path=tuple(f.name.split("/"))) for f in active]
 
-        if selected_idx is None:
-            self._delete_torrent_with_retry(t.hash)
-            return
-
-        selected_file = next(f for f in files if f.index == selected_idx)
-        path = Path(t.save_path, selected_file.name)
-
-        media_info = extract_mediainfo_from_file(self.mediainfo_bin, path)
-
-        hard_code_subtitle = check_hardcode_chinese_subtitle(
-            self.ffprobe_bin, self.ffmpeg_bin, path
-        )
+        if t.hash in bdmv_hashes:
+            disc_path = bdmv_disc_path(active_objs, t.save_path)
+            if disc_path == t.save_path:
+                logger.warning(
+                    "bdmv torrent {} has no disc subdirectory, skipping mediainfo", t.name
+                )
+                self._delete_torrent_with_retry(t.hash)
+                return
+            media_info = extract_bdinfo_from_dir(self.bdinfocli_bin, Path(disc_path))
+            hard_code_subtitle = False
+        else:
+            selected_idx = find_largest_video_file(active_objs)
+            if selected_idx is None:
+                self._delete_torrent_with_retry(t.hash)
+                return
+            selected_file = active[selected_idx]
+            path = Path(t.save_path, selected_file.name)
+            media_info = extract_mediainfo_from_file(self.mediainfo_bin, path)
+            hard_code_subtitle = check_hardcode_chinese_subtitle(
+                self.ffprobe_bin, self.ffmpeg_bin, path
+            )
 
         with (
             self.db.connection() as conn,

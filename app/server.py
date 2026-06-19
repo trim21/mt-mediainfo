@@ -417,7 +417,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
             """
         select count(1)::int as count
         from thread
-        where selected_size = -2 and category = any($1)
+        where type = 'bdmv' and category = any($1)
         """,
             SELECTED_CATEGORY,
         ),
@@ -1439,10 +1439,10 @@ def create_app() -> fastapi.FastAPI:
         return await _render_thread_list(
             render,
             title="BDMV",
-            count_sql="select count(1)::int from thread where selected_size = -2 and category = any($1)",
+            count_sql="select count(1)::int from thread where type = 'bdmv' and category = any($1)",
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from thread
-            where selected_size = -2 and category = any($3)
+            where type = 'bdmv' and category = any($3)
             order by created_at desc
             limit $1 offset $2
             """,
@@ -1474,12 +1474,18 @@ def create_app() -> fastapi.FastAPI:
         )
 
         selected_index = thread.get("selected_index") or []
-        files_data = await get_cached_files(tid, pool, s3_op)
+        files = await get_cached_files(tid, pool, s3_op)
         selected_files = []
-        if files_data is not None:
+        if files is not None:
+            selected_index_set = set(selected_index)
             selected_files = [
-                {"index": i, "name": name, "size": size, "selected": i in selected_index}
-                for i, name, size in files_data
+                {
+                    "index": i,
+                    "name": "/".join(f.path),
+                    "size": f.length,
+                    "selected": i in selected_index_set,
+                }
+                for i, f in enumerate(files)
             ]
         thread["selected_files"] = selected_files
 
