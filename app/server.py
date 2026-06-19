@@ -1480,6 +1480,7 @@ def create_app() -> fastapi.FastAPI:
             params=[SELECTED_CATEGORY],
             page=page,
             show_progress=False,
+            show_reset_all=True,
             show_failed_reason=False,
         )
 
@@ -1586,6 +1587,17 @@ def create_app() -> fastapi.FastAPI:
             where status = $1
             """,
             ItemStatus.FAILED,
+        )
+        return ORJSONResponse({"deleted": result})
+
+    @app.post("/api/threads/skipped/reset-all")
+    async def reset_all_skipped_threads() -> ORJSONResponse:
+        result = await pool.execute(
+            """
+            delete from job
+            where status = $1
+            """,
+            ItemStatus.SKIPPED,
         )
         return ORJSONResponse({"deleted": result})
 
