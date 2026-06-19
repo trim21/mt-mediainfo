@@ -321,8 +321,8 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         downloading_node_rows,
         done_node_rows,
         scrape_status_rows,
-        skipped_stats,
-        bdmv_stats,
+        dormant_stats,
+        skipped_by_picker_stats,
         failed_export_dates,
         node_alias_rows,
     ) = await asyncio.gather(
@@ -415,9 +415,11 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         ),
         pool.fetchrow(
             """
-        select count(1)::int as count
-        from thread
-        where type = 'bdmv' and category = any($1)
+        select count(distinct job.tid)::int as count,
+               coalesce(sum(thread.selected_size), 0)::int8 as size
+        from job
+        join thread on (thread.tid = job.tid)
+        where job.status = 'skipped' and thread.category = any($1)
         """,
             SELECTED_CATEGORY,
         ),
@@ -501,12 +503,13 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         for r in scrape_status_rows
     ]
 
-    skipped_stats = cast(asyncpg.Record, skipped_stats)
-    skipped = cast(int, skipped_stats["count"])
-    skipped_size = cast(int, skipped_stats["size"])
+    dormant_stats = cast(asyncpg.Record, dormant_stats)
+    dormant = cast(int, dormant_stats["count"])
+    dormant_size = cast(int, dormant_stats["size"])
 
-    bdmv_stats = cast(asyncpg.Record, bdmv_stats)
-    bdmv = cast(int, bdmv_stats["count"])
+    skipped_by_picker_stats = cast(asyncpg.Record, skipped_by_picker_stats)
+    skipped_by_picker = cast(int, skipped_by_picker_stats["count"])
+    skipped_by_picker_size = cast(int, skipped_by_picker_stats["size"])
 
     failed_export_dates = cast(list[asyncpg.Record], failed_export_dates)
     failed_exports = [{"export_date": r["export_date"]} for r in failed_export_dates]
@@ -543,10 +546,12 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         "removed_by_client": removed_by_client,
         "removed_by_client_size": human_readable_size(removed_by_client_size),
         "removed_by_client_pct": pct(removed_by_client),
-        "skipped": skipped,
-        "skipped_size": human_readable_size(skipped_size),
-        "skipped_pct": pct(skipped),
-        "bdmv": bdmv,
+        "dormant": dormant,
+        "dormant_size": human_readable_size(dormant_size),
+        "dormant_pct": pct(dormant),
+        "skipped_by_picker": skipped_by_picker,
+        "skipped_by_picker_size": human_readable_size(skipped_by_picker_size),
+        "skipped_by_picker_pct": pct(skipped_by_picker),
         "scrape_status": scrape_status,
         "failed_exports": failed_exports,
     }
@@ -1444,6 +1449,32 @@ def create_app() -> fastapi.FastAPI:
             select tid, category, size, selected_size, seeders, created_at from thread
             where type = 'bdmv' and category = any($3)
             order by created_at desc
+            limit $1 offset $2
+            """,
+            params=[SELECTED_CATEGORY],
+            page=page,
+            show_progress=False,
+            show_failed_reason=False,
+        )
+
+    @app.get("/threads/skipped")
+    async def threads_skipped(render: Render, page: Annotated[int, Query()] = 1) -> HTMLResponse:
+        return await _render_thread_list(
+            render,
+            title="Skipped by Picker",
+            count_sql="""
+            select count(distinct job.tid)::int
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.status = 'skipped' and thread.category = any($1)
+            """,
+            rows_sql="""
+            select thread.tid, thread.category, thread.size, thread.selected_size,
+                   thread.seeders, thread.created_at
+            from job
+            join thread on (thread.tid = job.tid)
+            where job.status = 'skipped' and thread.category = any($3)
+            order by thread.created_at desc
             limit $1 offset $2
             """,
             params=[SELECTED_CATEGORY],

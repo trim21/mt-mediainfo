@@ -11,7 +11,7 @@
   {% endif %}
 
   <div class="progress mb-3" style="height: 30px;">
-    <div class="progress-bar" style="width: {{ skipped_pct }}%; background-color: #adb5bd;" role="progressbar" title="Skipped: {{ skipped }}"></div>
+    <div class="progress-bar" style="width: {{ dormant_pct }}%; background-color: #adb5bd;" role="progressbar" title="Dormant: {{ dormant }}"></div>
     <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ pending_fetch_mediainfo_pct }}%" title="Pending mediainfo: {{ pending_fetch_mediainfo }}"></div>
     <div class="progress-bar bg-warning" role="progressbar" style="width: {{ pending_fetch_torrent_pct }}%" title="Pending torrent: {{ pending_fetch_torrent }}"></div>
     <div class="progress-bar bg-warning text-dark" role="progressbar" style="width: {{ pending_to_download_pct }}%" title="Pending download: {{ pending_to_download }}"></div>
@@ -42,15 +42,13 @@
           <td>{{ pending_fetch_torrent }}</td>
         </tr>
         <tr>
-          <th>Skipped / No seeders</th>
-          <td>{{ skipped }}</td>
+          <th><a href="/threads/skipped" class="text-reset text-decoration-none">Skipped by picker</a></th>
+          <td>{{ skipped_by_picker }}</td>
         </tr>
-        {% if bdmv > 0 %}
         <tr>
-          <th><a href="/threads/bdmv" class="text-reset text-decoration-none">BDMV</a></th>
-          <td>{{ bdmv }}</td>
+          <th>No seeders / dormant</th>
+          <td>{{ dormant }}</td>
         </tr>
-        {% endif %}
         </tbody>
       </table>
 
