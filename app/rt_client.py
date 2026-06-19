@@ -324,12 +324,12 @@ class RTorrentClient(BTClient):
             "d.is_partially_done=",
         ]
         result: dict[str, Any] = {}
-        rows: list[list[Any]] = self._call(
-            "d.multicall2",
-            ["", f"d.hash={info_hash}", *d_fields],
+        row: list[Any] = self._call(
+            "d.multicall",
+            [info_hash, "", *d_fields],
         )
-        if rows:
-            for key, val in zip(d_fields, rows[0]):
+        if row:
+            for key, val in zip(d_fields, row):
                 result[key] = val
 
         f_rows: list[list[Any]] = self._call(
