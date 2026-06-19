@@ -120,12 +120,24 @@ def is_bdmv_from_files(files: list[File]) -> bool:
     return any(f.name.lower() in BDMV_MARKERS for f in files)
 
 
+def _bdmv_parent(path: tuple[str, ...]) -> tuple[str, ...]:
+    """Return the disc parent directory for a BDMV marker file path.
+
+    Finds the BDMV component and returns everything before it, which is
+    the actual disc root (e.g. 'Disc2') or () for a root-level BDMV.
+    """
+    for i, part in enumerate(path):
+        if part.lower() == "bdmv":
+            return path[:i]
+    return path[:-2]
+
+
 def _group_by_bdmv_dir(files: list[File]) -> dict[tuple[str, ...], list[int]]:
     """Group file indices by their BDMV disc parent directory."""
     parents: set[tuple[str, ...]] = set()
     for f in files:
         if f.name.lower() in BDMV_MARKERS:
-            parents.add(f.path[:-2])
+            parents.add(_bdmv_parent(f.path))
 
     if not parents:
         return {}

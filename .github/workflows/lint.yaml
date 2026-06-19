@@ -33,6 +33,24 @@ jobs:
         run: mypy --show-column-numbers app
       - run: ty check . --output-format=github
 
+  pytest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6.0.3
+
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.14"
+
+      - uses: astral-sh/setup-uv@v8.2.0
+        with:
+          activate-environment: "true"
+
+      - run: uv sync
+
+      - name: pytest
+        run: pytest tests/ -v
+
   pre-commit:
     runs-on: ubuntu-24.04
     steps:

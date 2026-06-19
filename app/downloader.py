@@ -54,8 +54,8 @@ from app.rpc import (
 )
 from app.rt_client import RTorrentClient
 from app.torrent import (
-    BDMV_MARKERS,
     File,
+    bdmv_disc_path,
     find_largest_video_file,
     pick_bdmv_selection,
 )
@@ -735,14 +735,9 @@ class Downloader:
         Finds a BDMV marker file among the active files and derives the disc
         path from it. Returns (media_info, hard_coded_subtitle).
         """
-        for f in active_objs:
-            if f.name.lower() in BDMV_MARKERS:
-                parent = f.path[:-2]
-                disc_path = save_path if not parent else f"{save_path}/{'/'.join(parent)}"
-                media_info = extract_bdinfo_from_dir(self.bdinfocli_bin, Path(disc_path))
-                return media_info, False
-
-        raise Exception("no BDMV marker found in selected files")
+        disc_path = bdmv_disc_path(active_objs, save_path)
+        media_info = extract_bdinfo_from_dir(self.bdinfocli_bin, Path(disc_path))
+        return media_info, False
 
     def __extract_regular_mediainfo(
         self, active_objs: list[File], active: list[TorrentFile], save_path: str
