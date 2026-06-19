@@ -1456,7 +1456,7 @@ def create_app() -> fastapi.FastAPI:
     async def thread_detail(render: Render, tid: int) -> HTMLResponse:
         row = await pool.fetchrow(
             """
-             select tid, category, size, selected_size, selected_index, seeders, mediainfo, api_mediainfo,
+             select tid, category, size, selected_size, selected_index, seeders, mediainfo, api_mediainfo, type,
                     info_hash, hard_coded_subtitle, created_at, upload_at, api_mediainfo_at, generated_mediainfo_at,
                     torrent_fetched_at, torrent_invalid, priority
             from thread

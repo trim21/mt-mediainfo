@@ -33,10 +33,13 @@
       <tr><th class="table-light">Created At</th><td>{{ thread.created_at | fmt_dt }}</td></tr>
       <tr><th class="table-light">Upload At</th><td>{{ thread.upload_at | fmt_dt }}</td></tr>
       <tr><th class="table-light">API Mediainfo At</th><td>{{ thread.api_mediainfo_at | fmt_dt }}</td></tr>
+      <tr><th class="table-light">API Mediainfo</th><td>{{ thread.api_mediainfo | length }} chars</td></tr>
       <tr><th class="table-light">Generated Mediainfo At</th><td>{{ thread.generated_mediainfo_at | fmt_dt }}</td></tr>
+      <tr><th class="table-light">Mediainfo</th><td>{{ thread.mediainfo | length }} chars</td></tr>
       <tr><th class="table-light">Torrent Fetched At</th><td>{{ thread.torrent_fetched_at | fmt_dt }}</td></tr>
       <tr><th class="table-light">Torrent Invalid</th><td>{{ thread.torrent_invalid or '-' }}</td></tr>
       <tr><th class="table-light">MT Link</th><td><a href="https://kp.m-team.cc/detail/{{ thread.tid }}" target="_blank">https://kp.m-team.cc/detail/{{ thread.tid }}</a></td></tr>
+      <tr><th class="table-light">Type</th><td>{{ thread.type or '-' }}</td></tr>
     </tbody>
   </table>
 
