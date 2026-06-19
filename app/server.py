@@ -1532,7 +1532,7 @@ def create_app() -> fastapi.FastAPI:
             where tid = $1 and status = any($2)
             """,
             tid,
-            [ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, ItemStatus.FAILED],
+            [ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, ItemStatus.FAILED, ItemStatus.SKIPPED],
         )
         return ORJSONResponse({"deleted": result})
 

@@ -105,6 +105,7 @@
       {% endfor %}
     </tbody>
   </table>
+  <form method="post" action="/api/thread/{{ thread.tid }}/reset" style="display:inline" onsubmit="return confirm('Delete all failed/skipped/removed jobs?');"><button type="submit" class="btn btn-sm btn-outline-danger mb-2">Reset Jobs</button></form>
   {% else %}
   <p class="text-muted">No jobs.</p>
   {% endif %}
