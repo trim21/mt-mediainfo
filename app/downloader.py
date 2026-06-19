@@ -55,8 +55,8 @@ from app.rpc import (
 )
 from app.rt_client import RTorrentClient
 from app.torrent import (
+    BDMV_MARKERS,
     File,
-    bdmv_disc_path,
     find_largest_video_file,
     pick_bdmv_selection,
 )
@@ -553,18 +553,7 @@ class Downloader:
             if t.state == TorrentState.UPLOADING:
                 completed = True
                 self.__set_tags(t.hash, remove=BT_TAG_DOWNLOADING, add=BT_TAG_PROCESSING)
-                try:
-                    self.__process_local_torrent(t, bdmv_hashes)
-                except Exception as e:
-                    self.__update_job_status(
-                        status=ItemStatus.FAILED,
-                        info_hash=t.hash,
-                        failed_reason=format_exc(e),
-                    )
-                    self.client.torrents_add_tags(
-                        tags=[BT_TAG_PROCESS_ERROR], torrent_hashes=t.hash
-                    )
-                    logger.error("failed to process local torrent {}", e)
+                self.__process_completed_torrent(t, bdmv_hashes)
                 counts["uploading"] = counts.get("uploading", 0) + 1
                 continue
 
@@ -689,32 +678,31 @@ class Downloader:
             priority=0,
         )
 
-    def __process_local_torrent(self, t: Torrent, bdmv_hashes: set[str]) -> None:
+    def __process_completed_torrent(self, t: Torrent, bdmv_hashes: set[str]) -> None:
+        """Process a completed torrent: extract mediainfo and update DB status."""
         files = self.client.torrents_files(torrent_hash=t.hash)
         active = [f for f in files if f.priority != 0]
         active_objs = [File(length=f.size, path=tuple(f.name.split("/"))) for f in active]
 
-        if t.hash in bdmv_hashes:
-            disc_path = bdmv_disc_path(active_objs, t.save_path)
-            if disc_path == t.save_path:
-                logger.warning(
-                    "bdmv torrent {} has no disc subdirectory, skipping mediainfo", t.name
+        try:
+            if t.hash in bdmv_hashes:
+                media_info, hard_code_subtitle = self.__extract_bdmv_mediainfo(
+                    active_objs, t.save_path
                 )
-                self._delete_torrent_with_retry(t.hash)
-                return
-            media_info = extract_bdinfo_from_dir(self.bdinfocli_bin, Path(disc_path))
-            hard_code_subtitle = False
-        else:
-            selected_idx = find_largest_video_file(active_objs)
-            if selected_idx is None:
-                self._delete_torrent_with_retry(t.hash)
-                return
-            selected_file = active[selected_idx]
-            path = Path(t.save_path, selected_file.name)
-            media_info = extract_mediainfo_from_file(self.mediainfo_bin, path)
-            hard_code_subtitle = check_hardcode_chinese_subtitle(
-                self.ffprobe_bin, self.ffmpeg_bin, path
+            else:
+                media_info, hard_code_subtitle = self.__extract_regular_mediainfo(
+                    active_objs, active, t.save_path
+                )
+        except Exception as e:
+            logger.error("failed to process local torrent {}: {}", t.name, e)
+            self.__update_job_status(
+                status=ItemStatus.FAILED,
+                info_hash=t.hash,
+                failed_reason=format_exc(e),
             )
+            self.client.torrents_add_tags(tags=[BT_TAG_PROCESS_ERROR], torrent_hashes=t.hash)
+            self._delete_torrent_with_retry(t.hash)
+            return
 
         with (
             self.db.connection() as conn,
@@ -741,6 +729,39 @@ class Downloader:
                 [t.hash, self.config.node_id],
             )
         self._delete_torrent_with_retry(t.hash)
+
+    def __extract_bdmv_mediainfo(self, active_objs: list[File], save_path: str) -> tuple[str, bool]:
+        """Extract BDMV mediainfo from selected disc files.
+
+        Finds a BDMV marker file among the active files and derives the disc
+        path from it. Returns (media_info, hard_coded_subtitle).
+        """
+        for f in active_objs:
+            if f.name.lower() in BDMV_MARKERS:
+                parent = f.path[:-2]
+                disc_path = save_path if not parent else f"{save_path}/{'/'.join(parent)}"
+                media_info = extract_bdinfo_from_dir(self.bdinfocli_bin, Path(disc_path))
+                return media_info, False
+
+        raise Exception("no BDMV marker found in selected files")
+
+    def __extract_regular_mediainfo(
+        self, active_objs: list[File], active: list, save_path: str
+    ) -> tuple[str, bool]:
+        """Extract mediainfo from the largest video file in a regular torrent.
+
+        Returns (media_info, hard_coded_subtitle).
+        """
+        selected_idx = find_largest_video_file(active_objs)
+        if selected_idx is None:
+            raise Exception("no video file found in downloaded torrent")
+        selected_file = active[selected_idx]
+        path = Path(save_path, selected_file.name)
+        media_info = extract_mediainfo_from_file(self.mediainfo_bin, path)
+        hard_code_subtitle = check_hardcode_chinese_subtitle(
+            self.ffprobe_bin, self.ffmpeg_bin, path
+        )
+        return media_info, hard_code_subtitle
 
     def _delete_torrent_with_retry(self, info_hash: str) -> None:
         for attempt in range(3):

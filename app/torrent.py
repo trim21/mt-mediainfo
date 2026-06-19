@@ -105,26 +105,26 @@ def find_largest_video_file(files: list[File]) -> int | None:
     return best[0] if best is not None else None
 
 
-_BDMV_MARKERS = {"index.bdmv", "movieobject.bdmv"}
+BDMV_MARKERS = {"index.bdmv", "movieobject.bdmv"}
 
 
 def is_bdmv(torrent: Torrent) -> bool:
     for f in torrent.as_files():
-        if f.name.lower() in _BDMV_MARKERS:
+        if f.name.lower() in BDMV_MARKERS:
             return True
     return False
 
 
 def is_bdmv_from_files(files: list[File]) -> bool:
     """Return True if any file matches BDMV structure markers."""
-    return any(f.name.lower() in _BDMV_MARKERS for f in files)
+    return any(f.name.lower() in BDMV_MARKERS for f in files)
 
 
 def _group_by_bdmv_dir(files: list[File]) -> dict[tuple[str, ...], list[int]]:
     """Group file indices by their BDMV disc parent directory."""
     parents: set[tuple[str, ...]] = set()
     for f in files:
-        if f.name.lower() in _BDMV_MARKERS:
+        if f.name.lower() in BDMV_MARKERS:
             parents.add(f.path[:-2])
 
     if not parents:
