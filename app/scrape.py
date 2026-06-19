@@ -323,7 +323,7 @@ class Scrape:
 
             try:
                 t = parse_torrent(tc)
-            except (pydantic.ValidationError, BencodeDecodeError):
+            except pydantic.ValidationError, BencodeDecodeError:
                 logger.exception("failed to parse torrent of {}", tid)
                 self.__db.execute(
                     """update thread set torrent_invalid = $2 where tid = $1""",

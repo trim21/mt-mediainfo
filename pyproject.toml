@@ -1,7 +1,7 @@
 [project]
 name = 'app'
 version = '0'
-requires-python = '~=3.12.12'
+requires-python = '~=3.14.0'
 description = ''
 dependencies = [
   'orjson==3.11.9',
@@ -53,14 +53,14 @@ cache_dir = '.venv/.cache/pytest'
 exclude = 'build,data,.kilo'
 mypy_path = '$MYPY_CONFIG_FILE_DIR'
 cache_dir = '$MYPY_CONFIG_FILE_DIR/.venv/.cache/pytest'
-python_version = '3.12'
+python_version = '3.14'
 disable_error_code = ["no-any-return", "unused-ignore", "redundant-cast"]
 strict = true
 ignore_missing_imports = true
 check_untyped_defs = true
 
 [tool.pyright]
-pythonVersion = '3.12'
+pythonVersion = '3.14'
 venvPath = '.'
 venv = '.venv'
 reportUnnecessaryCast = true

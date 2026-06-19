@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import dataclasses
 import time
 from typing import Any, Final, Self

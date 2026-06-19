@@ -1,7 +1,5 @@
 """Thin wrapper around ``zstandard`` with a simpler streaming API."""
 
-from __future__ import annotations
-
 from typing import IO, Protocol, Self, cast
 
 import zstandard

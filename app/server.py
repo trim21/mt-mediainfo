@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import dataclasses
 from collections.abc import AsyncGenerator, Mapping
@@ -825,7 +823,7 @@ def create_app() -> fastapi.FastAPI:
     )
 
     @asynccontextmanager
-    async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None, None]:
+    async def lifespan(_app: fastapi.FastAPI) -> AsyncGenerator[None]:
         await pool
         with Database(cfg.pg_dsn()) as migration_db:
             await asyncio.to_thread(migration_db.run_migrations)

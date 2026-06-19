@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import opendal
 import xxhash
 from mypy_boto3_s3 import S3Client

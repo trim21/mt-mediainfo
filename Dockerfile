@@ -1,6 +1,6 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS uv
+FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim AS uv
 
-FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203
+FROM python:3.14-slim
 
 COPY --from=uv /usr/local/bin/uv /bin/uv
 

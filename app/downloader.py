@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 import dataclasses
 import enum
@@ -24,6 +22,7 @@ from app.bt_client import (
     ETA_INF,
     BTClient,
     Torrent,
+    TorrentFile,
     TorrentNotFoundError,
     TorrentState,
 )
@@ -746,7 +745,7 @@ class Downloader:
         raise Exception("no BDMV marker found in selected files")
 
     def __extract_regular_mediainfo(
-        self, active_objs: list[File], active: list, save_path: str
+        self, active_objs: list[File], active: list[TorrentFile], save_path: str
     ) -> tuple[str, bool]:
         """Extract mediainfo from the largest video file in a regular torrent.
 

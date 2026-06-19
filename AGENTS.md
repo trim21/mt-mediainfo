@@ -30,7 +30,7 @@ This project downloads torrents from M-Team, processes local media files to extr
 
 ## Runtime Invariants
 
-- Python 3.12 project with environment-driven config in `app/config.py`
+- Python 3.14 project with environment-driven config in `app/config.py`
 - `app/downloader.py` uses `BTClient` abstraction; concrete clients are `QBittorrentClient` (`qbittorrentapi`) and `RTorrentClient` (`rtorrent-rpc`)
 - Downloader loop order matters: heartbeat -> wait for PG notify or timeout -> process RPC commands -> process qBittorrent torrents -> pick new jobs
 - `app/downloader.py` and `app/scrape.py` use psycopg-based sync DB access; `app/server.py` uses asyncpg
