@@ -1755,7 +1755,7 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/nodes")
     async def nodes_page(render: Render) -> HTMLResponse:
         node_rows = await pool.fetch(
-            "select id, last_seen, alias, version from node order by id asc"
+            "select id, last_seen, alias, version, status from node order by id asc"
         )
         job_rows = await pool.fetch(
             "select node_id, status, count(1) as cnt, coalesce(sum(dlspeed), 0) as total_dlspeed from job group by node_id, status"
@@ -1776,6 +1776,7 @@ def create_app() -> fastapi.FastAPI:
                 "alias": n["alias"],
                 "last_seen": n["last_seen"],
                 "version": n["version"],
+                "status": n["status"],
                 "downloading": counts.get(str(n["id"]), {}).get(ItemStatus.DOWNLOADING, 0),
                 "dlspeed_fmt": human_readable_byte_rate(speeds.get(str(n["id"]), 0)),
                 "done": counts.get(str(n["id"]), {}).get(ItemStatus.DONE, 0),
@@ -1802,7 +1803,7 @@ def create_app() -> fastapi.FastAPI:
         order: Annotated[Literal["asc", "desc"], Query()] = "asc",
     ) -> HTMLResponse:
         node_row = await pool.fetchrow(
-            "select id, last_seen, alias, version from node where id = $1", node_id
+            "select id, last_seen, alias, version, status from node where id = $1", node_id
         )
         if node_row is None:
             return HTMLResponse("node not found", status_code=404)

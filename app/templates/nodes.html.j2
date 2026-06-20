@@ -23,6 +23,7 @@
       <th>Node</th>
       <th>Alias</th>
       <th>Version</th>
+      <th>Status</th>
       <th>Last Seen</th>
       <th>Downloading</th>
       <th>Speed</th>
@@ -50,6 +51,7 @@
         </div>
       </td>
       <td><code>{{ n.version or '-' }}</code></td>
+      <td><small><code>{{ n.status or '-' }}</code></small></td>
       <td title="{{ n.last_seen | fmt_dt }}">{{ n.last_seen | timeago }}</td>
       <td>{{ n.downloading }}</td>
       <td>{{ n.dlspeed_fmt }}</td>
