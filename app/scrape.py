@@ -939,14 +939,7 @@ class Scrape:
             "6-export-mediainfo": lambda: self.__run_export_mediainfo(),
         }
 
-        backfill_runners: dict[str, Callable[[], RunResult]] = {
-            "7-backfill-bdmv": lambda: self.run_backfill(
-                name="bdmv",
-                source="select tid from thread where selected_size = -2",
-                handler=self._backfill_bdmv,
-                status_name="7-backfill-bdmv",
-            ),
-        }
+        backfill_runners: dict[str, Callable[[], RunResult]] = {}
 
         all_names = list(runners) + list(backfill_runners)
         self.__db.execute("delete from scrape_status where not name = any($1)", [all_names])
