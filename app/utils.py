@@ -95,6 +95,7 @@ def must_run_command(
     capture_output: bool = False,
     stdout: int | IO[bytes] | IO[str] | None = None,
     stderr: int | IO[bytes] | IO[str] | None = None,
+    input: bytes | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
     logger.trace("executing command {!r}", shlex.join([executable, *command]))
     try:
@@ -105,6 +106,7 @@ def must_run_command(
             capture_output=capture_output,
             stdout=stdout,
             stderr=stderr,
+            input=input,
         )
     except subprocess.CalledProcessError as e:
         raise CommandExecutionError.from_called_process_error(
