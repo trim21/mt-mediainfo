@@ -90,7 +90,7 @@ def generate_images(
                 str(image_file),
             ],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
 
         if image_file.exists():

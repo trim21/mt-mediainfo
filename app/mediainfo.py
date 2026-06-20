@@ -13,6 +13,7 @@ def extract_mediainfo_from_file(mediainfo_bin: str, file: Path) -> str:
             [f"--LogFile={out_file}", file.name],
             cwd=str(file.parent),
             stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
         return out_file.read_text("utf-8")
 
