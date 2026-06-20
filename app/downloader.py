@@ -690,7 +690,7 @@ class Downloader:
                 )
             else:
                 media_info, hard_code_subtitle = self.__extract_regular_mediainfo(
-                    active_objs, active, t.save_path
+                    active, t.save_path
                 )
         except Exception as e:
             logger.error("failed to process local torrent {}: {}", t.name, e)
@@ -740,16 +740,15 @@ class Downloader:
         return media_info, False
 
     def __extract_regular_mediainfo(
-        self, active_objs: list[File], active: list[TorrentFile], save_path: str
+        self, active: list[TorrentFile], save_path: str
     ) -> tuple[str, bool]:
         """Extract mediainfo from the largest video file in a regular torrent.
 
         Returns (media_info, hard_coded_subtitle).
         """
-        selected_idx = find_largest_video_file(active_objs)
-        if selected_idx is None:
-            raise Exception("no video file found in downloaded torrent")
-        selected_file = active[selected_idx]
+        if not active:
+            raise Exception("no active file found in downloaded torrent")
+        selected_file = active[0]
         path = Path(save_path, selected_file.name)
         media_info = extract_mediainfo_from_file(self.mediainfo_bin, path)
         hard_code_subtitle = check_hardcode_chinese_subtitle(
