@@ -97,7 +97,7 @@ def must_run_command(
     stderr: int | IO[bytes] | IO[str] | None = None,
     input: bytes | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    logger.trace("executing command {!r}", shlex.join([executable, *command]))
+    logger.info("executing command {!r}", shlex.join([executable, *command]))
     try:
         return subprocess.run(
             [executable, *command],
