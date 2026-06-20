@@ -346,9 +346,9 @@ class Downloader:
 
     def __run_at_interval(self) -> LoopContext:
         self.__cleanup_orphan_files()
-        self._report_status("processing_torrents")
+        self._report_status("torrents")
         completed, min_eta = self.__process_torrents()
-        self._report_status("picking_jobs")
+        self._report_status("picking")
         ctx = self.__pick_and_add_jobs()
         if not completed and ctx.picked == 0 and ctx.no_space and ctx.has_pending:
             self.__maybe_evict_slowest()
@@ -509,9 +509,7 @@ class Downloader:
         counts: dict[str, int] = {}
         torrent_count = len(torrents)
         for idx, t in enumerate(torrents):
-            self._report_status(
-                f"processing_torrents:{idx + 1}/{torrent_count}:{t.state.value}:{t.name[:30]}"
-            )
+            self._report_status(f"torrents:{idx + 1}/{torrent_count}:{t.state.value}")
             # Torrent not in managed (downloading) jobs — check if it has a job at all
             if t.hash not in managed_hashes:
                 self.__handle_unmanaged_torrent(t)
@@ -566,7 +564,7 @@ class Downloader:
             if t.state == TorrentState.UPLOADING:
                 completed = True
                 self.__set_tags(t.hash, remove=BT_TAG_DOWNLOADING, add=BT_TAG_PROCESSING)
-                self._report_status(f"extracting_mediainfo:{t.name[:40]}")
+                self._report_status(f"mediainfo:{t.name[:20]}")
                 self.__process_completed_torrent(t, bdmv_hashes)
                 counts["uploading"] = counts.get("uploading", 0) + 1
                 continue

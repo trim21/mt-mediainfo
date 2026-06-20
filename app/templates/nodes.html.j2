@@ -51,7 +51,9 @@
         </div>
       </td>
       <td><code>{{ n.version or '-' }}</code></td>
-      <td><small><code>{{ n.status or '-' }}</code></small></td>
+      <td style="max-width:120px">
+        <small><code class="d-block text-truncate" title="{{ n.status }}" style="cursor:pointer" onclick="showStatus('{{ n.status }}')">{{ n.status or '-' }}</code></small>
+      </td>
       <td title="{{ n.last_seen | fmt_dt }}">{{ n.last_seen | timeago }}</td>
       <td>{{ n.downloading }}</td>
       <td>{{ n.dlspeed_fmt }}</td>
@@ -68,8 +70,28 @@
   </table>
 </div>
 
+<div class="modal fade" id="statusModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Node Status</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="statusFull"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
+function showStatus(text) {
+  document.getElementById('statusFull').textContent = text || '(empty)';
+  statusModal.show();
+}
+
 async function saveAlias(nodeId, alias, btn) {
   btn.disabled = true;
   btn.textContent = '...';
