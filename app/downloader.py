@@ -472,7 +472,8 @@ class Downloader:
             """
             select job.info_hash,
                    not (thread.category = any($3)) as unselected,
-                   thread.type
+                   thread.type,
+                   thread.tid
             from job
             join thread on (thread.tid = job.tid)
             where job.node_id = $1 and job.status = $2
@@ -482,6 +483,7 @@ class Downloader:
         managed_hashes: set[str] = {r[0] for r in job_rows}
         unselected_hashes: set[str] = {r[0] for r in job_rows if r[1]}
         bdmv_hashes: set[str] = {r[0] for r in job_rows if r[2] == "bdmv"}
+        hash_to_tid: dict[str, int] = {r[0].lower(): r[3] for r in job_rows}
 
         stale_cutoff = now - timedelta(days=2)
 
@@ -564,7 +566,7 @@ class Downloader:
             if t.state == TorrentState.UPLOADING:
                 completed = True
                 self.__set_tags(t.hash, remove=BT_TAG_DOWNLOADING, add=BT_TAG_PROCESSING)
-                self._report_status(f"mediainfo:{t.name[:20]}")
+                self._report_status(f"mediainfo:{hash_to_tid[t.hash.lower()]}:{t.name[:20]}")
                 self.__process_completed_torrent(t, bdmv_hashes)
                 counts["uploading"] = counts.get("uploading", 0) + 1
                 continue
