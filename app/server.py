@@ -1935,6 +1935,7 @@ def create_app() -> fastapi.FastAPI:
                 "node_name": node_row["alias"] or str(node_row["id"])[:8],
                 "last_seen": node_row["last_seen"],
                 "version": node_row["version"],
+                "node_status": node_row["status"],
                 "jobs": jobs,
                 "status": status,
                 "sort": effective_sort,
