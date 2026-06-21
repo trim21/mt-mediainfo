@@ -6,7 +6,9 @@ import qbittorrentapi
 from pydantic import BeforeValidator
 from qbittorrentapi import NotFound404Error
 
-from app.bt_client import (
+from app.utils import parse_obj
+
+from ._base import (
     ETA_INF,
     BTClient,
     Torrent,
@@ -14,7 +16,6 @@ from app.bt_client import (
     TorrentNotFoundError,
     TorrentState,
 )
-from app.utils import parse_obj
 
 
 def _normalize_eta(v: Any) -> int:

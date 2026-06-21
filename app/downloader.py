@@ -26,6 +26,8 @@ from app.bt_client import (
     TorrentNotFoundError,
     TorrentState,
 )
+from app.bt_client.qb_client import QBittorrentClient
+from app.bt_client.rt_client import RTorrentClient
 from app.config import DownloaderConfig
 from app.const import (
     BT_TAG_DOWNLOADING,
@@ -44,7 +46,6 @@ from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.kv import KVConfig
 from app.mediainfo import extract_bdinfo_from_dir, extract_mediainfo_from_file
 from app.mt import MTeamDomain
-from app.qb_client import QBittorrentClient
 from app.rpc import (
     RPC_DELETE_TORRENT,
     RPC_PING,
@@ -52,7 +53,6 @@ from app.rpc import (
     PingPayload,
     process_commands,
 )
-from app.rt_client import RTorrentClient
 from app.torrent import (
     File,
     bdmv_disc_path,
