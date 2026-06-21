@@ -142,6 +142,7 @@ class Downloader:
     ffmpeg_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("ffmpeg"))
     bdinfocli_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("BDInfo"))
     thread_filter_template: jinja2.Template | None = None
+    _mediainfo_cache: dict[str, tuple[str, bool]] = dataclasses.field(default_factory=dict)
 
     @classmethod
     def new(cls, cfg: DownloaderConfig) -> Downloader:
@@ -703,25 +704,31 @@ class Downloader:
         active = [f for f in files if f.priority != 0]
         active_objs = [File(length=f.size, path=tuple(f.name.split("/"))) for f in active]
 
-        try:
-            if t.hash in bdmv_hashes:
-                media_info, hard_code_subtitle = self.__extract_bdmv_mediainfo(
-                    active_objs, t.save_path
+        cached = self._mediainfo_cache.get(t.hash)
+        if cached is not None:
+            logger.info("reusing cached mediainfo for torrent {}", t.name)
+            media_info, hard_code_subtitle = cached
+        else:
+            try:
+                if t.hash in bdmv_hashes:
+                    media_info, hard_code_subtitle = self.__extract_bdmv_mediainfo(
+                        active_objs, t.save_path
+                    )
+                else:
+                    media_info, hard_code_subtitle = self.__extract_regular_mediainfo(
+                        active, t.save_path
+                    )
+            except Exception as e:
+                logger.error("failed to process local torrent {}: {}", t.name, e)
+                self.__update_job_status(
+                    status=ItemStatus.FAILED,
+                    info_hash=t.hash,
+                    failed_reason=format_exc(e),
                 )
-            else:
-                media_info, hard_code_subtitle = self.__extract_regular_mediainfo(
-                    active, t.save_path
-                )
-        except Exception as e:
-            logger.error("failed to process local torrent {}: {}", t.name, e)
-            self.__update_job_status(
-                status=ItemStatus.FAILED,
-                info_hash=t.hash,
-                failed_reason=format_exc(e),
-            )
-            self.client.torrents_add_tags(tags=[BT_TAG_PROCESS_ERROR], torrent_hashes=t.hash)
-            self._delete_torrent_with_retry(t.hash)
-            return
+                self.client.torrents_add_tags(tags=[BT_TAG_PROCESS_ERROR], torrent_hashes=t.hash)
+                self._delete_torrent_with_retry(t.hash)
+                return
+            self._mediainfo_cache[t.hash] = (media_info, hard_code_subtitle)
 
         with (
             self.db.connection() as conn,
@@ -748,6 +755,7 @@ class Downloader:
                 [t.hash, self.config.node_id],
             )
         self._delete_torrent_with_retry(t.hash)
+        self._mediainfo_cache.pop(t.hash, None)
 
     def __extract_bdmv_mediainfo(self, active_objs: list[File], save_path: str) -> tuple[str, bool]:
         """Extract BDMV mediainfo from selected disc files.
