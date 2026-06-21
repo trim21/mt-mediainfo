@@ -129,7 +129,7 @@ Tracks mediainfo export jobs to S3.
 
 Export workflow:
 
-1. Runs on the 1st of each month (`__run_export_mediainfo` checks `today.day == 1` and `last_export_mediainfo_date` KV)
+1. Runs every Monday (`__run_export_mediainfo` checks `today.weekday() == 0` and `last_export_mediainfo_date` KV)
 2. Selects threads where `api_mediainfo != ''`, `mediainfo != ''`, `mediainfo != api_mediainfo` (locally generated mediainfo that differs from M-Team API), `exported_at = 0`, `seeders != 0`, `deleted = false`
 3. Writes zstd-compressed JSON Lines to S3 under `exports/{date}/mediainfo_export.jsonl.zst`
 4. Marks `thread.exported_at` with the export date int so those rows are excluded from future exports
