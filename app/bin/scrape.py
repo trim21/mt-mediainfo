@@ -924,15 +924,12 @@ class Scrape:
 
     def start(self) -> None:
         interval = 60
+        scrape_limit = parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
 
         runners: dict[str, Callable[[], RunResult]] = {
             "0-search": lambda: self.__run_search(),
-            "1-mediainfo": lambda: self.__run_mediainfo(
-                parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
-            ),
-            "2-fetch-detail": lambda: self.__run_scrape(
-                parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
-            ),
+            "1-mediainfo": lambda: self.__run_mediainfo(scrape_limit),
+            "2-fetch-detail": lambda: self.__run_scrape(scrape_limit),
             "3-fetch-torrent": lambda: self.__run_fetch_torrents(),
             "4-backup": lambda: self.__run_backup(),
             "5-pg-dump": lambda: self.__run_pg_dump(),
