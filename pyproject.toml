@@ -48,6 +48,7 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 cache_dir = '.venv/.cache/pytest'
 
 [tool.mypy]
