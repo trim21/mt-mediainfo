@@ -1,8 +1,8 @@
 import click
 
+from app.bin.downloader import Downloader
+from app.bin.scrape import Scrape
 from app.config import load_downloader_config, load_scrape_config
-from app.downloader import Downloader
-from app.scrape import Scrape
 
 
 @click.group()

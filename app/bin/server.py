@@ -45,7 +45,9 @@ class ORJSONResponse(JSONResponse):
         return orjson.dumps(content, option=orjson.OPT_INDENT_2, default=str)
 
 
-templates = Jinja2Templates(directory=str(Path(__file__).parent.joinpath("templates").resolve()))
+templates = Jinja2Templates(
+    directory=str(Path(__file__).parent.parent.joinpath("templates").resolve())
+)
 
 
 def _fmt_eta(seconds: float) -> str:
