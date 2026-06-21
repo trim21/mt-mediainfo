@@ -107,7 +107,7 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
         thread.category, thread.deleted, thread.created_at, thread.upload_at,
         thread.api_mediainfo_at, thread.torrent_fetched_at, thread.selected_size,
         thread.torrent_invalid, thread.generated_mediainfo_at, thread.exported_at,
-        thread.selected_index
+        thread.selected_index, thread.type
     from thread
     where
         thread.deleted = false
@@ -657,24 +657,29 @@ class Downloader:
 
     def __fix_file_selection(self, t: Torrent, bdmv_hashes: set[str]) -> None:
         """Fix file priorities for torrents that are downloading all files."""
-        files = self.client.torrents_files(torrent_hash=t.hash)
+        self.__fix_file_selection_by_hash(t.hash, t.hash in bdmv_hashes, t.name)
+
+    def __fix_file_selection_by_hash(self, info_hash: str, is_bdmv: bool, name: str = "") -> None:
+        """Fix file priorities for a torrent identified by info_hash."""
+        files = self.client.torrents_files(torrent_hash=info_hash)
         if len(files) <= 1:
             return
         file_objs = [File(length=f.size, path=tuple(f.name.split("/"))) for f in files]
 
-        if t.hash in bdmv_hashes:
+        if is_bdmv:
             _selected_size, selected_index = pick_bdmv_selection(file_objs)
             if not selected_index:
                 logger.warning(
-                    "bdmv torrent {} has no selectable disc, skipping file selection", t.name
+                    "bdmv torrent {} has no selectable disc, skipping file selection",
+                    name or info_hash,
                 )
                 return
             keep = set(selected_index)
             file_ids = [f.index for f in files if f.index not in keep and f.priority != 0]
             if file_ids:
-                logger.info("fixing bdmv file selection for torrent {}", t.name)
+                logger.info("fixing bdmv file selection for torrent {}", name or info_hash)
                 self.client.torrents_file_priority(
-                    torrent_hash=t.hash,
+                    torrent_hash=info_hash,
                     file_ids=file_ids,
                     priority=0,
                 )
@@ -685,9 +690,9 @@ class Downloader:
             return
         file_ids = [f.index for f in files if f.index != keep_idx and f.priority != 0]
         if file_ids:
-            logger.info("fixing file selection for torrent {}", t.name)
+            logger.info("fixing file selection for torrent {}", name or info_hash)
         self.client.torrents_file_priority(
-            torrent_hash=t.hash,
+            torrent_hash=info_hash,
             file_ids=file_ids,
             priority=0,
         )
@@ -856,6 +861,10 @@ class Downloader:
                     )
                     return PickContext()
 
+            info_hash_to_is_bdmv: dict[str, bool] = {
+                row["info_hash"]: row.get("type") == "bdmv" for row in rows
+            }
+
             has_pending = True
 
             for row in rows:
@@ -904,6 +913,19 @@ class Downloader:
         for tid, info_hash in picked:
             try:
                 self.__add_torrent(tid, info_hash)
+                if isinstance(self.client, RTorrentClient):
+                    try:
+                        self.__fix_file_selection_by_hash(
+                            info_hash, info_hash_to_is_bdmv.get(info_hash, False)
+                        )
+                    except Exception:
+                        logger.exception("failed immediate file selection for tid={}", tid)
+                    else:
+                        self.client.torrents_add_tags(
+                            tags=[BT_TAG_FILE_SELECTED], torrent_hashes=info_hash
+                        )
+                        self.client.torrents_set_download_limit(limit=0, torrent_hashes=info_hash)
+                        self.client.torrents_resume(torrent_hashes=info_hash)
             except TimeoutError:
                 logger.warning("timeout adding torrent tid={}, will retry", tid)
                 with contextlib.suppress(TorrentNotFoundError):
