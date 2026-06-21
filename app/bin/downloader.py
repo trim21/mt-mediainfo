@@ -42,7 +42,6 @@ from app.const import (
     pick_order_clause,
 )
 from app.db import Connection, Database
-from app.db.kv import KVConfig
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
 from app.mediainfo import extract_bdinfo_from_dir, extract_mediainfo_from_file
 from app.mt import MTeamDomain
@@ -134,7 +133,7 @@ class Downloader:
     config: DownloaderConfig
     client: BTClient
     store: TorrentStore
-    kv: KVConfig
+    _last_orphan_cleanup: list[float] = dataclasses.field(default_factory=lambda: [0.0])
     mediainfo_bin: str = dataclasses.field(
         default_factory=lambda: must_find_executable("mediainfo")
     )
@@ -177,14 +176,11 @@ class Downloader:
         store = TorrentStore(cfg)
         logger.info("torrent store created")
 
-        kv = KVConfig(db)
-
         return Downloader(
             config=cfg,
             db=db,
             client=client,
             store=store,
-            kv=kv,
             thread_filter_template=thread_filter_template,
         )
 
@@ -279,10 +275,8 @@ class Downloader:
         Runs every 3 hours. Scans download_path for info_hash directories
         and removes any that don't have an active job in the database.
         """
-        now = datetime.now(tz=TZ_SHANGHAI)
-        bucket = now.hour // 3
-        kv_key = f"orphan-files:{self.config.node_id}:{now.date().isoformat()}:{bucket}"
-        if self.kv.get(kv_key):
+        elapsed = time.monotonic() - self._last_orphan_cleanup[0]
+        if elapsed < 3 * 3600:
             return
 
         download_path = Path(self.config.download_path)
@@ -343,10 +337,12 @@ class Downloader:
         else:
             logger.info("orphan cleanup done: no orphan files found")
 
-        self.kv.set(kv_key, "1", ttl=timedelta(days=2))
+        self._last_orphan_cleanup[0] = time.monotonic()
 
     def __run_at_interval(self) -> LoopContext:
-        self.__cleanup_orphan_files()
+        with contextlib.suppress(Exception):
+            self.__cleanup_orphan_files()
+
         self._report_status("torrents")
         completed, min_eta = self.__process_torrents()
         self._report_status("picking")
@@ -357,10 +353,11 @@ class Downloader:
 
     def _report_status(self, status: str) -> None:
         """Update node status directly in DB for hang-debugging visibility."""
-        self.db.execute(
-            "update node set status = $1, last_seen = now() where id = $2",
-            [status, self.config.node_id],
-        )
+        with contextlib.suppress(Exception):
+            self.db.execute(
+                "update node set status = $1, last_seen = now() where id = $2",
+                [status, self.config.node_id],
+            )
 
     def __heart_beat(self) -> None:
         self.db.execute(
