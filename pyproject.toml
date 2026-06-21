@@ -7,7 +7,7 @@ dependencies = [
   'orjson==3.11.9',
   'rich==15.0.0',
   'xxhash==3.7.0',
-  'qbittorrent-api==2026.5.3',
+  'qbittorrent-api==2026.6.0',
   'rtorrent-rpc==0.9.7',
   'click==8.4.1',
   'pydantic==2.13.4',
@@ -40,7 +40,7 @@ dev = [
   "asyncpg-stubs==0.31.2",
   "mypy==2.1.0",
   "pytest==9.1.1",
-  "ty==0.0.42",
+  "ty==0.0.51",
   "types-regex==2026.5.9.20260518",
 ]
 
@@ -48,6 +48,7 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 cache_dir = '.venv/.cache/pytest'
 
 [tool.mypy]
