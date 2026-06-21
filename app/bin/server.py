@@ -332,7 +332,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
           count(1) as scraped_total,
           count(1) filter (where category = any($1)) as total,
           coalesce(sum(selected_size) filter (where category = any($1)), 0)::int8 as total_size,
-          count(1) filter (where category = any($1) and deleted = false and seeders != 0 and api_mediainfo_at is null and api_mediainfo = '') as pending_fetch_mediainfo,
+          count(1) filter (where deleted = false and seeders != 0 and api_mediainfo_at is null and api_mediainfo = '') as pending_fetch_mediainfo,
           count(1) filter (where category = any($1) and deleted = false and seeders != 0 and api_mediainfo_at is not null and mediainfo = '' and api_mediainfo = '' and info_hash = '' and torrent_invalid = '') as pending_fetch_torrent,
           count(1) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')) as done,
           coalesce(sum(selected_size) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')), 0)::int8 as done_size
@@ -1194,16 +1194,14 @@ def create_app() -> fastapi.FastAPI:
             title="Pending Fetch Mediainfo",
             count_sql="""
             select count(1)::int from pending_mediainfo_threads
-              where category = any($1)
             """,
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from pending_mediainfo_threads
-            where category = any($3)
-            order by (mediainfo = '') desc, (category = any($4)) desc, seeders desc, tid asc
+            order by (mediainfo = '') desc, seeders desc, tid asc
             limit $1 offset $2
             """,
-            params=[SELECTED_CATEGORY, PRIORITY_CATEGORY],
-            count_params=[SELECTED_CATEGORY],
+            params=[],
+            count_params=[],
             page=page,
             show_progress=False,
             show_failed_reason=False,

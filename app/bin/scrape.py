@@ -517,11 +517,10 @@ class Scrape:
         threads = self.__db.fetch_all(
             """
             select tid from pending_mediainfo_threads
-            where category = any($1)
-            order by (mediainfo = '') desc, (category = any($3)) desc, seeders desc, tid asc
-            limit $2
+            order by (category = any($2)) desc, seeders desc, tid asc
+            limit $1
             """,
-            [SELECTED_CATEGORY, limit, PRIORITY_CATEGORY],
+            [limit, SELECTED_CATEGORY],
         )
 
         for (tid,) in threads:
