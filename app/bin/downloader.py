@@ -346,7 +346,9 @@ class Downloader:
         self.kv.set(kv_key, "1", ttl=timedelta(days=2))
 
     def __run_at_interval(self) -> LoopContext:
-        self.__cleanup_orphan_files()
+        with contextlib.suppress(Exception):
+            self.__cleanup_orphan_files()
+
         self._report_status("torrents")
         completed, min_eta = self.__process_torrents()
         self._report_status("picking")
@@ -357,10 +359,11 @@ class Downloader:
 
     def _report_status(self, status: str) -> None:
         """Update node status directly in DB for hang-debugging visibility."""
-        self.db.execute(
-            "update node set status = $1, last_seen = now() where id = $2",
-            [status, self.config.node_id],
-        )
+        with contextlib.suppress(Exception):
+            self.db.execute(
+                "update node set status = $1, last_seen = now() where id = $2",
+                [status, self.config.node_id],
+            )
 
     def __heart_beat(self) -> None:
         self.db.execute(
