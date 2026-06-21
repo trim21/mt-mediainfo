@@ -42,8 +42,8 @@ from app.const import (
     pick_order_clause,
 )
 from app.db import Connection, Database
+from app.db.kv import KVConfig
 from app.hardcode_subtitle import check_hardcode_chinese_subtitle
-from app.kv import KVConfig
 from app.mediainfo import extract_bdinfo_from_dir, extract_mediainfo_from_file
 from app.mt import MTeamDomain
 from app.rpc import (

@@ -25,8 +25,8 @@ from app.const import (
     search_cursor_key,
 )
 from app.db import Database
+from app.db.kv import KVConfig
 from app.file_cache import encode_cached_files, get_torrent_files
-from app.kv import KVConfig
 from app.mt import MTeamAPI, MTeamRequestError, TorrentFileError, httpx_network_errors
 from app.torrent import (
     compute_bdmv_selection,

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from app.db import Database
+from .database import Database
 
 
 class KVConfig:

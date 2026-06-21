@@ -8,7 +8,7 @@ from qbittorrentapi import NotFound404Error
 
 from app.utils import parse_obj
 
-from ._base import (
+from .base import (
     ETA_INF,
     BTClient,
     Torrent,
