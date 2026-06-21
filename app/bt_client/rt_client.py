@@ -9,7 +9,7 @@ import bencode2
 from rtorrent_rpc import RTorrent
 from rtorrent_rpc.helper import get_torrent_info_hash, parse_tags
 
-from app.bt_client import (
+from ._base import (
     ETA_INF,
     BTClient,
     Torrent,
