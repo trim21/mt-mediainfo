@@ -766,7 +766,7 @@ class Scrape:
 
     def __run_export_mediainfo(self) -> RunResult:
         today = datetime.now(TZ_SHANGHAI).date()
-        if today.weekday() != 0:  # Monday
+        if today.day != 1:  # 1st of the month
             return RunResult.ok
         last = self.__kv.get("last_export_mediainfo_date")
         if last == today.isoformat():
