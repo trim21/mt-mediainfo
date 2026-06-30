@@ -509,9 +509,14 @@ class Downloader:
         )
 
         counts: dict[str, int] = {}
+        downloading_torrents: list[Torrent] = []
+        uploading_torrents: list[Torrent] = []
+
+        # ---- Phase 1: collect downloading/uploading, handle other states ----
         torrent_count = len(torrents)
         for idx, t in enumerate(torrents):
             self._report_status(f"torrents:{idx + 1}/{torrent_count}:{t.state.value}")
+
             # Torrent not in managed (downloading) jobs — check if it has a job at all
             if t.hash not in managed_hashes:
                 self.__handle_unmanaged_torrent(t)
@@ -562,13 +567,6 @@ class Downloader:
                 )
                 self._delete_torrent_with_retry(t.hash)
                 counts["unselected"] = counts.get("unselected", 0) + 1
-                continue  # Upload complete → process mediainfo
-            if t.state == TorrentState.UPLOADING:
-                completed = True
-                self.__set_tags(t.hash, remove=BT_TAG_DOWNLOADING, add=BT_TAG_PROCESSING)
-                self._report_status(f"mediainfo:{hash_to_tid[t.hash.lower()]}:{t.name[:20]}")
-                self.__process_completed_torrent(t, bdmv_hashes)
-                counts["uploading"] = counts.get("uploading", 0) + 1
                 continue
 
             # File not yet selected → select files, clear limit
@@ -581,7 +579,12 @@ class Downloader:
                 counts["need_select"] = counts.get("need_select", 0) + 1
                 continue
 
-            # Paused → resume
+            # Defer uploading torrents to phase 3 (individual mediainfo processing)
+            if t.state == TorrentState.UPLOADING:
+                uploading_torrents.append(t)
+                continue
+
+            # Paused → resume (don't do this for uploading; already deferred above)
             if t.state == TorrentState.PAUSED:
                 logger.info("resuming stopped torrent {} (tags={})", t.name, t.tags)
                 self.__set_tags(t.hash, remove=BT_TAG_SELECTING_FILES, add=BT_TAG_DOWNLOADING)
@@ -589,33 +592,21 @@ class Downloader:
                 counts["paused"] = counts.get("paused", 0) + 1
                 continue
 
-            # Downloading — update progress
+            # Downloading — accumulate for batch update
             counts["downloading"] = counts.get("downloading", 0) + 1
-            self.db.execute(
-                "update job set progress=$1, dlspeed=$2, eta=$3, error_message=$4, updated_at=$5"
-                " where info_hash=$6 and node_id=$7 and status=$8",
-                [
-                    t.progress,
-                    t.dlspeed,
-                    t.eta,
-                    t.error_message,
-                    now,
-                    t.hash,
-                    self.config.node_id,
-                    ItemStatus.DOWNLOADING,
-                ],
-            )
-            self.db.execute(
-                "insert into job_download_size (info_hash, node_id, size)"
-                " select $1, $2, $3"
-                " where ("
-                "   select jds.size from job_download_size jds"
-                "   where jds.info_hash = $1 and jds.node_id = $2"
-                "   order by jds.recorded_at desc limit 1"
-                " ) is distinct from $3",
-                [t.hash, self.config.node_id, t.completed],
-            )
-            continue
+            downloading_torrents.append(t)
+
+        # ---- Phase 2: batch-report all downloading progress via pipeline ----
+        if downloading_torrents:
+            self.__batch_update_downloading(downloading_torrents, now)
+
+        # ---- Phase 3: process completed torrents one by one (mediainfo extraction) ----
+        for t in uploading_torrents:
+            completed = True
+            self.__set_tags(t.hash, remove=BT_TAG_DOWNLOADING, add=BT_TAG_PROCESSING)
+            self._report_status(f"mediainfo:{hash_to_tid[t.hash.lower()]}:{t.name[:20]}")
+            self.__process_completed_torrent(t, bdmv_hashes)
+            counts["uploading"] = counts.get("uploading", 0) + 1
 
         t3 = time.monotonic()
         logger.info(
@@ -626,6 +617,43 @@ class Downloader:
             min_eta,
         )
         return completed, min_eta
+
+    def __batch_update_downloading(self, torrents: list[Torrent], now: datetime) -> None:
+        """Batch update job progress and job_download_size for downloading torrents.
+
+        Uses psycopg3 pipeline mode to send all 2N SQL statements in a single
+        connection + sync round-trip, instead of 2N separate connection acquisitions.
+        """
+        node_id = self.config.node_id
+        status = ItemStatus.DOWNLOADING
+
+        with self.db.connection() as conn, conn.pipeline():
+            for t in torrents:
+                conn.execute(
+                    "update job set progress=$1, dlspeed=$2, eta=$3,"
+                    " error_message=$4, updated_at=$5"
+                    " where info_hash=$6 and node_id=$7 and status=$8",
+                    [
+                        t.progress,
+                        t.dlspeed,
+                        t.eta,
+                        t.error_message,
+                        now,
+                        t.hash,
+                        node_id,
+                        status,
+                    ],
+                )
+                conn.execute(
+                    "insert into job_download_size (info_hash, node_id, size)"
+                    " select $1, $2, $3"
+                    " where ("
+                    "   select jds.size from job_download_size jds"
+                    "   where jds.info_hash = $1 and jds.node_id = $2"
+                    "   order by jds.recorded_at desc limit 1"
+                    " ) is distinct from $3",
+                    [t.hash, node_id, t.completed],
+                )
 
     def __handle_unmanaged_torrent(self, t: Torrent) -> None:
         """Handle a torrent in the download client that has no active downloading job.
