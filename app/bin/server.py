@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from html import escape
 from math import inf
-from operator import itemgetter
 from pathlib import Path
 from typing import Annotated, Any, Literal, Protocol, cast
 
@@ -1789,7 +1788,10 @@ def create_app() -> fastapi.FastAPI:
             for n in node_rows
         ]
 
-        return render("nodes.html.j2", ctx={"nodes": sorted(nodes_data, key=itemgetter("alias"))})
+        return render(
+            "nodes.html.j2",
+            ctx={"nodes": sorted(nodes_data, key=lambda n: (n["alias"] or n["id"]).lower())},
+        )
 
     @app.get("/nodes/{node_id}")
     async def node_jobs_page(
