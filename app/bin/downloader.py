@@ -353,6 +353,8 @@ class Downloader:
 
     def _report_status(self, status: str) -> None:
         """Update node status directly in DB for hang-debugging visibility."""
+        if self.config.disable_status_report:
+            return
         with contextlib.suppress(Exception):
             self.db.execute(
                 "update node set status = $1, last_seen = now() where id = $2",
