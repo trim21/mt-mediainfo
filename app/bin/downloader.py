@@ -513,10 +513,7 @@ class Downloader:
         uploading_torrents: list[Torrent] = []
 
         # ---- Phase 1: collect downloading/uploading, handle other states ----
-        torrent_count = len(torrents)
-        for idx, t in enumerate(torrents):
-            self._report_status(f"torrents:{idx + 1}/{torrent_count}:{t.state.value}")
-
+        for t in torrents:
             # Torrent not in managed (downloading) jobs — check if it has a job at all
             if t.hash not in managed_hashes:
                 self.__handle_unmanaged_torrent(t)
@@ -596,15 +593,18 @@ class Downloader:
             counts["downloading"] = counts.get("downloading", 0) + 1
             downloading_torrents.append(t)
 
-        # ---- Phase 2: batch-report all downloading progress via pipeline ----
+        # ---- Phase 2: batch-update all downloading progress via pipeline ----
         if downloading_torrents:
             self.__batch_update_downloading(downloading_torrents, now)
 
         # ---- Phase 3: process completed torrents one by one (mediainfo extraction) ----
-        for t in uploading_torrents:
+        uploading_count = len(uploading_torrents)
+        for i, t in enumerate(uploading_torrents, 1):
             completed = True
             self.__set_tags(t.hash, remove=BT_TAG_DOWNLOADING, add=BT_TAG_PROCESSING)
-            self._report_status(f"mediainfo:{hash_to_tid[t.hash.lower()]}:{t.name[:20]}")
+            self._report_status(
+                f"mediainfo:{i}/{uploading_count}:{hash_to_tid[t.hash.lower()]}:{t.name[:20]}"
+            )
             self.__process_completed_torrent(t, bdmv_hashes)
             counts["uploading"] = counts.get("uploading", 0) + 1
 
