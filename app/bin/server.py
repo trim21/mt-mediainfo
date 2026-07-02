@@ -326,15 +326,31 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
     ) = await asyncio.gather(
         pool.fetchrow(
             """
+        with t as (
+          select
+            coalesce(nullif(selected_size, 0), size) as esize,
+            category = any($1) as is_selected,
+            not deleted as active,
+            seeders != 0 as has_seeders,
+            api_mediainfo_at is null and api_mediainfo = '' as needs_mediainfo,
+            api_mediainfo_at is not null
+              and mediainfo = ''
+              and api_mediainfo = ''
+              and info_hash = ''
+              and torrent_invalid = '' as needs_torrent,
+            (mediainfo != '' and info_hash != '') or api_mediainfo != '' as is_done
+          from thread
+        )
         select
-          count(1) as scraped_total,
-          count(1) filter (where category = any($1)) as total,
-          coalesce(sum(coalesce(nullif(selected_size, 0), size)) filter (where category = any($1)), 0)::int8 as total_size,
-          count(1) filter (where deleted = false and seeders != 0 and api_mediainfo_at is null and api_mediainfo = '') as pending_fetch_mediainfo,
-          count(1) filter (where category = any($1) and deleted = false and seeders != 0 and api_mediainfo_at is not null and mediainfo = '' and api_mediainfo = '' and info_hash = '' and torrent_invalid = '') as pending_fetch_torrent,
-          count(1) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')) as done,
-          coalesce(sum(coalesce(nullif(selected_size, 0), size)) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')), 0)::int8 as done_size
-        from thread
+          count(*) as scraped_total,
+          count(*) filter (where is_selected) as total,
+          coalesce(sum(esize) filter (where is_selected), 0)::int8 as total_size,
+          count(*) filter (where active and has_seeders and needs_mediainfo) as pending_fetch_mediainfo,
+          count(*) filter (where is_selected and active and has_seeders and needs_torrent) as pending_fetch_torrent_seeders_gt0,
+          count(*) filter (where is_selected and active and not has_seeders and needs_torrent) as pending_fetch_torrent_seeders_zero,
+          count(*) filter (where is_selected and active and has_seeders and is_done) as done,
+          coalesce(sum(esize) filter (where is_selected and active and has_seeders and is_done), 0)::int8 as done_size
+        from t
         """,
             SELECTED_CATEGORY,
         ),
@@ -432,7 +448,15 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
     total = cast(int, thread_stats["total"])
     total_size = cast(int, thread_stats["total_size"])
     pending_fetch_mediainfo = cast(int, thread_stats["pending_fetch_mediainfo"])
-    pending_fetch_torrent = cast(int, thread_stats["pending_fetch_torrent"])
+    pending_fetch_torrent_seeders_gt0 = cast(int, thread_stats["pending_fetch_torrent_seeders_gt0"])
+    pending_fetch_torrent_seeders_zero = cast(
+        int, thread_stats["pending_fetch_torrent_seeders_zero"]
+    )
+    pending_fetch_torrent = (
+        pending_fetch_torrent_seeders_gt0
+        if pending_fetch_torrent_seeders_gt0 > 0
+        else pending_fetch_torrent_seeders_zero
+    )
     done = cast(int, thread_stats["done"])
     done_size = cast(int, thread_stats["done_size"])
 

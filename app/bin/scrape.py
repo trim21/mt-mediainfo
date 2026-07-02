@@ -267,6 +267,24 @@ class Scrape:
         )
 
         if not threads:
+            threads = self.__db.fetch_all(
+                """
+                select tid from thread
+                where deleted = false
+                  and seeders = 0
+                  and category = any($1)
+                  and api_mediainfo_at is not null
+                  and mediainfo = ''
+                  and api_mediainfo = ''
+                  and info_hash = ''
+                  and torrent_invalid = ''
+                order by (category = any($2)) desc, tid asc
+                limit 100
+                """,
+                [SELECTED_CATEGORY, PRIORITY_CATEGORY],
+            )
+
+        if not threads:
             return True
 
         today = datetime.now(TZ_SHANGHAI).strftime("%Y-%m-%d")
