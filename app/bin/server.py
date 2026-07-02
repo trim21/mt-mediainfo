@@ -330,11 +330,11 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         select
           count(1) as scraped_total,
           count(1) filter (where category = any($1)) as total,
-          coalesce(sum(selected_size) filter (where category = any($1)), 0)::int8 as total_size,
+          coalesce(sum(coalesce(nullif(selected_size, 0), size)) filter (where category = any($1)), 0)::int8 as total_size,
           count(1) filter (where deleted = false and seeders != 0 and api_mediainfo_at is null and api_mediainfo = '') as pending_fetch_mediainfo,
           count(1) filter (where category = any($1) and deleted = false and seeders != 0 and api_mediainfo_at is not null and mediainfo = '' and api_mediainfo = '' and info_hash = '' and torrent_invalid = '') as pending_fetch_torrent,
           count(1) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')) as done,
-          coalesce(sum(selected_size) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')), 0)::int8 as done_size
+          coalesce(sum(coalesce(nullif(selected_size, 0), size)) filter (where category = any($1) and deleted = false and seeders != 0 and ((mediainfo != '' and info_hash != '') or api_mediainfo != '')), 0)::int8 as done_size
         from thread
         """,
             SELECTED_CATEGORY,
@@ -345,7 +345,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         ),
         pool.fetchrow(
             """
-        select count(1)::int as count, coalesce(sum(selected_size), 0)::int8 as size
+        select count(1)::int as count, coalesce(sum(coalesce(nullif(selected_size, 0), size)), 0)::int8 as size
         from pending_download_threads
         left join job on (job.tid = pending_download_threads.tid)
         where category = any($1) and job.tid is null
@@ -356,7 +356,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
             """
         select job.status,
                count(1)::int as count,
-               coalesce(sum(thread.selected_size), 0)::int8 as size
+               coalesce(sum(coalesce(nullif(thread.selected_size, 0), thread.size)), 0)::int8 as size
         from job
         join thread on (thread.tid = job.tid)
         where thread.category = any($1)
@@ -375,7 +375,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
             """
         select job.node_id,
                count(1)::int as count,
-               coalesce(sum(thread.selected_size), 0)::int8 as size,
+               coalesce(sum(coalesce(nullif(thread.selected_size, 0), thread.size)), 0)::int8 as size,
                coalesce(sum(job.dlspeed), 0)::int8 as dlspeed
         from job
         join thread on (thread.tid = job.tid)
@@ -391,7 +391,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
             """
         select job.node_id,
                count(1)::int as count,
-               coalesce(sum(thread.selected_size), 0)::int8 as size
+               coalesce(sum(coalesce(nullif(thread.selected_size, 0), thread.size)), 0)::int8 as size
         from job
         join thread on (thread.tid = job.tid)
         where thread.category = any($1)
@@ -406,7 +406,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         pool.fetchrow(
             """
         select count(1)::int as count,
-               coalesce(sum(selected_size), 0)::int8 as size
+               coalesce(sum(coalesce(nullif(selected_size, 0), size)), 0)::int8 as size
         from dormant_threads
         where category = any($1)
         """,
@@ -415,7 +415,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         pool.fetchrow(
             """
         select count(distinct job.tid)::int as count,
-               coalesce(sum(thread.selected_size), 0)::int8 as size
+               coalesce(sum(coalesce(nullif(thread.selected_size, 0), thread.size)), 0)::int8 as size
         from job
         join thread on (thread.tid = job.tid)
         where job.status = 'skipped' and thread.category = any($1)
@@ -519,11 +519,6 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
     failed_export_dates = cast(list[asyncpg.Record], failed_export_dates)
     failed_exports = [{"export_date": r["export_date"]} for r in failed_export_dates]
 
-    def pct(n: int) -> str:
-        if total == 0:
-            return "0.0"
-        return f"{n / total * 100:.1f}"
-
     return {
         "scraped_total": scraped_total,
         "search_cursor_normal": config_map.get(cursor_key_normal, "N/A"),
@@ -532,31 +527,22 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         "total_size": human_readable_size(total_size),
         "done": done,
         "done_size": human_readable_size(done_size),
-        "done_pct": pct(done),
         "done_nodes": done_nodes,
         "pending_fetch_mediainfo": pending_fetch_mediainfo,
-        "pending_fetch_mediainfo_pct": pct(pending_fetch_mediainfo),
         "pending_fetch_torrent": pending_fetch_torrent,
-        "pending_fetch_torrent_pct": pct(pending_fetch_torrent),
         "pending_to_download": pending_to_download,
         "pending_to_download_size": human_readable_size(pending_to_download_size),
-        "pending_to_download_pct": pct(pending_to_download),
         "downloading": downloading,
         "downloading_size": human_readable_size(downloading_size),
-        "downloading_pct": pct(downloading),
         "downloading_nodes": downloading_nodes,
         "failed": failed,
         "failed_size": human_readable_size(failed_size),
-        "failed_pct": pct(failed),
         "removed_by_client": removed_by_client,
         "removed_by_client_size": human_readable_size(removed_by_client_size),
-        "removed_by_client_pct": pct(removed_by_client),
         "dormant": dormant,
         "dormant_size": human_readable_size(dormant_size),
-        "dormant_pct": pct(dormant),
         "skipped_by_picker": skipped_by_picker,
         "skipped_by_picker_size": human_readable_size(skipped_by_picker_size),
-        "skipped_by_picker_pct": pct(skipped_by_picker),
         "scrape_status": scrape_status,
         "failed_exports": failed_exports,
     }

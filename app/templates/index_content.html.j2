@@ -10,16 +10,6 @@
   </div>
   {% endif %}
 
-  <div class="progress mb-3" style="height: 30px;">
-    <div class="progress-bar" style="width: {{ dormant_pct }}%; background-color: #adb5bd;" role="progressbar" title="Dormant: {{ dormant }}"></div>
-    <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ pending_fetch_mediainfo_pct }}%" title="Pending mediainfo: {{ pending_fetch_mediainfo }}"></div>
-    <div class="progress-bar bg-warning" role="progressbar" style="width: {{ pending_fetch_torrent_pct }}%" title="Pending torrent: {{ pending_fetch_torrent }}"></div>
-    <div class="progress-bar bg-warning text-dark" role="progressbar" style="width: {{ pending_to_download_pct }}%" title="Pending download: {{ pending_to_download }}"></div>
-    <div class="progress-bar bg-info" role="progressbar" style="width: {{ downloading_pct }}%" title="Downloading: {{ downloading }}"></div>
-    <div class="progress-bar bg-danger" role="progressbar" style="width: {{ failed_pct }}%" title="Failed: {{ failed }}"></div>
-    <div class="progress-bar bg-success" role="progressbar" style="width: {{ done_pct }}%" title="Done: {{ done }}">{{ done_pct }}%</div>
-  </div>
-
   <div class="row">
     <div class="col-md-6">
       <h3>Scraping Progress</h3>
