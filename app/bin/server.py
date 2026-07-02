@@ -19,7 +19,6 @@ from botocore.config import Config as BotoConfig
 from fastapi import Depends, Query, Request
 from fastapi.templating import Jinja2Templates
 from mypy_boto3_s3 import S3Client
-from sse_starlette.sse import EventSourceResponse
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from app.config import ServerConfig, load_s3_config, load_server_config
@@ -1130,21 +1129,7 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/")
     async def progress(render: Render) -> HTMLResponse:
         ctx = await _fetch_progress_ctx(pool)
-        return render("layout.html.j2", ctx=ctx)
-
-    @app.get("/api/progress/stream")
-    async def progress_stream() -> EventSourceResponse:
-        tmpl = templates.get_template("index.html.j2")
-
-        async def generate() -> AsyncGenerator[dict[str, str]]:
-            while True:
-                ctx = await _fetch_progress_ctx(pool)
-                ctx["now"] = datetime.now(tz=TZ_SHANGHAI)
-                html = tmpl.render(**ctx)
-                yield {"event": "update", "data": orjson.dumps({"html": html}).decode()}
-                await asyncio.sleep(5)
-
-        return EventSourceResponse(generate())
+        return render("index.html.j2", ctx=ctx)
 
     @app.get("/detail")
     async def detail(render: Render, start: Annotated[str | None, Query()] = None) -> HTMLResponse:
