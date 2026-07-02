@@ -657,7 +657,7 @@ class Scrape:
         if c.pg_ssl_cert:
             env["PGSSLCERT"] = c.pg_ssl_cert
         if c.pg_ssl_key:
-            env["PGSSLKEY"] = os.path.join(tempfile.gettempdir(), "pg-client.key")
+            env["PGSSLKEY"] = c.pg_ssl_key
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             sql_path = os.path.join(tmp_dir, "dump.sql")

@@ -21,7 +21,7 @@ from fastapi.templating import Jinja2Templates
 from mypy_boto3_s3 import S3Client
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
-from app.config import ServerConfig, load_s3_config, load_server_config
+from app.config import ServerConfig, load_s3_config, load_server_config, prepare_pg_ssl_key
 from app.const import (
     PRIORITY_CATEGORY,
     SELECTED_CATEGORY,
@@ -819,6 +819,7 @@ def _build_config_tree(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
 
 def create_app() -> fastapi.FastAPI:
     cfg: ServerConfig = load_server_config()
+    cfg = prepare_pg_ssl_key(cfg)
 
     async def _init_connection(conn: asyncpg.Connection) -> None:
         await conn.set_type_codec(

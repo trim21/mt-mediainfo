@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import os
 import stat
@@ -123,7 +124,7 @@ class BaseConfig:
         if self.pg_ssl_cert:
             query["sslcert"] = self.pg_ssl_cert
         if self.pg_ssl_key:
-            query["sslkey"] = _copy_key_with_permissions(self.pg_ssl_key)
+            query["sslkey"] = self.pg_ssl_key
 
         if query:
             url = url.with_query(query)
@@ -264,13 +265,22 @@ def load_server_config() -> ServerConfig:
     return parse_obj(ServerConfig, _env_dict())
 
 
-def _copy_key_with_permissions(src: str) -> str:
+def _copy_key_to_temp(src: str) -> str:
     """Copy a private key file to a temp file with 0600 permissions.
 
     Docker volume mounts may not allow chmod on the original file,
     so we copy it to a temp location where we control permissions.
     """
     dst = os.path.join(tempfile.gettempdir(), "pg-client.key")
+
+    # Already exists with correct permissions — skip
+    try:
+        st = os.stat(dst)
+        if st.st_mode & 0o777 == 0o600:
+            return dst
+    except FileNotFoundError:
+        pass
+
     # Remove first so os.open O_CREAT applies the mode to a fresh inode
     try:
         os.unlink(dst)
@@ -285,3 +295,13 @@ def _copy_key_with_permissions(src: str) -> str:
         os.close(fd)
 
     return dst
+
+
+def prepare_pg_ssl_key[T: BaseConfig](config: T) -> T:
+    """Copy pg_ssl_key to a temp location and return config with replaced value.
+
+    Call this once at entry point before any pg_dsn() usage.
+    """
+    if config.pg_ssl_key is not None:
+        return copy.replace(config, pg_ssl_key=_copy_key_to_temp(config.pg_ssl_key))
+    return config
