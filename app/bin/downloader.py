@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import sys
 import time
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, LiteralString, cast
@@ -94,10 +95,9 @@ def _init_progress_db(data_dir: Path) -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path = data_dir / "progress.db"
     db_path.unlink(missing_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
-    _run_progress_migrations(conn)
-    conn.close()
+    with closing(sqlite3.connect(str(db_path))) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        _run_progress_migrations(conn)
     return db_path
 
 
@@ -246,37 +246,29 @@ class Downloader:
 
     def _progress_record(self, info_hash: str, size: int) -> bool:
         """Record a download progress sample. Returns True if a new sample was inserted."""
-        conn = sqlite3.connect(str(self._progress_db_path))
-        try:
+        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
             last = conn.execute(
                 "SELECT size FROM progress WHERE info_hash = ? ORDER BY recorded_at DESC LIMIT 1",
                 (info_hash,),
             ).fetchone()
             if last is not None and last[0] == size:
                 return False
-            now = time.time()
             conn.execute(
                 "INSERT INTO progress (info_hash, size, recorded_at) VALUES (?, ?, ?)",
-                (info_hash, size, now),
+                (info_hash, size, time.time()),
             )
             conn.commit()
             return True
-        finally:
-            conn.close()
 
     def _progress_forget(self, info_hash: str) -> None:
         """Remove all progress records for a torrent (job completed / failed / evicted)."""
-        conn = sqlite3.connect(str(self._progress_db_path))
-        try:
+        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
             conn.execute("DELETE FROM progress WHERE info_hash = ?", (info_hash,))
             conn.commit()
-        finally:
-            conn.close()
 
     def _progress_cleanup(self, active_hashes: set[str]) -> None:
         """Remove progress records for hashes that are no longer actively downloading."""
-        conn = sqlite3.connect(str(self._progress_db_path))
-        try:
+        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
             if not active_hashes:
                 conn.execute("DELETE FROM progress")
             else:
@@ -286,32 +278,36 @@ class Downloader:
                     tuple(active_hashes),
                 )
             conn.commit()
-        finally:
-            conn.close()
 
     def _progress_stalled(self, active_hashes: set[str], cutoff: float) -> set[str]:
         """Return info_hashes whose last recorded progress is before `cutoff` (Unix timestamp)."""
         if not active_hashes:
             return set()
-        conn = sqlite3.connect(str(self._progress_db_path))
-        try:
+        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
             rows = conn.execute(
-                """
-                SELECT info_hash
-                FROM progress
-                GROUP BY info_hash
-                HAVING MAX(recorded_at) < ?
-                """,
+                "SELECT info_hash FROM progress GROUP BY info_hash HAVING MAX(recorded_at) < ?",
                 (cutoff,),
             ).fetchall()
             return {r[0] for r in rows}
-        finally:
-            conn.close()
+
+    def _progress_avg_speed(self, info_hash: str, window: float = 1800) -> float | None:
+        """Return average download speed (bytes/s) over the last `window` seconds,
+        or None if there are fewer than 2 samples in the window."""
+        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
+            row = conn.execute(
+                """
+                SELECT (MAX(size) - MIN(size)) * 1.0 / MAX(1, MAX(recorded_at) - MIN(recorded_at))
+                FROM progress
+                WHERE info_hash = ? AND recorded_at > ?
+                HAVING COUNT(*) >= 2
+                """,
+                (info_hash, time.time() - window),
+            ).fetchone()
+            return row[0] if row else None
 
     def _progress_slowest(self, cutoff: float) -> tuple[str, float] | None:
         """Return (info_hash, avg_speed) of the slowest downloading torrent with samples after `cutoff`."""
-        conn = sqlite3.connect(str(self._progress_db_path))
-        try:
+        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
             row = conn.execute(
                 """
                 SELECT info_hash,
@@ -328,8 +324,6 @@ class Downloader:
             if row is None:
                 return None
             return row[0], row[1]
-        finally:
-            conn.close()
 
     def start(self) -> None:
         logger.info("downloader started, entering main loop")
@@ -747,6 +741,11 @@ class Downloader:
         with self.db.connection() as conn, conn.pipeline():
             for t in torrents:
                 progress_changed = self._progress_record(t.hash, t.completed)
+                avg_speed = self._progress_avg_speed(t.hash, window=1800)
+                if avg_speed is None:
+                    avg_speed = self._progress_avg_speed(t.hash, window=600)
+                if avg_speed is None:
+                    avg_speed = t.dlspeed
                 conn.execute(
                     "update job set progress=$1, dlspeed=$2, eta=$3,"
                     " error_message=$4, updated_at=$5"
@@ -754,7 +753,7 @@ class Downloader:
                     + " where info_hash=$6 and node_id=$7 and status=$8",
                     [
                         t.progress,
-                        t.dlspeed,
+                        avg_speed,
                         t.eta,
                         t.error_message,
                         now,
