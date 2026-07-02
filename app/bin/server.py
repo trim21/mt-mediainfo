@@ -864,7 +864,6 @@ def create_app() -> fastapi.FastAPI:
         show_progress: bool,
         show_failed_reason: bool,
         show_reset: bool = False,
-        show_reset_all: bool = False,
         extra_ctx: dict[str, Any] | None = None,
         count_params: list[Any] | None = None,
         template_name: str = "threads.html.j2",
@@ -906,7 +905,6 @@ def create_app() -> fastapi.FastAPI:
             "pagination_qs": extra_ctx.get("pagination_qs", "") if extra_ctx else "",
             "show_failed_reason": show_failed_reason,
             "show_reset": show_reset,
-            "show_reset_all": show_reset_all,
         }
         if extra_ctx:
             ctx.update(extra_ctx)
@@ -1347,7 +1345,6 @@ def create_app() -> fastapi.FastAPI:
             show_progress=False,
             show_failed_reason=True,
             show_reset=True,
-            show_reset_all=True,
             template_name="threads_with_reset.html.j2",
             extra_ctx={
                 "reset_all_endpoint": "/api/threads/failed/reset-all",
@@ -1381,7 +1378,6 @@ def create_app() -> fastapi.FastAPI:
             show_progress=False,
             show_failed_reason=True,
             show_reset=True,
-            show_reset_all=True,
             template_name="threads_with_reset.html.j2",
             extra_ctx={
                 "reset_all_endpoint": "/api/threads/removed/reset-all",
@@ -1483,8 +1479,13 @@ def create_app() -> fastapi.FastAPI:
             params=[SELECTED_CATEGORY],
             page=page,
             show_progress=False,
-            show_reset_all=True,
             show_failed_reason=False,
+            template_name="threads_with_reset.html.j2",
+            extra_ctx={
+                "reset_all_endpoint": "/api/threads/skipped/reset-all",
+                "reset_all_confirm": "Delete all skipped jobs?",
+                "reset_all_label": "Reset All Skipped",
+            },
         )
 
     @app.get("/thread/{tid}")
