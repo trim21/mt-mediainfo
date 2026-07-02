@@ -79,14 +79,15 @@
           <th>Total</th>
           <td>{{ total }}</td>
           <td>{{ total_size }}</td>
+          <td>100%</td>
         </tr>
         <tr class="table-warning">
-          <th><a href="/threads/pending-download" class="text-reset text-decoration-none">Pending to download</a></th>
+          <th><a href="/threads/pending-download" class="text-reset text-decoration-none">Pending to download {{ pending_to_download_pct }}</a></th>
           <td>{{ pending_to_download }}</td>
           <td>{{ pending_to_download_size }}</td>
         </tr>
         <tr class="table-info">
-          <th><a href="/threads/downloading" class="text-reset text-decoration-none">Downloading</a></th>
+          <th><a href="/threads/downloading" class="text-reset text-decoration-none">Downloading {{ downloading_pct }}</a></th>
           <td>{{ downloading }}</td>
           <td>{{ downloading_size }}</td>
         </tr>
@@ -98,7 +99,7 @@
         </tr>
         {% endfor %}
         <tr class="table-success">
-          <th><a href="/threads/done" class="text-reset text-decoration-none">Done</a></th>
+          <th><a href="/threads/done" class="text-reset text-decoration-none">Done {{ done_pct }}</a></th>
           <td>{{ done }}</td>
           <td>{{ done_size }}</td>
         </tr>
@@ -110,12 +111,12 @@
         </tr>
         {% endfor %}
         <tr class="table-danger">
-          <th><a href="/threads/failed" class="text-reset text-decoration-none">Failed</a></th>
+          <th><a href="/threads/failed" class="text-reset text-decoration-none">Failed {{ failed_pct }}</a></th>
           <td>{{ failed }}</td>
           <td>{{ failed_size }}</td>
         </tr>
         <tr class="table-secondary">
-          <th><a href="/threads/removed" class="text-reset text-decoration-none">Removed</a></th>
+          <th><a href="/threads/removed" class="text-reset text-decoration-none">Removed {{ removed_by_client_pct }}</a></th>
           <td>{{ removed_by_client }}</td>
           <td>{{ removed_by_client_size }}</td>
         </tr>

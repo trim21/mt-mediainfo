@@ -402,11 +402,12 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
             SELECTED_CATEGORY,
             ItemStatus.DONE,
         ),
-        pool.fetch("select * from scrape_status order by name"),
+        pool.fetch(
+            "select name, last_run_at, last_result, detail from scrape_status order by name"
+        ),
         pool.fetchrow(
             """
-        select count(1)::int as count,
-               coalesce(sum(coalesce(nullif(selected_size, 0), size)), 0)::int8 as size
+        select count(1)::int as count
         from dormant_threads
         where category = any($1)
         """,
@@ -414,8 +415,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         ),
         pool.fetchrow(
             """
-        select count(distinct job.tid)::int as count,
-               coalesce(sum(coalesce(nullif(thread.selected_size, 0), thread.size)), 0)::int8 as size
+        select count(distinct job.tid)::int as count
         from job
         join thread on (thread.tid = job.tid)
         where job.status = 'skipped' and thread.category = any($1)
@@ -502,7 +502,6 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
             "name": str(r["name"]),
             "last_run_at": r["last_run_at"],
             "last_result": str(r["last_result"]),
-            "next_allowed_at": r["next_allowed_at"],
             "detail": str(r["detail"]),
         }
         for r in scrape_status_rows
@@ -510,14 +509,17 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
 
     dormant_stats = cast(asyncpg.Record, dormant_stats)
     dormant = cast(int, dormant_stats["count"])
-    dormant_size = cast(int, dormant_stats["size"])
 
     skipped_by_picker_stats = cast(asyncpg.Record, skipped_by_picker_stats)
     skipped_by_picker = cast(int, skipped_by_picker_stats["count"])
-    skipped_by_picker_size = cast(int, skipped_by_picker_stats["size"])
 
     failed_export_dates = cast(list[asyncpg.Record], failed_export_dates)
     failed_exports = [{"export_date": r["export_date"]} for r in failed_export_dates]
+
+    def size_pct(n: int) -> str:
+        if total_size == 0:
+            return "0.0%"
+        return f"{n / total_size * 100:.1f}%"
 
     return {
         "scraped_total": scraped_total,
@@ -527,22 +529,25 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         "total_size": human_readable_size(total_size),
         "done": done,
         "done_size": human_readable_size(done_size),
+        "done_pct": size_pct(done_size),
         "done_nodes": done_nodes,
         "pending_fetch_mediainfo": pending_fetch_mediainfo,
         "pending_fetch_torrent": pending_fetch_torrent,
         "pending_to_download": pending_to_download,
         "pending_to_download_size": human_readable_size(pending_to_download_size),
+        "pending_to_download_pct": size_pct(pending_to_download_size),
         "downloading": downloading,
         "downloading_size": human_readable_size(downloading_size),
+        "downloading_pct": size_pct(downloading_size),
         "downloading_nodes": downloading_nodes,
         "failed": failed,
         "failed_size": human_readable_size(failed_size),
+        "failed_pct": size_pct(failed_size),
         "removed_by_client": removed_by_client,
         "removed_by_client_size": human_readable_size(removed_by_client_size),
+        "removed_by_client_pct": size_pct(removed_by_client_size),
         "dormant": dormant,
-        "dormant_size": human_readable_size(dormant_size),
         "skipped_by_picker": skipped_by_picker,
-        "skipped_by_picker_size": human_readable_size(skipped_by_picker_size),
         "scrape_status": scrape_status,
         "failed_exports": failed_exports,
     }
