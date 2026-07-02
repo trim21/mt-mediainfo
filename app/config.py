@@ -225,6 +225,11 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         Field(alias="APP_VERSION", default="", validate_default=True),
     ]
 
+    data_dir: Annotated[
+        Path,
+        Field(alias="DATA_DIR", default_factory=_data_dir),
+    ]
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class ScrapeConfig(BaseConfig, S3Mixin):

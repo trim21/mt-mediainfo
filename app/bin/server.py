@@ -1640,11 +1640,6 @@ def create_app() -> fastapi.FastAPI:
                 node_id,
             )
             await conn.execute(
-                "update job_download_size set node_id = $1 where node_id = $2",
-                REMOVED_NODE_ID,
-                node_id,
-            )
-            await conn.execute(
                 "update node_command set node_id = $1 where node_id = $2 and executed_at is null",
                 REMOVED_NODE_ID,
                 node_id,
@@ -1818,7 +1813,7 @@ def create_app() -> fastapi.FastAPI:
             "progress": "job.progress",
             "speed": "job.dlspeed",
             "eta": "job.eta",
-            "no_progress": "(select max(recorded_at) from job_download_size where info_hash = job.info_hash and node_id = job.node_id)",
+            "no_progress": "job.last_progress_at",
             "started": "job.start_download_time",
             "updated": "job.updated_at",
         }
@@ -1858,7 +1853,7 @@ def create_app() -> fastapi.FastAPI:
                 select job.tid, job.status, job.progress, job.failed_reason, job.error_message,
                        job.start_download_time, job.updated_at,
                        job.dlspeed, job.eta, job.info_hash,
-                       job.completed_at,
+                       job.completed_at, job.last_progress_at,
                        thread.size, thread.selected_size, thread.seeders
                 from job
                 join thread on (thread.tid = job.tid)
@@ -1873,19 +1868,8 @@ def create_app() -> fastapi.FastAPI:
             ),
         )
 
-        info_hashes = [r["info_hash"] for r in rows]
-        progress_rows = await pool.fetch(
-            """
-            select info_hash, max(recorded_at) as last_progress_at
-            from job_download_size
-            where node_id = $1 and info_hash = any($2)
-            group by info_hash
-            """,
-            node_id,
-            info_hashes,
-        )
         last_progress_map: dict[str, datetime] = {
-            r["info_hash"]: r["last_progress_at"] for r in progress_rows
+            r["info_hash"]: r["last_progress_at"] for r in rows if r["last_progress_at"] is not None
         }
 
         pager = _pagination(page, cast(int, total_count))
