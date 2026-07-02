@@ -847,7 +847,7 @@ class Downloader:
         max_count = self.config.max_downloading_count
         if max_count > 0:
             current_downloading = sum(1 for t in torrents if t.state == TorrentState.DOWNLOADING)
-            pick_limit = max(0, max_count - current_downloading)
+            pick_limit = min(max(0, max_count - current_downloading), 100)
             if pick_limit == 0:
                 logger.info(
                     "at downloading count limit: downloading={} limit={}",
