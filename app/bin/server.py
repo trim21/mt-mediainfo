@@ -1130,11 +1130,11 @@ def create_app() -> fastapi.FastAPI:
     @app.get("/")
     async def progress(render: Render) -> HTMLResponse:
         ctx = await _fetch_progress_ctx(pool)
-        return render("index.html.j2", ctx=ctx)
+        return render("layout.html.j2", ctx=ctx)
 
     @app.get("/api/progress/stream")
     async def progress_stream() -> EventSourceResponse:
-        tmpl = templates.get_template("index_content.html.j2")
+        tmpl = templates.get_template("index.html.j2")
 
         async def generate() -> AsyncGenerator[dict[str, str]]:
             while True:
