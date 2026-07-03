@@ -50,9 +50,7 @@ class RTorrentClient(BTClient):
             for t in self.torrents_info():
                 if BT_TAG_QUEUED in t.tags:
                     self._call("d.stop", [t.hash.upper()])
-                    self._call("d.close", [t.hash.upper()])
                     self._call("d.throttle_name.set", [t.hash.upper(), ""])
-                    self._call("d.open", [t.hash.upper()])
                     self._call("d.start", [t.hash.upper()])
                     self.torrents_remove_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
 
@@ -370,17 +368,13 @@ class RTorrentClient(BTClient):
             if i < self._max_active:
                 if BT_TAG_QUEUED in t.tags:
                     self._call("d.stop", [t.hash.upper()])
-                    self._call("d.close", [t.hash.upper()])
                     self._call("d.throttle_name.set", [t.hash.upper(), ""])
-                    self._call("d.open", [t.hash.upper()])
                     self._call("d.start", [t.hash.upper()])
                     self.torrents_remove_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
             else:
                 if BT_TAG_QUEUED not in t.tags:
                     self._call("d.stop", [t.hash.upper()])
-                    self._call("d.close", [t.hash.upper()])
                     self._call("d.throttle_name.set", [t.hash.upper(), "queue"])
-                    self._call("d.open", [t.hash.upper()])
                     self._call("d.start", [t.hash.upper()])
                     self.torrents_add_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
 
@@ -388,8 +382,6 @@ class RTorrentClient(BTClient):
         for t in slow:
             if BT_TAG_QUEUED in t.tags:
                 self._call("d.stop", [t.hash.upper()])
-                self._call("d.close", [t.hash.upper()])
                 self._call("d.throttle_name.set", [t.hash.upper(), ""])
-                self._call("d.open", [t.hash.upper()])
                 self._call("d.start", [t.hash.upper()])
                 self.torrents_remove_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
