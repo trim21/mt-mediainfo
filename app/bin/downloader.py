@@ -184,7 +184,12 @@ class Downloader:
         db = Database(cfg.pg_dsn())
         logger.info("database pool created")
         if cfg.rt_url:
-            client: BTClient = RTorrentClient(RTorrent(cfg.rt_url, timeout=cfg.rt_timeout))
+            client: BTClient = RTorrentClient(
+                RTorrent(cfg.rt_url, timeout=cfg.rt_timeout),
+                max_active_downloads=cfg.rt_max_active,
+                queued_speed_bytes=int(cfg.queued_speed_limit),
+                inactive_speed_threshold=int(cfg.inactive_speed_threshold),
+            )
         elif cfg.qb_url:
             client = QBittorrentClient(
                 qbittorrentapi.Client(
@@ -336,6 +341,8 @@ class Downloader:
                 self.__process_commands()
             except Exception:
                 logger.exception("failed to process commands")
+
+            self.client.tick()
 
             try:
                 loop_ctx = self.__run_at_interval()

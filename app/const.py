@@ -32,6 +32,7 @@ BT_TAG_SELECTING_FILES: Final = "selecting-files"
 BT_TAG_DOWNLOADING: Final = "downloading"
 BT_TAG_PROCESSING: Final = "processing"
 BT_TAG_FILE_SELECTED: Final = "file-selected-4"
+BT_TAG_QUEUED: Final = "queued"
 
 
 class PickStrategy(str, enum.Enum):

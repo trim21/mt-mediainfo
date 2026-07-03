@@ -221,6 +221,23 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         Field(alias="STALLED_DAYS", default=2.0, validate_default=True),
     ]
 
+    queued_speed_limit: Annotated[
+        float,
+        BeforeValidator(parse_byte_speed),
+        Field(alias="QUEUED_SPEED_LIMIT", default="10KiB/s", validate_default=True),
+    ]
+
+    inactive_speed_threshold: Annotated[
+        float,
+        BeforeValidator(parse_byte_speed),
+        Field(alias="INACTIVE_SPEED_THRESHOLD", default="100KiB/s", validate_default=True),
+    ]
+
+    rt_max_active: Annotated[
+        int,
+        Field(alias="RT_MAX_ACTIVE", default=0, validate_default=True),
+    ]
+
     disable_status_report: Annotated[
         bool,
         Field(alias="DISABLE_STATUS_REPORT", default=False, validate_default=True),
