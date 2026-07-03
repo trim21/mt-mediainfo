@@ -94,7 +94,6 @@ def _init_progress_db(data_dir: Path) -> Path:
     """Create and migrate the local SQLite progress database. Returns the db path."""
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path = data_dir / "progress.db"
-    db_path.unlink(missing_ok=True)
     with closing(sqlite3.connect(str(db_path))) as conn:
         conn.execute("PRAGMA journal_mode=WAL")
         _run_progress_migrations(conn)

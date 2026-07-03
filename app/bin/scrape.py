@@ -189,26 +189,27 @@ class Scrape:
                 result.total,
             )
 
-            for item in result.data:
-                self.__db.execute(
-                    """
-                    insert into thread (tid, size, category, seeders, deleted, upload_at)
-                    values ($1, $2, $3, $4, false, $5)
-                    on conflict (tid) do update set
-                    size = excluded.size,
-                    category = excluded.category,
-                    seeders = excluded.seeders,
-                    upload_at = excluded.upload_at,
-                    deleted = false
-                    """,
-                    [
-                        int(item.id),
-                        item.size,
-                        int(item.category),
-                        item.status.seeders,
-                        item.createdDate,
-                    ],
-                )
+            with self.__db.connection() as conn, conn.pipeline():
+                for item in result.data:
+                    conn.execute(
+                        """
+                        insert into thread (tid, size, category, seeders, deleted, upload_at)
+                        values ($1, $2, $3, $4, false, $5)
+                        on conflict (tid) do update set
+                        size = excluded.size,
+                        category = excluded.category,
+                        seeders = excluded.seeders,
+                        upload_at = excluded.upload_at,
+                        deleted = false
+                        """,
+                        [
+                            int(item.id),
+                            item.size,
+                            int(item.category),
+                            item.status.seeders,
+                            item.createdDate,
+                        ],
+                    )
 
             # Advance cursor using the last non-topped item's createdDate
             non_topped = [i for i in result.data if i.status.toppingLevel == "0"]
@@ -238,10 +239,9 @@ class Scrape:
         val = self.__kv.get(self._torrent_dl_count_key(tid, today))
         return int(val) if val else 0
 
-    def _inc_torrent_dl_count(self, tid: int, today: str) -> None:
+    def _inc_torrent_dl_count(self, tid: int, today: str) -> int:
         key = self._torrent_dl_count_key(tid, today)
-        val = self.__kv.get(key)
-        self.__kv.set(key, str(int(val) + 1) if val else "1", ttl=self.TORRENT_DL_TTL)
+        return self.__kv.inc(key, ttl=self.TORRENT_DL_TTL)
 
     def _daily_torrent_count_key(self, today: str) -> str:
         return f"daily_torrent_dl:{today}"
@@ -250,10 +250,9 @@ class Scrape:
         val = self.__kv.get(self._daily_torrent_count_key(today))
         return int(val) if val else 0
 
-    def _inc_daily_torrent_count(self, today: str) -> None:
+    def _inc_daily_torrent_count(self, today: str) -> int:
         key = self._daily_torrent_count_key(today)
-        val = self.__kv.get(key)
-        self.__kv.set(key, str(int(val) + 1) if val else "1", ttl=self.DAILY_TORRENT_TTL)
+        return self.__kv.inc(key, ttl=self.DAILY_TORRENT_TTL)
 
     def fetch_torrent(self) -> bool:
         threads = self.__db.fetch_all(
@@ -554,7 +553,11 @@ class Scrape:
                         [tid],
                     )
                     continue
-                raise
+                self._log_scrape_error(tid, "scrape_mediainfo", e)
+                if self.__is_rate_limited(e):
+                    raise
+                logger.warning("fetch mediainfo {} failed: {} {}", tid, e.code, e.message)
+                continue
 
             self.__db.execute(
                 "update thread set api_mediainfo = $2, api_mediainfo_at = current_timestamp where tid = $1",

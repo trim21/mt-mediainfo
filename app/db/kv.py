@@ -29,6 +29,20 @@ class KVConfig:
             [key, value, expires_at],
         )
 
+    def inc(self, key: str, ttl: timedelta | None = None) -> int:
+        expires_at = datetime.now().astimezone() + ttl if ttl else None
+        with self.__db.connection() as conn:
+            return conn.fetch_val(
+                """
+                insert into config (key, value, expires_at) values ($1, '1', $2)
+                on conflict (key) do update set
+                    value = config.value::int + 1,
+                    expires_at = coalesce(excluded.expires_at, config.expires_at)
+                returning value::int
+                """,
+                [key, expires_at],
+            )
+
     def delete(self, key: str) -> None:
         self.__db.execute("delete from config where key = $1", [key])
 
