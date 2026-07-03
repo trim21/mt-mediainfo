@@ -349,7 +349,7 @@ class Downloader:
                 logger.exception("failed to run")
                 loop_ctx = LoopContext()
 
-            interval = max(300, int(loop_ctx.min_eta))
+            interval = min(300, abs(int(loop_ctx.min_eta)))
 
             self._report_status("waiting")
             logger.info("loop done, sleeping for {}s", interval)
