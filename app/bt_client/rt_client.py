@@ -45,7 +45,16 @@ class RTorrentClient(BTClient):
         self._max_active = max_active_downloads
         self._queued_speed_kbps = queued_speed_kbps
         self._inactive_threshold = inactive_speed_threshold
-        self._cleanup_done = False
+
+        if self._max_active <= 0:
+            for t in self.torrents_info():
+                if BT_TAG_QUEUED in t.tags:
+                    self._call("d.stop", [t.hash.upper()])
+                    self._call("d.close", [t.hash.upper()])
+                    self._call("d.throttle_name.set", [t.hash.upper(), ""])
+                    self._call("d.open", [t.hash.upper()])
+                    self._call("d.start", [t.hash.upper()])
+                    self.torrents_remove_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
 
     def _call(self, method: str, params: list[Any] | None = None) -> Any:
         return self._client.jsonrpc.call(method, params or [])
@@ -324,16 +333,6 @@ class RTorrentClient(BTClient):
         Queued torrents are tagged with BT_TAG_QUEUED.
         """
         if self._max_active <= 0:
-            if not self._cleanup_done:
-                self._cleanup_done = True
-                for t in self.torrents_info():
-                    if BT_TAG_QUEUED in t.tags:
-                        self._call("d.stop", [t.hash.upper()])
-                        self._call("d.close", [t.hash.upper()])
-                        self._call("d.throttle_name.set", [t.hash.upper(), ""])
-                        self._call("d.open", [t.hash.upper()])
-                        self._call("d.start", [t.hash.upper()])
-                        self.torrents_remove_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
             return
 
         torrents = self.torrents_info()
