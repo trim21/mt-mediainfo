@@ -608,7 +608,7 @@ class Downloader:
         # Clean up progress records for torrents no longer actively downloading
         self._progress_cleanup(managed_hashes)
         # Stalled detection via local SQLite: no progress for 2+ days
-        stale_cutoff = (now - timedelta(days=2)).timestamp()
+        stale_cutoff = (now - timedelta(days=self.config.stalled_days)).timestamp()
         stalled_hashes = self._progress_stalled(managed_hashes, stale_cutoff)
         t2 = time.monotonic()
         logger.info(
