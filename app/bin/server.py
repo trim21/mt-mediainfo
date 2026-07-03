@@ -946,7 +946,7 @@ def create_app() -> fastapi.FastAPI:
             ) = await asyncio.gather(
                 pool.fetch(
                     """
-                    select (coalesce(job.completed_at, job.updated_at)
+                    select (job.completed_at
                             at time zone 'Asia/Shanghai')::date as day,
                            job.node_id::text as node_id,
                            count(1)::int as count,
@@ -954,8 +954,8 @@ def create_app() -> fastapi.FastAPI:
                     from job
                     join thread on (thread.tid = job.tid)
                     where job.status = $1 and thread.selected_size > 0
-                      and coalesce(job.completed_at, job.updated_at) >= $2
-                      and coalesce(job.completed_at, job.updated_at) < $3
+                      and job.completed_at >= $2
+                      and job.completed_at < $3
                     group by day, job.node_id
                     """,
                     ItemStatus.DONE,
@@ -1094,8 +1094,8 @@ def create_app() -> fastapi.FastAPI:
                 from job
                 join thread on (thread.tid = job.tid)
                 where job.status = $1 and thread.selected_size > 0
-                  and coalesce(job.completed_at, job.updated_at) >= $2
-                  and coalesce(job.completed_at, job.updated_at) < $3
+                  and job.completed_at >= $2
+                  and job.completed_at < $3
                 group by job.node_id
                 """,
                 ItemStatus.DONE,
