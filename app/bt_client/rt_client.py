@@ -45,6 +45,7 @@ class RTorrentClient(BTClient):
         self._max_active = max_active_downloads
         self._queued_speed_kbps = queued_speed_bytes // 1024
         self._inactive_threshold = inactive_speed_threshold
+        self._cleanup_done = False
 
     def _call(self, method: str, params: list[Any] | None = None) -> Any:
         return self._client.jsonrpc.call(method, params or [])
@@ -313,11 +314,12 @@ class RTorrentClient(BTClient):
         Queued (speed-limited) torrents are tagged with BT_TAG_QUEUED.
         """
         if self._max_active <= 0:
-            # Limit disabled — clean up any leftover queued tags
-            for t in self.torrents_info():
-                if BT_TAG_QUEUED in t.tags:
-                    self.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
-                    self.torrents_remove_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
+            if not self._cleanup_done:
+                self._cleanup_done = True
+                for t in self.torrents_info():
+                    if BT_TAG_QUEUED in t.tags:
+                        self.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
+                        self.torrents_remove_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
             return
 
         torrents = self.torrents_info()
