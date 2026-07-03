@@ -338,18 +338,19 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
               and api_mediainfo = ''
               and info_hash = ''
               and torrent_invalid = '' as needs_torrent,
-            (mediainfo != '' and info_hash != '') or api_mediainfo != '' as is_done
+            (api_mediainfo = '' or mediainfo != '') as needs_local,
+            mediainfo != '' as is_done
           from thread
         )
         select
           count(*) as scraped_total,
-          count(*) filter (where is_selected) as total,
-          coalesce(sum(esize) filter (where is_selected), 0)::int8 as total_size,
+          count(*) filter (where is_selected and needs_local) as total,
+          coalesce(sum(esize) filter (where is_selected and needs_local), 0)::int8 as total_size,
           count(*) filter (where active and has_seeders and needs_mediainfo) as pending_fetch_mediainfo,
           count(*) filter (where is_selected and active and has_seeders and needs_torrent) as pending_fetch_torrent_seeders_gt0,
           count(*) filter (where is_selected and active and not has_seeders and needs_torrent) as pending_fetch_torrent_seeders_zero,
-          count(*) filter (where is_selected and active and has_seeders and is_done) as done,
-          coalesce(sum(esize) filter (where is_selected and active and has_seeders and is_done), 0)::int8 as done_size
+          count(*) filter (where is_selected and active and has_seeders and needs_local and is_done) as done,
+          coalesce(sum(esize) filter (where is_selected and active and has_seeders and needs_local and is_done), 0)::int8 as done_size
         from t
         """,
             SELECTED_CATEGORY,
