@@ -5,7 +5,7 @@ import stat
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import durationpy
 import yarl
@@ -303,5 +303,5 @@ def prepare_pg_ssl_key[T: BaseConfig](config: T) -> T:
     Call this once at entry point before any pg_dsn() usage.
     """
     if config.pg_ssl_key is not None:
-        return copy.replace(config, pg_ssl_key=_copy_key_to_temp(config.pg_ssl_key))
+        return cast(T, copy.replace(config, pg_ssl_key=_copy_key_to_temp(config.pg_ssl_key)))
     return config

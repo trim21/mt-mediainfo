@@ -502,7 +502,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
             }
             for r in downloading_node_rows
         ],
-        key=lambda n: n["node_name"],
+        key=lambda n: cast(str, n["node_name"]),
     )
 
     done_node_rows = cast(list[asyncpg.Record], done_node_rows)
@@ -516,7 +516,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
             }
             for r in done_node_rows
         ],
-        key=lambda n: n["node_name"],
+        key=lambda n: cast(str, n["node_name"]),
     )
 
     scrape_status_rows = cast(list[asyncpg.Record], scrape_status_rows)
