@@ -172,7 +172,7 @@ class Downloader:
     )
     ffprobe_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("ffprobe"))
     ffmpeg_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("ffmpeg"))
-    bdinfocli_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("BDInfo"))
+    bdinfo_bin: str = dataclasses.field(default_factory=lambda: must_find_executable("BDInfo"))
     thread_filter_template: jinja2.Template | None = None
     _mediainfo_cache: dict[str, tuple[str, bool]] = dataclasses.field(default_factory=dict)
 
@@ -246,7 +246,7 @@ class Downloader:
         logger.info("using mediainfo at {}", self.mediainfo_bin)
         logger.info("using ffprobe at {}", self.ffprobe_bin)
         logger.info("using ffmpeg at {}", self.ffmpeg_bin)
-        logger.info("using bdinfocli at {}", self.bdinfocli_bin)
+        logger.info("using bdinfo at {}", self.bdinfo_bin)
 
     def _progress_record(self, info_hash: str, size: int) -> bool:
         """Record a download progress sample. Returns True if a new sample was inserted."""
@@ -904,7 +904,7 @@ class Downloader:
         path from it. Returns (media_info, hard_coded_subtitle).
         """
         disc_path = bdmv_disc_path(active_objs, save_path)
-        media_info = extract_bdinfo_from_dir(self.bdinfocli_bin, Path(disc_path))
+        media_info = extract_bdinfo_from_dir(self.bdinfo_bin, Path(disc_path))
         return media_info, False
 
     def __extract_regular_mediainfo(
