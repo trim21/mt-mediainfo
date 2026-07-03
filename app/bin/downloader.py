@@ -187,7 +187,7 @@ class Downloader:
             client: BTClient = RTorrentClient(
                 RTorrent(cfg.rt_url, timeout=cfg.rt_timeout),
                 max_active_downloads=cfg.rt_max_active,
-                queued_speed_bytes=int(cfg.queued_speed_limit),
+                queued_speed_kbps=int(cfg.queued_speed_limit) // 1024,
                 inactive_speed_threshold=int(cfg.inactive_speed_threshold),
             )
         elif cfg.qb_url:

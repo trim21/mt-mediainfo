@@ -38,12 +38,12 @@ class RTorrentClient(BTClient):
         client: RTorrent,
         *,
         max_active_downloads: int = 0,
-        queued_speed_bytes: int = 10 * 1024,
+        queued_speed_kbps: int = 10,
         inactive_speed_threshold: int = 100 * 1024,
     ) -> None:
         self._client = client
         self._max_active = max_active_downloads
-        self._queued_speed_kbps = queued_speed_bytes // 1024
+        self._queued_speed_kbps = queued_speed_kbps
         self._inactive_threshold = inactive_speed_threshold
         self._cleanup_done = False
 
@@ -274,9 +274,18 @@ class RTorrentClient(BTClient):
         self._call("d.custom1.set", [info_hash, _encode_rt_tags(new_tags)])
 
     def torrents_set_download_limit(self, limit: int, torrent_hashes: str) -> None:
+        """Set per-torrent download speed via throttle groups.
+
+        limit=0 clears the throttle (unlimited); limit>0 assigns the torrent
+        to the 'queue' throttle group at queued_speed_kbps.  The torrent must
+        be paused before calling — rTorrent rejects throttle changes on active
+        torrents.
+        """
         info_hash = torrent_hashes.upper()
-        rate_kbps = limit // 1024
-        self._call("d.down.rate.set", [info_hash, rate_kbps])
+        if limit == 0:
+            self._call("d.throttle_name.set", [info_hash, ""])
+        else:
+            self._call("d.throttle_name.set", [info_hash, "queue"])
 
     def torrents_resume(self, torrent_hashes: str) -> None:
         info_hash = torrent_hashes.upper()
@@ -307,20 +316,28 @@ class RTorrentClient(BTClient):
         return get_torrent_info_hash(content).upper()
 
     def tick(self) -> None:
-        """Enforce the active-download queue via per-torrent speed limits.
+        """Enforce the active-download queue via a throttle group.
 
-        Torrents with dlspeed >= _inactive_threshold count toward the active
-        limit; slower torrents are left unlimited (they don't consume slots).
-        Queued (speed-limited) torrents are tagged with BT_TAG_QUEUED.
+        The 'queue' throttle group is kept at _queued_speed_kbps.  Torrents
+        with dlspeed >= _inactive_threshold count toward the active limit;
+        slower torrents are left unrestricted (they don't consume slots).
+        Queued torrents are tagged with BT_TAG_QUEUED.
         """
         if self._max_active <= 0:
             if not self._cleanup_done:
                 self._cleanup_done = True
                 for t in self.torrents_info():
                     if BT_TAG_QUEUED in t.tags:
-                        self.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
+                        self._call("d.stop", [t.hash.upper()])
+                        self._call("d.close", [t.hash.upper()])
+                        self._call("d.throttle_name.set", [t.hash.upper(), ""])
+                        self._call("d.open", [t.hash.upper()])
+                        self._call("d.start", [t.hash.upper()])
                         self.torrents_remove_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
             return
+
+        # Keep the throttle group rate in sync with config.
+        self._call("throttle.down", ["queue", str(self._queued_speed_kbps)])
 
         torrents = self.torrents_info()
 
@@ -339,7 +356,6 @@ class RTorrentClient(BTClient):
             if t.queue_join_ts > 0:
                 join_ts[t.hash] = t.queue_join_ts
             else:
-                # Store in rTorrent so it survives restarts
                 self._call(
                     "d.custom.set",
                     [t.hash.upper(), "queue_join_ts", str(now_ms)],
@@ -347,29 +363,37 @@ class RTorrentClient(BTClient):
                 join_ts[t.hash] = now_ms
 
         # Torrents above the speed threshold count toward the active limit;
-        # slower ones are left alone — they can download at whatever their
-        # seeder provides without consuming a slot.
+        # slower ones are left alone.
         fast = [t for t in managed if t.dlspeed >= self._inactive_threshold]
         slow = [t for t in managed if t.dlspeed < self._inactive_threshold]
 
-        # Oldest join first — FIFO queue, newly added torrents go to the back.
+        # Oldest join first — FIFO queue.
         fast.sort(key=lambda t: join_ts[t.hash])
 
         for i, t in enumerate(fast):
             if i < self._max_active:
                 if BT_TAG_QUEUED in t.tags:
-                    self.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
+                    self._call("d.stop", [t.hash.upper()])
+                    self._call("d.close", [t.hash.upper()])
+                    self._call("d.throttle_name.set", [t.hash.upper(), ""])
+                    self._call("d.open", [t.hash.upper()])
+                    self._call("d.start", [t.hash.upper()])
                     self.torrents_remove_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
             else:
                 if BT_TAG_QUEUED not in t.tags:
-                    self.torrents_set_download_limit(
-                        limit=self._queued_speed_kbps * 1024, torrent_hashes=t.hash
-                    )
+                    self._call("d.stop", [t.hash.upper()])
+                    self._call("d.close", [t.hash.upper()])
+                    self._call("d.throttle_name.set", [t.hash.upper(), "queue"])
+                    self._call("d.open", [t.hash.upper()])
+                    self._call("d.start", [t.hash.upper()])
                     self.torrents_add_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
 
-        # Slow torrents never get speed-limited — un-throttle any that were
-        # previously queued (e.g. they dropped below threshold after being fast).
+        # Slow torrents never get queued — move out of throttle group if needed.
         for t in slow:
             if BT_TAG_QUEUED in t.tags:
-                self.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
+                self._call("d.stop", [t.hash.upper()])
+                self._call("d.close", [t.hash.upper()])
+                self._call("d.throttle_name.set", [t.hash.upper(), ""])
+                self._call("d.open", [t.hash.upper()])
+                self._call("d.start", [t.hash.upper()])
                 self.torrents_remove_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
