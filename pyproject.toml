@@ -23,7 +23,7 @@ dependencies = [
   'tzdata==2026.2',
   "pillow==12.3.0",
   "sslog==0.0.0a52",
-  "regex==2026.5.9",
+  "regex==2026.6.28",
   "asyncpg==0.31.0",
   # "polars==1.39.3",
   "opendal==0.47.2",
@@ -40,7 +40,7 @@ dev = [
   "mypy==2.1.0",
   "pytest==9.1.1",
   "ty==0.0.56",
-  "types-regex==2026.5.9.20260518",
+  "types-regex==2026.6.28.20260630",
 ]
 
 [tool.uv]
