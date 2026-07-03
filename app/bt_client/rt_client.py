@@ -344,17 +344,17 @@ class RTorrentClient(BTClient):
         ]
 
         # Assign a monotonically-increasing join timestamp to new torrents.
-        now_ms = time.time_ns() // 1_000_000
         join_ts: dict[str, int] = {}
         for t in managed:
-            if t.queue_join_ts > 0:
+            if t.queue_join_ts > 10**15:
                 join_ts[t.hash] = t.queue_join_ts
             else:
+                now_ns = time.time_ns()
                 self._call(
                     "d.custom.set",
-                    [t.hash.upper(), "queue_join_ts", str(now_ms)],
+                    [t.hash.upper(), "queue_join_ts", str(now_ns)],
                 )
-                join_ts[t.hash] = now_ms
+                join_ts[t.hash] = now_ns
 
         # Torrents above the speed threshold count toward the active limit;
         # slower ones are left alone.
