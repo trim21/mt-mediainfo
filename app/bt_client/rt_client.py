@@ -336,9 +336,6 @@ class RTorrentClient(BTClient):
                         self.torrents_remove_tags(tags=[BT_TAG_QUEUED], torrent_hashes=t.hash)
             return
 
-        # Keep the throttle group rate in sync with config.
-        self._call("throttle.down", ["queue", str(self._queued_speed_kbps)])
-
         torrents = self.torrents_info()
 
         # Only consider torrents that have completed file selection and
