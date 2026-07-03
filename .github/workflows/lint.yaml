@@ -78,4 +78,4 @@ jobs:
       - uses: jakebailey/pyright-action@v3.0.2
         with:
           # renovate: datasource=github-releases depName=microsoft/pyright
-          version: "1.1.410"
+          version: "1.1.411"
