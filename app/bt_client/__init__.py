@@ -6,10 +6,12 @@ from .base import (
     TorrentNotFoundError,
     TorrentState,
 )
+from .neptune_client import NeptuneClient
 
 __all__ = [
     "ETA_INF",
     "BTClient",
+    "NeptuneClient",
     "Torrent",
     "TorrentFile",
     "TorrentNotFoundError",

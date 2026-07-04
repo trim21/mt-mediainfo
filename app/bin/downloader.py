@@ -28,6 +28,7 @@ from app.bt_client import (
     TorrentNotFoundError,
     TorrentState,
 )
+from app.bt_client.neptune_client import NeptuneClient
 from app.bt_client.qb_client import QBittorrentClient
 from app.bt_client.rt_client import RTorrentClient
 from app.config import DownloaderConfig
@@ -181,12 +182,14 @@ class Downloader:
         logger.info("connecting to database...")
         db = Database(cfg.pg_dsn())
         logger.info("database pool created")
-        if cfg.rt_url:
-            client: BTClient = RTorrentClient(
+        if cfg.neptune_url and cfg.neptune_token:
+            client: BTClient = NeptuneClient(
+                base_url=cfg.neptune_url,
+                token=cfg.neptune_token,
+            )
+        elif cfg.rt_url:
+            client = RTorrentClient(
                 RTorrent(cfg.rt_url, timeout=cfg.rt_timeout),
-                max_active_downloads=cfg.rt_max_active,
-                queued_speed_kbps=int(cfg.queued_speed_limit) // 1024,
-                inactive_speed_threshold=int(cfg.inactive_speed_threshold),
             )
         elif cfg.qb_url:
             client = QBittorrentClient(
@@ -202,7 +205,9 @@ class Downloader:
                 ),
             )
         else:
-            raise ValueError("no download client configured: set RT_URL or QB_URL")
+            raise ValueError(
+                "no download client configured: set NEPTUNE_URL+NEPTUNE_TOKEN, RT_URL or QB_URL"
+            )
 
         logger.info("download client created, type={}", type(client).__name__)
 

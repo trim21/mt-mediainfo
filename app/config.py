@@ -177,6 +177,14 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         Field(alias="RT_TIMEOUT", default=30.0, validate_default=True),
     ]
 
+    neptune_url: Annotated[
+        str | None, Field(alias="NEPTUNE_URL", default=None, validate_default=True)
+    ]
+
+    neptune_token: Annotated[
+        str | None, Field(alias="NEPTUNE_TOKEN", default=None, validate_default=True)
+    ]
+
     download_path: Annotated[
         str,
         Field(
@@ -219,23 +227,6 @@ class DownloaderConfig(BaseConfig, S3Mixin):
     stalled_days: Annotated[
         float,
         Field(alias="STALLED_DAYS", default=2.0, validate_default=True),
-    ]
-
-    inactive_speed_threshold: Annotated[
-        float,
-        BeforeValidator(parse_byte_speed),
-        Field(alias="INACTIVE_SPEED_THRESHOLD", default="100KiB/s", validate_default=True),
-    ]
-
-    queued_speed_limit: Annotated[
-        float,
-        BeforeValidator(parse_byte_speed),
-        Field(alias="QUEUED_SPEED_LIMIT", default="10KiB/s", validate_default=True),
-    ]
-
-    rt_max_active: Annotated[
-        int,
-        Field(alias="RT_MAX_ACTIVE", default=0, validate_default=True),
     ]
 
     disable_status_report: Annotated[

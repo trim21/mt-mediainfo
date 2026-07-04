@@ -44,7 +44,6 @@ class Torrent:
     tags: frozenset[str]
     seen_complete: int = 0
     error_message: str = ""
-    queue_join_ts: int = 0
 
 
 class TorrentNotFoundError(Exception):
@@ -96,7 +95,5 @@ class BTClient(abc.ABC):
     def tick(self) -> None:
         """Called periodically (≈every minute) for internal maintenance.
 
-        RTorrentClient uses this to enforce the active-download queue via
-        per-torrent speed limits.  qBittorrent handles queue natively, so
-        the default implementation is a no-op.
+        The default implementation is a no-op.
         """
