@@ -49,3 +49,6 @@ def pick_order_clause(strategy: PickStrategy) -> LiteralString:
 def search_cursor_key(mode: str) -> str:
     now = datetime.now(TZ_SHANGHAI)
     return f"search_cursor:{now.year}.{now.month % 4}:{mode}"
+
+
+EXCLUDED_CATEGORY = [427]

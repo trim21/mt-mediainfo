@@ -37,6 +37,7 @@ from app.const import (
     BT_TAG_PROCESS_ERROR,
     BT_TAG_PROCESSING,
     BT_TAG_SELECTING_FILES,
+    EXCLUDED_CATEGORY,
     TZ_SHANGHAI,
     ItemStatus,
     pick_order_clause,
@@ -126,12 +127,13 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
         and thread.info_hash != ''
         and thread.selected_size > 0
         and thread.selected_size < $1
+        and not (thread.category = any ($2))
         and thread.selected_index is not null
         and array_length(thread.selected_index, 1) > 0
         and ({seeder_clause})
         and not exists (select 1 from job where job.tid = thread.tid)
     {order_clause}
-    limit $2
+    limit $3
     for update of thread skip locked
     """
 
@@ -963,6 +965,7 @@ class Downloader:
         ):
             params: list[Any] = [
                 self.config.single_torrent_size_limit,
+                EXCLUDED_CATEGORY,
                 pick_limit,
             ]
 

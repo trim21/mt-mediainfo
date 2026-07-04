@@ -23,6 +23,7 @@ from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Re
 
 from app.config import ServerConfig, load_s3_config, load_server_config, prepare_pg_ssl_key
 from app.const import (
+    EXCLUDED_CATEGORY,
     TZ_SHANGHAI,
     ItemStatus,
     PickStrategy,
@@ -338,6 +339,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
             (api_mediainfo = '' or mediainfo != '') as needs_local,
             mediainfo != '' as is_done
           from thread
+          where not (category = any($1))
         )
         select
           count(*) as scraped_total,
@@ -350,6 +352,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
           coalesce(sum(esize) filter (where active and has_seeders and needs_local and is_done), 0)::int8 as done_size
         from t
         """,
+            EXCLUDED_CATEGORY,
         ),
         pool.fetch(
             "select key, value from config where key = any($1)",
@@ -360,8 +363,9 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         select count(1)::int as count, coalesce(sum(coalesce(nullif(selected_size, 0), size)), 0)::int8 as size
         from pending_download_threads
         left join job on (job.tid = pending_download_threads.tid)
-        where job.tid is null
+        where not (category = any($1)) and job.tid is null
         """,
+            EXCLUDED_CATEGORY,
         ),
         pool.fetch(
             """
@@ -370,9 +374,11 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
                coalesce(sum(coalesce(nullif(thread.selected_size, 0), thread.size)), 0)::int8 as size
         from job
         join thread on (thread.tid = job.tid)
-        where job.status = any($1)
+        where not (thread.category = any($1))
+          and job.status = any($2)
         group by job.status
         """,
+            EXCLUDED_CATEGORY,
             [
                 ItemStatus.DOWNLOADING,
                 ItemStatus.DONE,
@@ -388,10 +394,12 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
                coalesce(sum(job.dlspeed), 0)::int8 as dlspeed
         from job
         join thread on (thread.tid = job.tid)
-        where job.status = $1
+        where not (thread.category = any($1))
+          and job.status = $2
         group by job.node_id
         order by job.node_id
         """,
+            EXCLUDED_CATEGORY,
             ItemStatus.DOWNLOADING,
         ),
         pool.fetch(
@@ -401,10 +409,12 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
                coalesce(sum(coalesce(nullif(thread.selected_size, 0), thread.size)), 0)::int8 as size
         from job
         join thread on (thread.tid = job.tid)
-        where job.status = $1
+        where not (thread.category = any($1))
+          and job.status = $2
         group by job.node_id
         order by job.node_id
         """,
+            EXCLUDED_CATEGORY,
             ItemStatus.DONE,
         ),
         pool.fetch(
@@ -1093,10 +1103,11 @@ def create_app() -> fastapi.FastAPI:
                        coalesce(sum(selected_size), 0)::int8 as bytes
                 from thread
                 where torrent_fetched_at >= $1 and torrent_fetched_at < $2
-                  and selected_size > 0
+                  and selected_size > 0 and not (category = any($3))
                 """,
                 today,
                 tomorrow,
+                EXCLUDED_CATEGORY,
             ),
             pool.fetchval(
                 "select count(1)::int from thread where created_at >= $1 and created_at < $2 and not deleted",
@@ -1183,14 +1194,16 @@ def create_app() -> fastapi.FastAPI:
             title="Pending Fetch Mediainfo",
             count_sql="""
             select count(1)::int from pending_mediainfo_threads
+            where not (category = any($1))
             """,
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from pending_mediainfo_threads
+            where not (category = any($3))
             order by (mediainfo = '') desc, seeders desc, tid asc
             limit $1 offset $2
             """,
-            params=[],
-            count_params=[],
+            params=[EXCLUDED_CATEGORY],
+            count_params=[EXCLUDED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=False,
@@ -1205,14 +1218,16 @@ def create_app() -> fastapi.FastAPI:
             title="Pending Fetch Torrent",
             count_sql="""
             select count(1)::int from pending_torrent_threads
+            where not (category = any($1))
             """,
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from pending_torrent_threads
+            where not (category = any($3))
             order by (mediainfo = '') desc, seeders desc, tid asc
             limit $1 offset $2
             """,
-            params=[],
-            count_params=[],
+            params=[EXCLUDED_CATEGORY],
+            count_params=[EXCLUDED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=False,
@@ -1232,17 +1247,17 @@ def create_app() -> fastapi.FastAPI:
             select count(1)::int
             from pending_download_threads
             left join job on (job.tid = pending_download_threads.tid)
-            where job.tid is null
+            where not (category = any($1)) and job.tid is null
             """,
             rows_sql=f"""
             select pending_download_threads.tid, category, size, selected_size, seeders, pending_download_threads.created_at from pending_download_threads
             left join job on (job.tid = pending_download_threads.tid)
-            where job.tid is null
+            where not (category = any($3)) and job.tid is null
             {order}
             limit $1 offset $2
             """,
-            params=[],
-            count_params=[],
+            params=[EXCLUDED_CATEGORY],
+            count_params=[EXCLUDED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=False,
@@ -1263,18 +1278,18 @@ def create_app() -> fastapi.FastAPI:
             select count(1)::int
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = $1
+            where job.status = $1 and not (thread.category = any($2))
             """,
             rows_sql="""
             select thread.tid, category, size, selected_size, seeders, thread.created_at,
                    job.progress, job.node_id
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = $3
+            where job.status = $3 and not (thread.category = any($4))
             order by job.updated_at desc
             limit $1 offset $2
             """,
-            params=[ItemStatus.DOWNLOADING],
+            params=[ItemStatus.DOWNLOADING, EXCLUDED_CATEGORY],
             page=page,
             show_progress=True,
             show_failed_reason=False,
@@ -1287,16 +1302,18 @@ def create_app() -> fastapi.FastAPI:
             title="Done",
             count_sql="""
             select count(1)::int from completed_threads
+            where not (category = any($1))
             """,
             rows_sql="""
             select completed_threads.tid, category, size, selected_size, seeders, completed_threads.created_at
             from completed_threads
             join job on (job.tid = completed_threads.tid)
-            where job.status = 'done'
+            where not (category = any($3))
+              and job.status = 'done'
             order by job.completed_at desc
             limit $1 offset $2
             """,
-            params=[],
+            params=[EXCLUDED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=False,
@@ -1311,18 +1328,18 @@ def create_app() -> fastapi.FastAPI:
             select count(1)::int
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = $1
+            where job.status = $1 and not (thread.category = any($2))
             """,
             rows_sql="""
             select thread.tid, category, size, selected_size, seeders, thread.created_at,
                    job.failed_reason
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = $3
+            where job.status = $3 and not (thread.category = any($4))
             order by job.updated_at desc
             limit $1 offset $2
             """,
-            params=[ItemStatus.FAILED],
+            params=[ItemStatus.FAILED, EXCLUDED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=True,
@@ -1344,18 +1361,18 @@ def create_app() -> fastapi.FastAPI:
             select count(1)::int
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = $1
+            where job.status = $1 and not (thread.category = any($2))
             """,
             rows_sql="""
             select thread.tid, category, size, selected_size, seeders, thread.created_at,
                    coalesce(job.removed_reason, '') as failed_reason
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = $3
+            where job.status = $3 and not (thread.category = any($4))
             order by job.updated_at desc
             limit $1 offset $2
             """,
-            params=[ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT],
+            params=[ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, EXCLUDED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=True,
@@ -1425,14 +1442,14 @@ def create_app() -> fastapi.FastAPI:
         return await _render_thread_list(
             render,
             title="BDMV",
-            count_sql="select count(1)::int from thread where type = 'bdmv'",
+            count_sql="select count(1)::int from thread where type = 'bdmv' and not (category = any($1))",
             rows_sql="""
             select tid, category, size, selected_size, seeders, created_at from thread
-            where type = 'bdmv'
+            where type = 'bdmv' and not (category = any($3))
             order by created_at desc
             limit $1 offset $2
             """,
-            params=[],
+            params=[EXCLUDED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=False,
@@ -1447,18 +1464,18 @@ def create_app() -> fastapi.FastAPI:
             select count(distinct job.tid)::int
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = 'skipped'
+            where job.status = 'skipped' and not (thread.category = any($1))
             """,
             rows_sql="""
             select thread.tid, thread.category, thread.size, thread.selected_size,
                    thread.seeders, thread.created_at
             from job
             join thread on (thread.tid = job.tid)
-            where job.status = 'skipped'
+            where job.status = 'skipped' and not (thread.category = any($3))
             order by thread.created_at desc
             limit $1 offset $2
             """,
-            params=[],
+            params=[EXCLUDED_CATEGORY],
             page=page,
             show_progress=False,
             show_failed_reason=False,
