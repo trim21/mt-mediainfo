@@ -99,6 +99,16 @@ class Scrape:
         )
 
         if not threads:
+            threads = self.__db.fetch_all(
+                """
+                select tid from pending_mediainfo_threads
+                order by (mediainfo = '') desc, (category = any($1)) desc, seeders desc, tid asc
+                limit $2
+                """,
+                [PRIORITY_CATEGORY, effective_limit],
+            )
+
+        if not threads:
             # No pending threads, try to fill gaps in tid sequence
             threads = self.__db.fetch_all(
                 """
@@ -268,6 +278,16 @@ class Scrape:
         if not threads:
             threads = self.__db.fetch_all(
                 """
+                select tid from pending_torrent_threads
+                order by (category = any($1)) desc, seeders desc, tid asc
+                limit 100
+                """,
+                [PRIORITY_CATEGORY],
+            )
+
+        if not threads:
+            threads = self.__db.fetch_all(
+                """
                 select tid from thread
                 where deleted = false
                   and seeders = 0
@@ -281,6 +301,23 @@ class Scrape:
                 limit 100
                 """,
                 [SELECTED_CATEGORY, PRIORITY_CATEGORY],
+            )
+
+        if not threads:
+            threads = self.__db.fetch_all(
+                """
+                select tid from thread
+                where deleted = false
+                  and seeders = 0
+                  and api_mediainfo_at is not null
+                  and mediainfo = ''
+                  and api_mediainfo = ''
+                  and info_hash = ''
+                  and torrent_invalid = ''
+                order by (category = any($1)) desc, tid asc
+                limit 100
+                """,
+                [PRIORITY_CATEGORY],
             )
 
         if not threads:
