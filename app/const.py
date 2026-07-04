@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from typing import Final, LiteralString, cast
+from typing import Final, LiteralString
 from zoneinfo import ZoneInfo
 
 TZ_SHANGHAI: Final = ZoneInfo("Asia/Shanghai")
@@ -36,46 +36,14 @@ BT_TAG_QUEUED: Final = "queued"
 
 
 class PickStrategy(str, enum.Enum):
-    tid = "tid"  # priority category first, then tid asc
-    seeders = "seeders"  # seeders desc, then priority category, then tid asc
+    tid = "tid"
+    seeders = "seeders"
 
 
-def pick_order_clause(strategy: PickStrategy, priority_category_param: int) -> LiteralString:
+def pick_order_clause(strategy: PickStrategy) -> LiteralString:
     if strategy == PickStrategy.seeders:
-        return cast(
-            LiteralString,
-            f"order by seeders desc, (category = any(${priority_category_param})) desc, priority desc, selected_size asc, tid asc",
-        )
-    return cast(
-        LiteralString,
-        f"order by tid asc, (category = any(${priority_category_param})) desc, priority desc",
-    )
-
-
-SELECTED_CATEGORY = [
-    401,
-    419,
-    420,
-    421,
-    439,
-    403,
-    402,
-    438,
-    435,
-    404,
-    406,
-    405,
-    407,
-]
-
-PRIORITY_CATEGORY = [
-    *SELECTED_CATEGORY,
-    # 401,
-    # 419,
-    # 420,
-    # 421,
-    # 439,
-]
+        return "order by seeders desc, priority desc, selected_size asc, tid asc"
+    return "order by tid asc, priority desc"
 
 
 def search_cursor_key(mode: str) -> str:

@@ -37,8 +37,6 @@ from app.const import (
     BT_TAG_PROCESS_ERROR,
     BT_TAG_PROCESSING,
     BT_TAG_SELECTING_FILES,
-    PRIORITY_CATEGORY,
-    SELECTED_CATEGORY,
     TZ_SHANGHAI,
     ItemStatus,
     pick_order_clause,
@@ -108,7 +106,7 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
     # SKIP LOCKED handles the coordination natively.  Columns are listed
     # explicitly to avoid transferring the large mediainfo/api_mediainfo text
     # columns over the wire.
-    order_clause = pick_order_clause(config.pick_strategy, 3)
+    order_clause = pick_order_clause(config.pick_strategy)
 
     seeder_clause: LiteralString = cast(LiteralString, config.seeder_condition)
 
@@ -128,13 +126,12 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
         and thread.info_hash != ''
         and thread.selected_size > 0
         and thread.selected_size < $1
-        and thread.category = any ($2)
         and thread.selected_index is not null
         and array_length(thread.selected_index, 1) > 0
         and ({seeder_clause})
         and not exists (select 1 from job where job.tid = thread.tid)
     {order_clause}
-    limit $4
+    limit $2
     for update of thread skip locked
     """
 
@@ -593,23 +590,21 @@ class Downloader:
         for row in removed_rows:
             self._progress_forget(row[0])
 
-        # Fetch all downloading jobs for this node, and which ones have unselected category
+        # Fetch all downloading jobs for this node
         job_rows = self.db.fetch_all(
             """
             select job.info_hash,
-                   not (thread.category = any($3)) as unselected,
                    thread.type,
                    thread.tid
             from job
             join thread on (thread.tid = job.tid)
             where job.node_id = $1 and job.status = $2
             """,
-            [self.config.node_id, ItemStatus.DOWNLOADING, SELECTED_CATEGORY],
+            [self.config.node_id, ItemStatus.DOWNLOADING],
         )
         managed_hashes: set[str] = {r[0] for r in job_rows}
-        unselected_hashes: set[str] = {r[0] for r in job_rows if r[1]}
-        bdmv_hashes: set[str] = {r[0] for r in job_rows if r[2] == "bdmv"}
-        hash_to_tid: dict[str, int] = {r[0].lower(): r[3] for r in job_rows}
+        bdmv_hashes: set[str] = {r[0] for r in job_rows if r[1] == "bdmv"}
+        hash_to_tid: dict[str, int] = {r[0].lower(): r[2] for r in job_rows}
 
         # Clean up progress records for torrents no longer actively downloading
         self._progress_cleanup(managed_hashes)
@@ -618,10 +613,9 @@ class Downloader:
         stalled_hashes = self._progress_stalled(managed_hashes, stale_cutoff)
         t2 = time.monotonic()
         logger.info(
-            "db queries done in {:.1f}s, managed={} unselected={} stalled={}",
+            "db queries done in {:.1f}s, managed={} stalled={}",
             t2 - t1,
             len(managed_hashes),
-            len(unselected_hashes),
             len(stalled_hashes),
         )
 
@@ -669,18 +663,6 @@ class Downloader:
             # Skip torrents that failed processing
             if BT_TAG_PROCESS_ERROR in t.tags:
                 counts["process_error"] = counts.get("process_error", 0) + 1
-                continue
-
-            # Cleanup torrents whose category is no longer selected
-            if t.hash in unselected_hashes:
-                logger.info("cleanup unselected category torrent {}", t.hash)
-                self.__update_job_status(
-                    status=ItemStatus.SKIPPED,
-                    info_hash=t.hash,
-                    failed_reason="category no longer selected",
-                )
-                self._delete_torrent_with_retry(t.hash)
-                counts["unselected"] = counts.get("unselected", 0) + 1
                 continue
 
             # File not yet selected → select files, clear limit
@@ -981,8 +963,6 @@ class Downloader:
         ):
             params: list[Any] = [
                 self.config.single_torrent_size_limit,
-                SELECTED_CATEGORY,
-                PRIORITY_CATEGORY,
                 pick_limit,
             ]
 
