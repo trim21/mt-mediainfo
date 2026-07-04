@@ -55,4 +55,5 @@ EXCLUDED_CATEGORY = [
     427,  # 電子書
     413,  # H-漫畫
     411,  # H-遊戲
+    434,  # Music(無損)
 ]
