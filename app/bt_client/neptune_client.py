@@ -48,10 +48,9 @@ class NeptuneClient(BTClient):
         payload: dict[str, Any] = {
             "jsonrpc": "2.0",
             "method": method,
+            "params": params or {},
             "id": random.randint(1, 2**31),
         }
-        if params is not None:
-            payload["params"] = params
 
         body_bytes = json.dumps(payload, default=self._json_default).encode()
 
