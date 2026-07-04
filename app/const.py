@@ -59,4 +59,5 @@ EXCLUDED_CATEGORY = [
     442,  # 有聲書
     434,  # Music(無損)
     409,  # Misc(其他)
+    423,  # PC遊戲
 ]
