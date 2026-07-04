@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import bencode2
 from rtorrent_rpc import RTorrent
-from rtorrent_rpc.helper import get_torrent_info_hash, parse_tags
+from rtorrent_rpc.helper import parse_tags
 
 from app.const import (
     BT_TAG_FILE_SELECTED,
@@ -255,12 +255,10 @@ class RTorrentClient(BTClient):
             for key, value in custom.items():
                 params.append(f"d.custom.set={key},{json.dumps(value)}")
 
-            self._call("load.raw", params)
-
             if download_limit > 0:
-                self.torrents_set_download_limit(
-                    download_limit, self._get_hash_from_content(content)
-                )
+                params.append("d.throttle_name.set=queue")
+
+            self._call("load.raw", params)
 
         return "Ok."
 
@@ -317,10 +315,6 @@ class RTorrentClient(BTClient):
             self._call("d.custom.set", [info_hash, "selected_size", str(selected_size)])
             self._call("d.save_resume", [info_hash])
         return selected_size
-
-    @staticmethod
-    def _get_hash_from_content(content: bytes) -> str:
-        return get_torrent_info_hash(content).upper()
 
     def tick(self) -> None:
         """Enforce the active-download queue via a throttle group.
