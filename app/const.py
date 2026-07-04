@@ -51,4 +51,8 @@ def search_cursor_key(mode: str) -> str:
     return f"search_cursor:{now.year}.{now.month % 4}:{mode}"
 
 
-EXCLUDED_CATEGORY = [427]
+EXCLUDED_CATEGORY = [
+    427,  # 電子書
+    413,  # H-漫畫
+    411,  # H-遊戲
+]
