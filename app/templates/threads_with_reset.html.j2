@@ -1,6 +1,8 @@
 {% extends "threads.html.j2" %}
 
 {% block controls_extra %}
+<button type="button" class="btn btn-outline-secondary btn-sm"
+        onclick="resetCurrentPage()">Reset Current Page</button>
 <button type="button" class="btn btn-outline-danger btn-sm"
         onclick="resetAll('{{ reset_all_endpoint }}', '{{ reset_all_confirm }}')">{{ reset_all_label or 'Reset All' }}</button>
 {% endblock %}
@@ -22,6 +24,19 @@ async function resetOne(tid) {
   const resp = await fetch('/api/thread/' + tid + '/reset', {method: 'POST'});
   if (resp.ok) { document.getElementById('row-' + tid)?.remove(); }
   else { alert('Failed to reset'); }
+}
+
+async function resetCurrentPage() {
+  const tids = Array.from(document.querySelectorAll('tr[data-tid]'), r => parseInt(r.dataset.tid));
+  if (tids.length === 0) return;
+  if (!confirm('Reset ' + tids.length + ' threads on current page?')) return;
+  const resp = await fetch('/api/threads/reset-bulk', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({tids})
+  });
+  if (resp.ok) { location.reload(); }
+  else { alert('Failed to reset page'); }
 }
 
 async function resetAll(endpoint, confirmMsg) {

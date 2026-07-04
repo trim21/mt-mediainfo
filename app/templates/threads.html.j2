@@ -60,7 +60,7 @@
     </thead>
     <tbody>
     {% for row in thread_rows %}
-    <tr id="row-{{ row.tid }}">{% for cell in row.cells %}{{ cell | safe }}{% endfor %}</tr>
+    <tr id="row-{{ row.tid }}" data-tid="{{ row.tid }}">{% for cell in row.cells %}{{ cell | safe }}{% endfor %}</tr>
     {% endfor %}
     </tbody>
   </table>

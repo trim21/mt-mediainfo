@@ -587,6 +587,11 @@ class DeleteConfigGroupRequest:
     prefix: str
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ResetBulkRequest:
+    tids: list[int]
+
+
 def _pagination(page: int, total_count: int) -> dict[str, int | bool | None]:
     total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
     current_page = min(max(page, 1), total_pages)
@@ -1567,6 +1572,18 @@ def create_app() -> fastapi.FastAPI:
             where tid = $1 and status = any($2)
             """,
             tid,
+            [ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, ItemStatus.FAILED, ItemStatus.SKIPPED],
+        )
+        return ORJSONResponse({"deleted": result})
+
+    @app.post("/api/threads/reset-bulk")
+    async def reset_bulk_threads(req: ResetBulkRequest) -> ORJSONResponse:
+        result = await pool.execute(
+            """
+            delete from job
+            where tid = any($1) and status = any($2)
+            """,
+            req.tids,
             [ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT, ItemStatus.FAILED, ItemStatus.SKIPPED],
         )
         return ORJSONResponse({"deleted": result})
