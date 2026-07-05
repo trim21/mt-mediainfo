@@ -125,7 +125,7 @@ class NeptuneClient(BTClient):
         self._client.torrent_set_download_limit(torrent_hashes, limit)
 
     def torrents_resume(self, torrent_hashes: str) -> None:
-        self._client.torrent_resume(torrent_hashes)
+        self._client.torrent_start(torrent_hashes)
 
     def torrents_file_priority(self, torrent_hash: str, file_ids: list[int], priority: int) -> None:
         self._client.torrent_set_file_priority(torrent_hash, file_ids, priority)
