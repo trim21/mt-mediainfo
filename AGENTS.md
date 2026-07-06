@@ -117,13 +117,17 @@ Append-only log of M-Team API errors encountered during scraping.
 - **Deleted**: Never.
 - **Read**: Paginated listing on `/threads/errors` in `app/bin/server.py`.
 
-### `job_download_size`
+### progress.db (local SQLite)
 
-Tracks per-torrent download progress over time.
+Per-downloader-node local SQLite database (`{data_dir}/progress.db`) that tracks per-torrent download progress samples. Replaces the former `job_download_size` PostgreSQL table to eliminate cross-region DB writes on every poll loop.
 
-- **Inserted**: During the qBittorrent poll loop in `app/bin/downloader.py`, a new row is written only when `t.completed` (bytes downloaded) differs from the most recent recorded value for that `(info_hash, node_id)` pair.
-- **Deleted**: Rows are removed when the associated job is resolved — either completed (mediainfo extraction done) or failed (including stalled cleanup).
-- **Read**: Used to detect stalled downloads — torrents whose latest `recorded_at` is older than 2 days are marked failed and removed from qBittorrent.
+- **Schema**: `progress(info_hash TEXT, size INTEGER, recorded_at REAL)` with index on `(info_hash, recorded_at DESC)`.
+- **Inserted**: `_progress_record()` in `__batch_update_downloading()` — inserts a sample whenever `t.completed` differs from the last recorded size for that hash.
+- **Deleted**: `_progress_forget()` when a job terminates (done/failed/evicted); `_progress_cleanup()` prunes hashes no longer actively downloading.
+- **Read**:
+  - `_progress_avg_speed(info_hash, window)` — average bytes/s over the window, using `(MAX(size) - MIN(size)) / (now - MIN(recorded_at))`. Uses `time.time()` as the interval end so idle periods (where no new samples are inserted) are reflected as a decaying average. Falls back 1800s → 600s → 0.
+  - `_progress_stalled(active_hashes, cutoff)` — returns hashes whose last `recorded_at` is before `cutoff` (default 2 days ago).
+  - `_progress_slowest(cutoff)` — returns the slowest torrent across all active hashes, used for eviction when total speed drops below `min_download_speed`.
 
 ### `export_record`
 
@@ -162,7 +166,7 @@ Tracks per-thread work items for oneshot backfill jobs. Each backfill name gets 
 
 ## Skills
 
-- `qb-torrent-lifecycle` - qBittorrent state machine, tags, file selection, and cleanup rules for `app/bin/downloader.py`
+- `torrent-lifecycle` - Download client torrent state machine, tags, file selection, progress tracking, and cleanup rules for `app/bin/downloader.py`
 - `thread-lifecycle` - Canonical thread-table stage predicates used by scrape, downloader, and server queries
 - `rpc-system` - `node_command` queue, payload types, handler registration, and RPC history behavior
 - `scrape-mteam` - Search cursor, scrape scheduling, rate limits, detail and mediainfo fetch, torrent download flow
@@ -182,7 +186,7 @@ Tracks per-thread work items for oneshot backfill jobs. Each backfill name gets 
 - Keep statuses, tags, and selected-category definitions in `app/const.py` as the source of truth
 - Treat this project as an application rather than a reusable library: preserve data compatibility during refactors, but backward compatibility of internal code interfaces is not required
 - When changing thread or job state queries, keep `app/bin/downloader.py`, `app/bin/scrape.py`, and `app/bin/server.py` aligned with `thread-lifecycle`
-- When changing qBittorrent processing, keep `app/bin/downloader.py` aligned with `qb-torrent-lifecycle`
+- When changing torrent processing, keep `app/bin/downloader.py` aligned with `torrent-lifecycle`
 - When adding server-to-downloader actions, update `app/rpc.py`, `app/bin/downloader.py`, and `app/bin/server.py` together
 - Keep subsystem-specific procedures in skills rather than expanding `AGENTS.md`
 - when adding query argument to fastapi handler, prefer to use `Annotated[T, Query()]`.

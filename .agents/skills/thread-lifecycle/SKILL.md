@@ -73,7 +73,7 @@ scrape_search() discovers thread
        ▼
   Stage 4: Downloading (tracked by job table)
        │
-       ├── __process_local_torrent()
+       ├── __process_completed_torrent()
        │   extracts mediainfo, sets generated_mediainfo_at
        │
        ▼
