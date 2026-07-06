@@ -10,7 +10,6 @@ from rtorrent_rpc import RTorrent
 from rtorrent_rpc.helper import parse_tags
 
 from .base import (
-    ETA_INF,
     BTClient,
     Torrent,
     TorrentFile,
@@ -75,11 +74,6 @@ class RTorrentClient(BTClient):
             state = int(r[6])
             complete = int(r[7])
             bytes_done = int(r[9])
-            down_rate = int(r[10])
-            left_bytes = int(r[11])
-            peers_complete = int(r[12])
-            up_total = int(r[13])
-            timestamp_finished = int(r[14])
             message = str(r[15])
             hashing_failed = int(r[16])
             selected_size_raw = str(r[17])
@@ -103,22 +97,11 @@ class RTorrentClient(BTClient):
                 if message and message != "":
                     error_message = f"Hashing failed: {message}"
                 else:
-                    error_message = f"Hashing failed:\n completed={bytes_done}/{size_bytes} left={left_bytes} state={state} complete={complete} is_open={is_open}"
+                    error_message = f"Hashing failed:\n completed={bytes_done}/{size_bytes} left={size_bytes - bytes_done} state={state} complete={complete} is_open={is_open}"
             elif message and message != "":
                 error_message = message
             else:
                 error_message = ""
-
-            progress = (bytes_done / size_bytes) if size_bytes > 0 else 0.0
-
-            if left_bytes > 0 and down_rate > 0:
-                eta = int(left_bytes / down_rate)
-            elif left_bytes > 0:
-                eta = ETA_INF
-            else:
-                eta = 0
-
-            eta = min(ETA_INF, eta)
 
             torrents.append(
                 Torrent(
@@ -127,16 +110,9 @@ class RTorrentClient(BTClient):
                     state=torrent_state,
                     save_path=directory_base,
                     completed=bytes_done,
-                    uploaded=up_total,
                     total_size=size_bytes,
                     size=size,
-                    amount_left=left_bytes,
-                    num_seeds=peers_complete,
-                    progress=progress,
-                    dlspeed=down_rate,
-                    eta=eta,
                     tags=tags,
-                    seen_complete=timestamp_finished or 0,
                     error_message=error_message,
                 )
             )

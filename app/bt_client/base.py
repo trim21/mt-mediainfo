@@ -31,18 +31,10 @@ class Torrent:
     save_path: str
     completed: int
 
-    uploaded: int
-
     total_size: int
     size: int
-    amount_left: int
 
-    num_seeds: int
-    progress: float
-    dlspeed: int
-    eta: int
     tags: frozenset[str]
-    seen_complete: int = 0
     error_message: str = ""
 
 

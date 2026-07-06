@@ -7,7 +7,6 @@ from neptune_sdk.models import MainDataTorrent as SDKTorrent
 from neptune_sdk.models import TorrentFile as SDKFile
 
 from .base import (
-    ETA_INF,
     BTClient,
     Torrent,
     TorrentFile,
@@ -26,15 +25,6 @@ _STATE_MAP: dict[str, TorrentState] = {
 def _convert_torrent(t: SDKTorrent) -> Torrent:
     state = _STATE_MAP.get(t.state, TorrentState.DOWNLOADING)
     size = t.selected_size if t.selected_size > 0 else t.total_length
-    amount_left = max(0, size - t.completed)
-    download_rate = t.download_rate
-
-    if amount_left > 0 and download_rate > 0:
-        eta = int(amount_left / download_rate)
-    elif amount_left > 0:
-        eta = ETA_INF
-    else:
-        eta = 0
 
     return Torrent(
         name=t.name,
@@ -42,16 +32,9 @@ def _convert_torrent(t: SDKTorrent) -> Torrent:
         state=state,
         save_path=t.directory_base,
         completed=t.completed,
-        uploaded=t.upload_total,
         total_size=t.total_length,
         size=size,
-        amount_left=amount_left,
-        num_seeds=t.total_seeding,
-        progress=t.completed / size if size > 0 else 0.0,
-        dlspeed=download_rate,
-        eta=min(ETA_INF, eta),
         tags=frozenset(t.tags),
-        seen_complete=0,
         error_message=t.message,
     )
 

@@ -573,7 +573,7 @@ class Downloader:
         if not torrents:
             logger.info("client has no torrents")
             return False, 300
-        min_eta = min((t.eta for t in torrents if 0 < t.eta < ETA_INF), default=300.0)
+        min_eta = 300.0
         # Mark jobs as removed-from-client if their torrent is no longer in client
         torrent_hashes = [x.hash for x in torrents]
         removed_rows = self.db.fetch_all(
@@ -701,7 +701,7 @@ class Downloader:
 
         # ---- Phase 2: batch-update all downloading progress via pipeline ----
         if downloading_torrents:
-            self.__batch_update_downloading(downloading_torrents, now)
+            min_eta = self.__batch_update_downloading(downloading_torrents, now)
 
         # ---- Phase 3: process completed torrents one by one (mediainfo extraction) ----
         uploading_count = len(uploading_torrents)
@@ -724,14 +724,17 @@ class Downloader:
         )
         return completed, min_eta
 
-    def __batch_update_downloading(self, torrents: list[Torrent], now: datetime) -> None:
+    def __batch_update_downloading(self, torrents: list[Torrent], now: datetime) -> float:
         """Batch update job progress and track download progress locally.
 
         Uses psycopg3 pipeline mode to send all N SQL statements in a single
         connection + sync round-trip.
+
+        Returns min_eta (smallest computed ETA in seconds), or 300 if none.
         """
         node_id = self.config.node_id
         status = ItemStatus.DOWNLOADING
+        min_eta = 300.0
 
         with self.db.connection() as conn, conn.pipeline():
             for t in torrents:
@@ -740,16 +743,23 @@ class Downloader:
                 if avg_speed is None:
                     avg_speed = self._progress_avg_speed(t.hash, window=600)
                 if avg_speed is None:
-                    avg_speed = t.dlspeed
+                    avg_speed = 0
+                # Compute ETA from our calculated average speed
+                if avg_speed and avg_speed > 0:
+                    eta = int(max(0, t.size - t.completed) / avg_speed)
+                else:
+                    eta = ETA_INF
+                if 0 < eta < ETA_INF and eta < min_eta:
+                    min_eta = float(eta)
                 conn.execute(
                     "update job set progress=$1, dlspeed=$2, eta=$3,"
                     " error_message=$4, updated_at=$5"
                     + (", last_progress_at=$9" if progress_changed else "")
                     + " where info_hash=$6 and node_id=$7 and status=$8",
                     [
-                        t.progress,
+                        t.completed / t.size if t.size > 0 else 0.0,
                         avg_speed,
-                        t.eta,
+                        eta,
                         t.error_message,
                         now,
                         t.hash,
@@ -758,6 +768,7 @@ class Downloader:
                     ]
                     + ([now] if progress_changed else []),
                 )
+        return min_eta
 
     def __handle_unmanaged_torrent(self, t: Torrent) -> None:
         """Handle a torrent in the download client that has no active downloading job.
@@ -1088,7 +1099,8 @@ class Downloader:
             return
 
         limit = int(self.config.min_download_speed)
-        if sum(t.dlspeed for t in downloading) >= limit:
+        total_speed = sum(self._progress_avg_speed(t.hash, window=1800) or 0 for t in downloading)
+        if total_speed >= limit:
             return
 
         now = datetime.now(tz=TZ_SHANGHAI)
