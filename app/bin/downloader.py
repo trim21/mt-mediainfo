@@ -300,26 +300,35 @@ class Downloader:
 
     def _progress_avg_speed(self, info_hash: str, window: float = 1800) -> float | None:
         """Return average download speed (bytes/s) over the last `window` seconds,
-        or None if there are fewer than 2 samples in the window."""
+        or None if there are fewer than 2 samples in the window.
+
+        Uses current time as the end of the interval so that idle periods
+        (where no new samples are inserted because size hasn't changed)
+        are reflected as a decaying average speed."""
+        now = time.time()
         with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
             row = conn.execute(
                 """
-                SELECT (MAX(size) - MIN(size)) * 1.0 / MAX(1, MAX(recorded_at) - MIN(recorded_at))
+                SELECT (MAX(size) - MIN(size)) * 1.0 / MAX(1, ? - MIN(recorded_at))
                 FROM progress
                 WHERE info_hash = ? AND recorded_at > ?
                 HAVING COUNT(*) >= 2
                 """,
-                (info_hash, time.time() - window),
+                (now, info_hash, now - window),
             ).fetchone()
             return row[0] if row else None
 
     def _progress_slowest(self, cutoff: float) -> tuple[str, float] | None:
-        """Return (info_hash, avg_speed) of the slowest downloading torrent with samples after `cutoff`."""
+        """Return (info_hash, avg_speed) of the slowest downloading torrent with samples after `cutoff`.
+
+        Uses current time as the end of the interval so that idle periods are reflected
+        as a decaying average speed."""
+        now = time.time()
         with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
             row = conn.execute(
                 """
                 SELECT info_hash,
-                       (MAX(size) - MIN(size)) * 1.0 / MAX(1, MAX(recorded_at) - MIN(recorded_at)) AS avg_speed
+                       (MAX(size) - MIN(size)) * 1.0 / MAX(1, ? - MIN(recorded_at)) AS avg_speed
                 FROM progress
                 WHERE recorded_at > ?
                 GROUP BY info_hash
@@ -327,7 +336,7 @@ class Downloader:
                 ORDER BY avg_speed
                 LIMIT 1
                 """,
-                (cutoff,),
+                (now, cutoff),
             ).fetchone()
             if row is None:
                 return None
