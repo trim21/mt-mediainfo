@@ -1075,10 +1075,8 @@ class Downloader:
                         )
                         self.client.torrents_set_download_limit(limit=0, torrent_hashes=info_hash)
                         self.client.torrents_resume(torrent_hashes=info_hash)
-            except TimeoutError:
-                logger.warning("timeout adding torrent tid={}, will retry", tid)
-                with contextlib.suppress(TorrentNotFoundError):
-                    self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+            except TimeoutError, ConnectionRefusedError:
+                logger.warning("transient error adding torrent tid={}, will retry", tid)
                 self.db.execute(
                     "delete from job where tid = $1 and node_id = $2",
                     [tid, self.config.node_id],
