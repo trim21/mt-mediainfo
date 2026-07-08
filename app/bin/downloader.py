@@ -10,7 +10,7 @@ import time
 from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, LiteralString, cast
+from typing import Any, LiteralString, NamedTuple, cast
 
 import jinja2
 import psycopg
@@ -57,8 +57,6 @@ from app.rpc import (
 from app.torrent import (
     File,
     bdmv_disc_path,
-    find_largest_video_file,
-    pick_bdmv_selection,
 )
 from app.torrent_store import TorrentStore
 from app.utils import human_readable_size, must_find_executable, set_torrent_comment
@@ -88,6 +86,12 @@ class PickContext:
 @dataclasses.dataclass(frozen=True, slots=True)
 class LoopContext:
     min_eta: float = 300
+
+
+class JobMeta(NamedTuple):
+    tid: int
+    is_bdmv: bool
+    selected_index: list[int]
 
 
 def _init_progress_db(data_dir: Path) -> Path:
@@ -611,7 +615,8 @@ class Downloader:
             """
             select job.info_hash,
                    thread.type,
-                   thread.tid
+                   thread.tid,
+                   thread.selected_index
             from job
             join thread on (thread.tid = job.tid)
             where job.node_id = $1 and job.status = $2
@@ -619,8 +624,14 @@ class Downloader:
             [self.config.node_id, ItemStatus.DOWNLOADING],
         )
         managed_hashes: set[str] = {r[0] for r in job_rows}
-        bdmv_hashes: set[str] = {r[0] for r in job_rows if r[1] == "bdmv"}
-        hash_to_tid: dict[str, int] = {r[0].lower(): r[2] for r in job_rows}
+        hash_to_meta: dict[str, JobMeta] = {
+            r[0].lower(): JobMeta(
+                tid=r[2],
+                is_bdmv=r[1] == "bdmv",
+                selected_index=r[3],
+            )
+            for r in job_rows
+        }
 
         # Clean up progress records for torrents no longer actively downloading
         self._progress_cleanup(managed_hashes)
@@ -683,7 +694,12 @@ class Downloader:
 
             # File not yet selected → select files, clear limit
             if BT_TAG_FILE_SELECTED not in t.tags:
-                self.__fix_file_selection(t, bdmv_hashes)
+                meta = hash_to_meta[t.hash.lower()]
+                self.__fix_file_selection(
+                    t,
+                    meta.selected_index,
+                    meta.is_bdmv,
+                )
                 self.client.torrents_set_download_limit(limit=0, torrent_hashes=t.hash)
                 self.client.torrents_add_tags(tags=[BT_TAG_FILE_SELECTED], torrent_hashes=t.hash)
                 if t.state == TorrentState.PAUSED:
@@ -717,10 +733,9 @@ class Downloader:
         for i, t in enumerate(uploading_torrents, 1):
             completed = True
             self.__set_tags(t.hash, remove=BT_TAG_DOWNLOADING, add=BT_TAG_PROCESSING)
-            self._report_status(
-                f"mediainfo:{i}/{uploading_count}:{hash_to_tid[t.hash.lower()]}:{t.name[:20]}"
-            )
-            self.__process_completed_torrent(t, bdmv_hashes)
+            meta = hash_to_meta[t.hash.lower()]
+            self._report_status(f"mediainfo:{i}/{uploading_count}:{meta.tid}:{t.name[:20]}")
+            self.__process_completed_torrent(t, meta)
             counts["uploading"] = counts.get("uploading", 0) + 1
 
         t3 = time.monotonic()
@@ -808,19 +823,19 @@ class Downloader:
         self._delete_torrent_files(t.hash)
         self._progress_forget(t.hash)
 
-    def __fix_file_selection(self, t: Torrent, bdmv_hashes: set[str]) -> None:
-        """Fix file priorities for torrents that are downloading all files."""
-        self.__fix_file_selection_by_hash(t.hash, t.hash in bdmv_hashes, t.name)
+    def __fix_file_selection(self, t: Torrent, selected_index: list[int], is_bdmv: bool) -> None:
+        """Fix file priorities for torrents using the pre-computed selected_index."""
+        self.__fix_file_selection_by_hash(t.hash, selected_index, is_bdmv, t.name)
 
-    def __fix_file_selection_by_hash(self, info_hash: str, is_bdmv: bool, name: str = "") -> None:
-        """Fix file priorities for a torrent identified by info_hash."""
+    def __fix_file_selection_by_hash(
+        self, info_hash: str, selected_index: list[int], is_bdmv: bool, name: str = ""
+    ) -> None:
+        """Fix file priorities using selected_index from the database."""
         files = self.client.torrents_files(torrent_hash=info_hash)
         if len(files) <= 1:
             return
-        file_objs = [File(length=f.size, path=tuple(f.name.split("/"))) for f in files]
 
         if is_bdmv:
-            _selected_size, selected_index = pick_bdmv_selection(file_objs)
             if not selected_index:
                 logger.warning(
                     "bdmv torrent {} has no selectable disc, skipping file selection",
@@ -838,9 +853,13 @@ class Downloader:
                 )
             return
 
-        keep_idx = find_largest_video_file(file_objs)
-        if keep_idx is None:
+        if not selected_index:
+            logger.warning(
+                "torrent {} has no selected file (no video file found), skipping file selection",
+                name or info_hash,
+            )
             return
+        keep_idx = selected_index[0]
         file_ids = [f.index for f in files if f.index != keep_idx and f.priority != 0]
         if file_ids:
             logger.info("fixing file selection for torrent {}", name or info_hash)
@@ -850,11 +869,26 @@ class Downloader:
             priority=0,
         )
 
-    def __process_completed_torrent(self, t: Torrent, bdmv_hashes: set[str]) -> None:
+    def __process_completed_torrent(self, t: Torrent, meta: JobMeta) -> None:
         """Process a completed torrent: extract mediainfo and update DB status."""
         files = self.client.torrents_files(torrent_hash=t.hash)
-        active = [f for f in files if f.priority != 0]
-        active_objs = [File(length=f.size, path=tuple(f.name.split("/"))) for f in active]
+
+        if not meta.selected_index:
+            logger.error(
+                "torrent {} has empty selected_index, cannot process (no video file selected)",
+                t.name,
+            )
+            self.__update_job_status(
+                status=ItemStatus.FAILED,
+                info_hash=t.hash,
+                failed_reason="no video file selected (selected_index is empty)",
+            )
+            self.client.torrents_add_tags(tags=[BT_TAG_PROCESS_ERROR], torrent_hashes=t.hash)
+            self._delete_torrent_with_retry(t.hash)
+            return
+
+        selected_index = meta.selected_index
+        is_bdmv = meta.is_bdmv
 
         cached = self._mediainfo_cache.get(t.hash)
         if cached is not None:
@@ -862,13 +896,22 @@ class Downloader:
             media_info, hard_code_subtitle = cached
         else:
             try:
-                if t.hash in bdmv_hashes:
+                if is_bdmv:
+                    selected_files = [f for f in files if f.index in selected_index]
+                    active_objs = [
+                        File(length=f.size, path=tuple(f.name.split("/"))) for f in selected_files
+                    ]
                     media_info, hard_code_subtitle = self.__extract_bdmv_mediainfo(
                         active_objs, t.save_path
                     )
                 else:
+                    target = next((f for f in files if f.index == selected_index[0]), None)
+                    if target is None:
+                        raise Exception(
+                            f"selected file index {selected_index[0]} not found in torrent files"
+                        )
                     media_info, hard_code_subtitle = self.__extract_regular_mediainfo(
-                        active, t.save_path
+                        target, t.save_path
                     )
             except Exception as e:
                 logger.error("failed to process local torrent {}: {}", t.name, e)
@@ -917,15 +960,12 @@ class Downloader:
         return media_info, False
 
     def __extract_regular_mediainfo(
-        self, active: list[TorrentFile], save_path: str
+        self, selected_file: TorrentFile, save_path: str
     ) -> tuple[str, bool]:
-        """Extract mediainfo from the largest video file in a regular torrent.
+        """Extract mediainfo from the selected video file.
 
         Returns (media_info, hard_coded_subtitle).
         """
-        if not active:
-            raise Exception("no active file found in downloaded torrent")
-        selected_file = active[0]
         path = Path(save_path, selected_file.name)
         media_info = extract_mediainfo_from_file(self.mediainfo_bin, path)
         hard_code_subtitle = check_hardcode_chinese_subtitle(
@@ -1020,6 +1060,9 @@ class Downloader:
             info_hash_to_is_bdmv: dict[str, bool] = {
                 row["info_hash"]: row.get("type") == "bdmv" for row in rows
             }
+            info_hash_to_selected_index: dict[str, list[int]] = {
+                row["info_hash"]: row["selected_index"] for row in rows
+            }
 
             has_pending = True
 
@@ -1065,7 +1108,9 @@ class Downloader:
                 if isinstance(self.client, RTorrentClient):
                     try:
                         self.__fix_file_selection_by_hash(
-                            info_hash, info_hash_to_is_bdmv.get(info_hash, False)
+                            info_hash,
+                            info_hash_to_selected_index.get(info_hash, []),
+                            info_hash_to_is_bdmv.get(info_hash, False),
                         )
                     except Exception:
                         logger.exception("failed immediate file selection for tid={}", tid)
