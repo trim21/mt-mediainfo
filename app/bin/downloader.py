@@ -979,15 +979,16 @@ class Downloader:
                 self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
                 self._delete_torrent_files(info_hash)
                 return
-            except Exception:
+            except Exception as e:
                 logger.warning(
-                    "failed to delete torrent %s (attempt %d/3), will retry",
+                    "failed to delete torrent {} (attempt {}/3): {}, will retry",
                     info_hash,
                     attempt + 1,
+                    e,
                 )
                 if attempt < 2:
                     time.sleep(2)
-        logger.error("failed to delete torrent %s after 3 attempts, skipping cleanup", info_hash)
+        logger.error("failed to delete torrent {} after 3 attempts, skipping cleanup", info_hash)
 
     def __pick_and_add_jobs(self) -> PickContext:
         logger.info("__pick_and_add_jobs")
