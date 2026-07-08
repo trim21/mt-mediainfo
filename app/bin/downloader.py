@@ -1124,8 +1124,8 @@ class Downloader:
                 self._delete_torrent_files(info_hash)
                 continue
 
-            selected_index = info_hash_to_selected_index.get(info_hash, [])
-            is_bdmv = info_hash_to_is_bdmv.get(info_hash, False)
+            selected_index = info_hash_to_selected_index[info_hash]
+            is_bdmv = info_hash_to_is_bdmv[info_hash]
 
             # Poll until torrent appears in client, then select files immediately
             for _ in range(30):
@@ -1137,21 +1137,34 @@ class Downloader:
                     logger.debug("polling torrents_info for {} failed, retrying", info_hash)
                 time.sleep(1)
             else:
-                logger.warning(
-                    "torrent {} (tid={}) did not appear in client after 30s, will select files in next loop",
+                logger.error(
+                    "torrent {} (tid={}) did not appear in client after 30s",
                     info_hash,
                     tid,
+                )
+                self.__update_job_status(
+                    status=ItemStatus.FAILED,
+                    tid=tid,
+                    failed_reason="torrent did not appear in client after 30s",
                 )
                 continue
 
             try:
                 self.__fix_file_selection_by_hash(info_hash, selected_index, is_bdmv)
-            except Exception:
+            except Exception as e:
                 logger.exception("failed immediate file selection for tid={}", tid)
-            else:
-                self.client.torrents_add_tags(tags=[BT_TAG_FILE_SELECTED], torrent_hashes=info_hash)
-                self.client.torrents_set_download_limit(limit=0, torrent_hashes=info_hash)
-                self.client.torrents_resume(torrent_hashes=info_hash)
+                self.__update_job_status(
+                    status=ItemStatus.FAILED, tid=tid, failed_reason=format_exc(e)
+                )
+                self._progress_forget(info_hash)
+                with contextlib.suppress(TorrentNotFoundError):
+                    self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+                self._delete_torrent_files(info_hash)
+                continue
+
+            self.client.torrents_add_tags(tags=[BT_TAG_FILE_SELECTED], torrent_hashes=info_hash)
+            self.client.torrents_set_download_limit(limit=0, torrent_hashes=info_hash)
+            self.client.torrents_resume(torrent_hashes=info_hash)
         return PickContext(picked=len(picked), has_pending=has_pending, no_space=no_space)
 
     def __maybe_evict_slowest(self) -> None:
