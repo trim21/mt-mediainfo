@@ -283,7 +283,10 @@ class Downloader:
         and records older than 10 minutes to prevent database bloat."""
         now = time.time()
         with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
-            conn.execute("DELETE FROM progress WHERE recorded_at < ?", (now - 600,))
+            conn.execute(
+                "DELETE FROM progress WHERE recorded_at < ? AND rowid NOT IN (SELECT MAX(rowid) FROM progress GROUP BY info_hash)",
+                (now - 600,),
+            )
             if not active_hashes:
                 conn.execute("DELETE FROM progress")
             else:
