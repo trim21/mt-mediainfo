@@ -366,7 +366,7 @@ class Downloader:
                 logger.exception("failed to run")
                 loop_ctx = LoopContext()
 
-            interval = min(300, abs(int(loop_ctx.min_eta)))
+            interval = min(300, abs(int(loop_ctx.min_eta)) + 5)
 
             self._report_status(
                 f"sleep until {(datetime.now(tz=TZ_SHANGHAI) + timedelta(seconds=interval)):%H:%M:%S}"
