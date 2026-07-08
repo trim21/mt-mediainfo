@@ -42,8 +42,11 @@ def process_commands(
     db: Database,
     node_id: str,
     handlers: dict[str, RpcHandler],
-) -> None:
-    """Poll and execute pending RPC commands for this node."""
+) -> bool:
+    """Poll and execute pending RPC commands for this node.
+
+    Returns True if any commands were processed.
+    """
     rows: list[tuple[int, str, str]] = db.fetch_all(
         """select id, method, payload from node_command
            where node_id = $1 and executed_at is null
@@ -51,7 +54,7 @@ def process_commands(
         [node_id],
     )
     if not rows:
-        return
+        return False
 
     for cmd_id, method, payload_str in rows:
         result: str | None = None
@@ -76,6 +79,7 @@ def process_commands(
             [result, error, cmd_id],
         )
         logger.info("rpc command {} method={} error={}", cmd_id, method, error)
+    return True
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

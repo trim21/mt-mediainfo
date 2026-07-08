@@ -369,6 +369,14 @@ class Downloader:
             interval = min(300, abs(int(loop_ctx.min_eta)))
 
             self._report_status("waiting")
+            try:
+                commands_processed = self.__process_commands()
+            except Exception:
+                logger.exception("failed to process commands")
+                commands_processed = False
+            if commands_processed:
+                logger.info("rpc commands processed, skipping sleep")
+                continue
             logger.info("loop done, sleeping for {}s", interval)
 
     def __wait_for_notify(self, timeout: float) -> None:
@@ -382,9 +390,9 @@ class Downloader:
         except Exception:
             time.sleep(timeout)
 
-    def __process_commands(self) -> None:
+    def __process_commands(self) -> bool:
         """Poll and execute pending RPC commands for this downloader."""
-        process_commands(
+        return process_commands(
             self.db,
             self.config.node_id,
             {
@@ -773,8 +781,7 @@ class Downloader:
                     eta = int(max(0, t.size - t.completed) / avg_speed)
                 else:
                     eta = ETA_INF
-                if 0 < eta < ETA_INF and eta < min_eta:
-                    min_eta = float(eta)
+                min_eta = min(min_eta, eta)
                 conn.execute(
                     "update job set progress=$1, dlspeed=$2, eta=$3,"
                     " error_message=$4, updated_at=$5"
