@@ -329,7 +329,7 @@ class Downloader:
                 return None
 
             size_diff = latest[0] - old[0]
-            time_diff = latest[1] - old[1]
+            time_diff = now - old[1]
             if time_diff <= 0:
                 return None
 
@@ -810,13 +810,18 @@ class Downloader:
         status = ItemStatus.DOWNLOADING
         min_eta = 300.0
 
+        is_neptune = isinstance(self.client, NeptuneClient)
+
         with self.db.connection() as conn, conn.pipeline():
             for t in torrents:
                 progress_changed = self._progress_record(t.hash, t.completed)
-                avg_speed = self._progress_avg_speed(t.hash) or 0
-                # Compute ETA from our calculated average speed
-                if avg_speed and avg_speed > 0:
-                    eta = int(max(0, t.size - t.completed) / avg_speed)
+                if is_neptune:
+                    dlspeed = t.dlspeed
+                else:
+                    dlspeed = self._progress_avg_speed(t.hash) or 0
+                # Compute ETA from download speed
+                if dlspeed and dlspeed > 0:
+                    eta = int(max(0, t.size - t.completed) / dlspeed)
                 else:
                     eta = ETA_INF
                 min_eta = min(min_eta, eta)
@@ -827,7 +832,7 @@ class Downloader:
                     + " where info_hash=$6 and node_id=$7 and status=$8",
                     [
                         round(t.completed / t.size, 4) if t.size > 0 else 0.0,
-                        avg_speed,
+                        dlspeed,
                         eta,
                         t.error_message,
                         now,
@@ -1226,7 +1231,10 @@ class Downloader:
             return
 
         limit = int(self.config.min_download_speed)
-        total_speed = sum(self._progress_avg_speed(t.hash) or 0 for t in downloading)
+        if isinstance(self.client, NeptuneClient):
+            total_speed = sum(t.dlspeed for t in downloading)
+        else:
+            total_speed = sum(self._progress_avg_speed(t.hash) or 0 for t in downloading)
         if total_speed >= limit:
             return
 

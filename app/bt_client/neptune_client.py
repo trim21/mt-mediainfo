@@ -35,6 +35,7 @@ def _convert_torrent(t: SDKTorrent) -> Torrent:
         total_size=t.total_length,
         size=size,
         tags=frozenset(t.tags),
+        dlspeed=t.download_rate,
         error_message=t.message,
     )
 

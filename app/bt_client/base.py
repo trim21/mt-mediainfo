@@ -35,6 +35,7 @@ class Torrent:
     size: int
 
     tags: frozenset[str]
+    dlspeed: int = 0
     error_message: str = ""
 
 
