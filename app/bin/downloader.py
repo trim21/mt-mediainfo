@@ -368,7 +368,9 @@ class Downloader:
 
             interval = min(300, abs(int(loop_ctx.min_eta)))
 
-            self._report_status("waiting")
+            self._report_status(
+                f"sleep until {(datetime.now(tz=TZ_SHANGHAI) + timedelta(seconds=interval)):%H:%M:%S}"
+            )
             try:
                 commands_processed = self.__process_commands()
             except Exception:
