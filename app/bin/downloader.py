@@ -528,6 +528,8 @@ class Downloader:
 
         self._report_status("torrents")
         completed, min_eta = self.__process_torrents()
+        with contextlib.suppress(Exception):
+            self.__cleanup_orphan_files()
         self._report_status("picking")
         ctx = self.__pick_and_add_jobs()
         if not completed and ctx.picked == 0 and ctx.no_space and ctx.has_pending:
