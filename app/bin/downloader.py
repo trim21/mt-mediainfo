@@ -279,8 +279,11 @@ class Downloader:
             conn.commit()
 
     def _progress_cleanup(self, active_hashes: set[str]) -> None:
-        """Remove progress records for hashes that are no longer actively downloading."""
+        """Remove progress records for hashes that are no longer actively downloading,
+        and records older than 10 minutes to prevent database bloat."""
+        now = time.time()
         with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
+            conn.execute("DELETE FROM progress WHERE recorded_at < ?", (now - 600,))
             if not active_hashes:
                 conn.execute("DELETE FROM progress")
             else:
@@ -291,60 +294,85 @@ class Downloader:
                 )
             conn.commit()
 
-    def _progress_stalled(self, active_hashes: set[str], cutoff: float) -> set[str]:
-        """Return info_hashes whose last recorded progress is before `cutoff` (Unix timestamp)."""
-        if not active_hashes:
-            return set()
+    def _progress_avg_speed(self, info_hash: str) -> float | None:
+        """Return average download speed (bytes/s) using progress records from
+        the last 5 minutes, or None if there is not enough data.
+
+        Finds the record closest to 5 minutes ago and computes speed as
+        (latest.size - old.size) / (latest.recorded_at - old.recorded_at).
+        Falls back to the oldest available record if no record exists near
+        the 5-minute mark."""
+        now = time.time()
+        target_time = now - 300
+        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
+            latest = conn.execute(
+                "SELECT size, recorded_at FROM progress WHERE info_hash = ? ORDER BY recorded_at DESC LIMIT 1",
+                (info_hash,),
+            ).fetchone()
+            if latest is None:
+                return None
+
+            old = conn.execute(
+                "SELECT size, recorded_at FROM progress WHERE info_hash = ? AND recorded_at <= ? ORDER BY recorded_at DESC LIMIT 1",
+                (info_hash, target_time),
+            ).fetchone()
+            if old is None:
+                old = conn.execute(
+                    "SELECT size, recorded_at FROM progress WHERE info_hash = ? ORDER BY recorded_at ASC LIMIT 1",
+                    (info_hash,),
+                ).fetchone()
+
+            if old is None or old[1] >= latest[1]:
+                return None
+
+            size_diff = latest[0] - old[0]
+            time_diff = latest[1] - old[1]
+            if time_diff <= 0:
+                return None
+
+            return size_diff / time_diff
+
+    def _progress_slowest(self) -> tuple[str, float] | None:
+        """Return (info_hash, instantaneous_speed) of the slowest downloading torrent.
+
+        Uses the delta between the two most recent progress records as the
+        instantaneous download speed."""
         with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
             rows = conn.execute(
-                "SELECT info_hash FROM progress GROUP BY info_hash HAVING MAX(recorded_at) < ?",
-                (cutoff,),
+                "SELECT info_hash, size, recorded_at FROM progress ORDER BY info_hash, recorded_at"
             ).fetchall()
-            return {r[0] for r in rows}
 
-    def _progress_avg_speed(self, info_hash: str, window: float = 1800) -> float | None:
-        """Return average download speed (bytes/s) over the last `window` seconds,
-        or None if there are fewer than 2 samples in the window.
+        if not rows:
+            return None
 
-        Uses current time as the end of the interval so that idle periods
-        (where no new samples are inserted because size hasn't changed)
-        are reflected as a decaying average speed."""
-        now = time.time()
-        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
-            row = conn.execute(
-                """
-                SELECT (MAX(size) - MIN(size)) * 1.0 / MAX(1, ? - MIN(recorded_at))
-                FROM progress
-                WHERE info_hash = ? AND recorded_at > ?
-                HAVING COUNT(*) >= 2
-                """,
-                (now, info_hash, now - window),
-            ).fetchone()
-            return row[0] if row else None
+        slowest_hash = None
+        slowest_speed = float("inf")
+        i = 0
+        while i < len(rows):
+            info_hash = rows[i][0]
+            group = []
+            while i < len(rows) and rows[i][0] == info_hash:
+                group.append(rows[i])
+                i += 1
 
-    def _progress_slowest(self, cutoff: float) -> tuple[str, float] | None:
-        """Return (info_hash, avg_speed) of the slowest downloading torrent with samples after `cutoff`.
+            if len(group) < 2:
+                continue
 
-        Uses current time as the end of the interval so that idle periods are reflected
-        as a decaying average speed."""
-        now = time.time()
-        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
-            row = conn.execute(
-                """
-                SELECT info_hash,
-                       (MAX(size) - MIN(size)) * 1.0 / MAX(1, ? - MIN(recorded_at)) AS avg_speed
-                FROM progress
-                WHERE recorded_at > ?
-                GROUP BY info_hash
-                HAVING COUNT(*) >= 2
-                ORDER BY avg_speed
-                LIMIT 1
-                """,
-                (now, cutoff),
-            ).fetchone()
-            if row is None:
-                return None
-            return row[0], row[1]
+            # Instantaneous speed = delta between the two most recent records
+            prev = group[-2]
+            latest = group[-1]
+            size_diff = latest[1] - prev[1]
+            time_diff = latest[2] - prev[2]
+            if time_diff <= 0 or size_diff <= 0:
+                continue
+            speed = size_diff / time_diff
+            if speed < slowest_speed:
+                slowest_speed = speed
+                slowest_hash = info_hash
+
+        if slowest_hash is None:
+            return None
+        return slowest_hash, slowest_speed
 
     def start(self) -> None:
         logger.info("downloader started, entering main loop")
@@ -645,9 +673,16 @@ class Downloader:
 
         # Clean up progress records for torrents no longer actively downloading
         self._progress_cleanup(managed_hashes)
-        # Stalled detection via local SQLite: no progress for 2+ days
-        stale_cutoff = (now - timedelta(days=self.config.stalled_days)).timestamp()
-        stalled_hashes = self._progress_stalled(managed_hashes, stale_cutoff)
+        # Stalled detection via job.last_progress_at: no progress for N+ days
+        stalled_hashes: set[str] = set()
+        if managed_hashes:
+            stale_cutoff = now - timedelta(days=self.config.stalled_days)
+            stalled_rows = self.db.fetch_all(
+                "select info_hash from job where node_id = $1 and status = $2 "
+                "and (last_progress_at < $3 or (last_progress_at is null and start_download_time < $3))",
+                [self.config.node_id, ItemStatus.DOWNLOADING, stale_cutoff],
+            )
+            stalled_hashes = {r[0] for r in stalled_rows}
         t2 = time.monotonic()
         logger.info(
             "db queries done in {:.1f}s, managed={} stalled={}",
@@ -773,11 +808,7 @@ class Downloader:
         with self.db.connection() as conn, conn.pipeline():
             for t in torrents:
                 progress_changed = self._progress_record(t.hash, t.completed)
-                avg_speed = self._progress_avg_speed(t.hash, window=1800)
-                if avg_speed is None:
-                    avg_speed = self._progress_avg_speed(t.hash, window=600)
-                if avg_speed is None:
-                    avg_speed = 0
+                avg_speed = self._progress_avg_speed(t.hash) or 0
                 # Compute ETA from our calculated average speed
                 if avg_speed and avg_speed > 0:
                     eta = int(max(0, t.size - t.completed) / avg_speed)
@@ -1190,13 +1221,13 @@ class Downloader:
             return
 
         limit = int(self.config.min_download_speed)
-        total_speed = sum(self._progress_avg_speed(t.hash, window=1800) or 0 for t in downloading)
+        total_speed = sum(self._progress_avg_speed(t.hash) or 0 for t in downloading)
         if total_speed >= limit:
             return
 
         now = datetime.now(tz=TZ_SHANGHAI)
         cutoff = (now - timedelta(hours=24)).timestamp()
-        result = self._progress_slowest(cutoff)
+        result = self._progress_slowest()
         if result is None:
             return
 
