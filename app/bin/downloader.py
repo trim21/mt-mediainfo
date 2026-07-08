@@ -1106,27 +1106,13 @@ class Downloader:
         for tid, info_hash in picked:
             try:
                 self.__add_torrent(tid, info_hash)
-                if isinstance(self.client, RTorrentClient):
-                    try:
-                        self.__fix_file_selection_by_hash(
-                            info_hash,
-                            info_hash_to_selected_index.get(info_hash, []),
-                            info_hash_to_is_bdmv.get(info_hash, False),
-                        )
-                    except Exception:
-                        logger.exception("failed immediate file selection for tid={}", tid)
-                    else:
-                        self.client.torrents_add_tags(
-                            tags=[BT_TAG_FILE_SELECTED], torrent_hashes=info_hash
-                        )
-                        self.client.torrents_set_download_limit(limit=0, torrent_hashes=info_hash)
-                        self.client.torrents_resume(torrent_hashes=info_hash)
             except TimeoutError, ConnectionRefusedError:
                 logger.warning("transient error adding torrent tid={}, will retry", tid)
                 self.db.execute(
                     "delete from job where tid = $1 and node_id = $2",
                     [tid, self.config.node_id],
                 )
+                continue
             except Exception as e:
                 logger.exception("failed to add torrent tid={}: {}", tid, e)
                 self.__update_job_status(
@@ -1136,6 +1122,36 @@ class Downloader:
                 with contextlib.suppress(TorrentNotFoundError):
                     self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
                 self._delete_torrent_files(info_hash)
+                continue
+
+            selected_index = info_hash_to_selected_index.get(info_hash, [])
+            is_bdmv = info_hash_to_is_bdmv.get(info_hash, False)
+
+            # Poll until torrent appears in client, then select files immediately
+            for _ in range(30):
+                try:
+                    current = self.client.torrents_info()
+                    if any(t.hash.lower() == info_hash.lower() for t in current):
+                        break
+                except Exception:
+                    logger.debug("polling torrents_info for {} failed, retrying", info_hash)
+                time.sleep(1)
+            else:
+                logger.warning(
+                    "torrent {} (tid={}) did not appear in client after 30s, will select files in next loop",
+                    info_hash,
+                    tid,
+                )
+                continue
+
+            try:
+                self.__fix_file_selection_by_hash(info_hash, selected_index, is_bdmv)
+            except Exception:
+                logger.exception("failed immediate file selection for tid={}", tid)
+            else:
+                self.client.torrents_add_tags(tags=[BT_TAG_FILE_SELECTED], torrent_hashes=info_hash)
+                self.client.torrents_set_download_limit(limit=0, torrent_hashes=info_hash)
+                self.client.torrents_resume(torrent_hashes=info_hash)
         return PickContext(picked=len(picked), has_pending=has_pending, no_space=no_space)
 
     def __maybe_evict_slowest(self) -> None:
