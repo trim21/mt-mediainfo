@@ -790,7 +790,7 @@ class Downloader:
                     + (", last_progress_at=$9" if progress_changed else "")
                     + " where info_hash=$6 and node_id=$7 and status=$8",
                     [
-                        t.completed / t.size if t.size > 0 else 0.0,
+                        round(t.completed / t.size, 4) if t.size > 0 else 0.0,
                         avg_speed,
                         eta,
                         t.error_message,
