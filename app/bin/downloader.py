@@ -812,12 +812,25 @@ class Downloader:
 
         is_neptune = isinstance(self.client, NeptuneClient)
 
+        # For Neptune, compare against current job progress to detect changes
+        # without relying on the local SQLite progress database.
+        prev_progress: dict[str, float] = {}
+        if is_neptune and torrents:
+            hashes = [t.hash for t in torrents]
+            rows = self.db.fetch_all(
+                "select info_hash, progress from job where info_hash = any($1) and node_id = $2 and status = $3",
+                [hashes, node_id, status],
+            )
+            prev_progress = {r[0]: r[1] for r in rows}
+
         with self.db.connection() as conn, conn.pipeline():
             for t in torrents:
-                progress_changed = self._progress_record(t.hash, t.completed)
                 if is_neptune:
+                    new_progress = round(t.completed / t.size, 4) if t.size > 0 else 0.0
+                    progress_changed = new_progress != prev_progress.get(t.hash, -1.0)
                     dlspeed = t.dlspeed
                 else:
+                    progress_changed = self._progress_record(t.hash, t.completed)
                     dlspeed = self._progress_avg_speed(t.hash) or 0
                 # Compute ETA from download speed
                 if dlspeed and dlspeed > 0:
@@ -1231,7 +1244,8 @@ class Downloader:
             return
 
         limit = int(self.config.min_download_speed)
-        if isinstance(self.client, NeptuneClient):
+        is_neptune = isinstance(self.client, NeptuneClient)
+        if is_neptune:
             total_speed = sum(t.dlspeed for t in downloading)
         else:
             total_speed = sum(self._progress_avg_speed(t.hash) or 0 for t in downloading)
@@ -1240,11 +1254,16 @@ class Downloader:
 
         now = datetime.now(tz=TZ_SHANGHAI)
         cutoff = (now - timedelta(hours=24)).timestamp()
-        result = self._progress_slowest()
-        if result is None:
-            return
 
-        info_hash, avg_speed = result
+        if is_neptune:
+            slowest = min(downloading, key=lambda t: t.dlspeed)
+            info_hash = slowest.hash
+            avg_speed = slowest.dlspeed
+        else:
+            result = self._progress_slowest()
+            if result is None:
+                return
+            info_hash, avg_speed = result
         # Only evict torrents that have been downloading for at least 24h
         start_time = self.db.fetch_val(
             "select start_download_time from job where info_hash = $1 and node_id = $2",
@@ -1303,5 +1322,6 @@ class Downloader:
                 self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
             self._delete_torrent_files(info_hash)
             return
-        # Record initial progress sample for stalled detection
-        self._progress_record(info_hash, 0)
+        # Record initial progress sample for speed tracking (not needed for Neptune)
+        if not isinstance(self.client, NeptuneClient):
+            self._progress_record(info_hash, 0)
