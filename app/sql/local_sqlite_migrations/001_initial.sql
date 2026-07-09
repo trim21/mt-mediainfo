@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS torrent_cache (
+  tid INTEGER PRIMARY KEY,
+  content BLOB NOT NULL
+);

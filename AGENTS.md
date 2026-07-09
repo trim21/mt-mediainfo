@@ -117,18 +117,6 @@ Append-only log of M-Team API errors encountered during scraping.
 - **Deleted**: Never.
 - **Read**: Paginated listing on `/threads/errors` in `app/bin/server.py`.
 
-### progress.db (local SQLite)
-
-Per-downloader-node local SQLite database (`{data_dir}/progress.db`) that tracks per-torrent download progress samples. Replaces the former `job_download_size` PostgreSQL table to eliminate cross-region DB writes on every poll loop.
-
-- **Schema**: `progress(info_hash TEXT, size INTEGER, recorded_at REAL)` with index on `(info_hash, recorded_at DESC)`.
-- **Inserted**: `_progress_record()` in `__batch_update_downloading()` — inserts a sample whenever `t.completed` differs from the last recorded size for that hash.
-- **Deleted**: `_progress_forget()` when a job terminates (done/failed/evicted); `_progress_cleanup()` prunes hashes no longer actively downloading.
-- **Read**:
-  - `_progress_avg_speed(info_hash, window)` — average bytes/s over the window, using `(MAX(size) - MIN(size)) / (now - MIN(recorded_at))`. Uses `time.time()` as the interval end so idle periods (where no new samples are inserted) are reflected as a decaying average. Falls back 1800s → 600s → 0.
-  - `_progress_stalled(active_hashes, cutoff)` — returns hashes whose last `recorded_at` is before `cutoff` (default 2 days ago).
-  - `_progress_slowest(cutoff)` — returns the slowest torrent across all active hashes, used for eviction when total speed drops below `min_download_speed`.
-
 ### `export_record`
 
 Tracks mediainfo export jobs to S3.

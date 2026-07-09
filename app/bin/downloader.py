@@ -7,7 +7,6 @@ import shutil
 import sqlite3
 import sys
 import time
-from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, LiteralString, NamedTuple, cast
@@ -94,14 +93,36 @@ class JobMeta(NamedTuple):
     selected_index: list[int]
 
 
-def _init_progress_db(data_dir: Path) -> Path:
-    """Create and migrate the local SQLite progress database. Returns the db path."""
+def _init_local_sqlite(data_dir: Path) -> Path:
+    """Create and initialize the local SQLite torrent cache. Returns the db path."""
     data_dir.mkdir(parents=True, exist_ok=True)
-    db_path = data_dir / "progress.db"
-    with closing(sqlite3.connect(str(db_path))) as conn:
+    db_path = data_dir / "state.db"
+    with sqlite3.connect(str(db_path)) as conn:
         conn.execute("PRAGMA journal_mode=WAL")
-        _run_progress_migrations(conn)
+        _run_local_sqlite_migrations(conn)
     return db_path
+
+
+_LOCAL_SQLITE_MIGRATIONS_DIR = (
+    Path(__file__).resolve().parent.parent / "sql" / "local_sqlite_migrations"
+)
+
+
+def _run_local_sqlite_migrations(db: sqlite3.Connection) -> None:
+    """Run SQLite cache migrations, tracking applied versions in `schema_version` table."""
+    if not _LOCAL_SQLITE_MIGRATIONS_DIR.exists():
+        return
+    db.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
+    current = db.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] or 0
+    for f in sorted(_LOCAL_SQLITE_MIGRATIONS_DIR.iterdir()):
+        if not (f.is_file() and f.suffix == ".sql"):
+            continue
+        version = int(f.stem.split("_")[0])
+        if version <= current:
+            continue
+        db.executescript(f.read_text(encoding="utf-8"))
+        db.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
+        db.commit()
 
 
 def _pick_query(config: DownloaderConfig) -> LiteralString:
@@ -143,33 +164,13 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
     """
 
 
-_PROGRESS_MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "sql" / "progress_migrations"
-
-
-def _run_progress_migrations(db: sqlite3.Connection) -> None:
-    """Run SQLite migrations, tracking applied versions in `schema_version` table."""
-    if not _PROGRESS_MIGRATIONS_DIR.exists():
-        return
-    db.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
-    current = db.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] or 0
-    for f in sorted(_PROGRESS_MIGRATIONS_DIR.iterdir()):
-        if not (f.is_file() and f.suffix == ".sql"):
-            continue
-        version = int(f.stem.split("_")[0])
-        if version <= current:
-            continue
-        db.executescript(f.read_text(encoding="utf-8"))
-        db.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
-        db.commit()
-
-
 @dataclasses.dataclass(kw_only=True, frozen=True)
 class Downloader:
     db: Database
     config: DownloaderConfig
     client: BTClient
     store: TorrentStore
-    _progress_db_path: Path
+    _torrent_cache_db_path: Path
     _last_orphan_cleanup: list[float] = dataclasses.field(default_factory=lambda: [0.0])
     mediainfo_bin: str = dataclasses.field(
         default_factory=lambda: must_find_executable("mediainfo")
@@ -222,8 +223,8 @@ class Downloader:
         store = TorrentStore(cfg)
         logger.info("torrent store created")
 
-        progress_db_path = _init_progress_db(cfg.data_dir)
-        logger.info("local progress database initialized")
+        cache_db_path = _init_local_sqlite(cfg.data_dir)
+        logger.info("local torrent cache initialized")
 
         return Downloader(
             config=cfg,
@@ -231,7 +232,7 @@ class Downloader:
             client=client,
             store=store,
             thread_filter_template=thread_filter_template,
-            _progress_db_path=progress_db_path,
+            _torrent_cache_db_path=cache_db_path,
         )
 
     def __post_init__(self) -> None:
@@ -256,126 +257,32 @@ class Downloader:
         logger.info("using ffmpeg at {}", self.ffmpeg_bin)
         logger.info("using bdinfo at {}", self.bdinfo_bin)
 
-    def _progress_record(self, info_hash: str, size: int) -> bool:
-        """Record a download progress sample. Returns True if a new sample was inserted."""
-        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
-            last = conn.execute(
-                "SELECT size FROM progress WHERE info_hash = ? ORDER BY recorded_at DESC LIMIT 1",
-                (info_hash,),
-            ).fetchone()
-            if last is not None and last[0] == size:
-                return False
+    def _torrent_cache_get(self, tid: int) -> bytes | None:
+        with sqlite3.connect(str(self._torrent_cache_db_path)) as conn:
+            row = conn.execute("SELECT content FROM torrent_cache WHERE tid = ?", (tid,)).fetchone()
+            if row:
+                return row[0]
+        return None
+
+    def _torrent_cache_put(self, tid: int, content: bytes) -> None:
+        with sqlite3.connect(str(self._torrent_cache_db_path)) as conn:
             conn.execute(
-                "INSERT INTO progress (info_hash, size, recorded_at) VALUES (?, ?, ?)",
-                (info_hash, size, time.time()),
+                "INSERT OR REPLACE INTO torrent_cache (tid, content) VALUES (?, ?)",
+                (tid, content),
             )
             conn.commit()
-            return True
 
-    def _progress_forget(self, info_hash: str) -> None:
-        """Remove all progress records for a torrent (job completed / failed / evicted)."""
-        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
-            conn.execute("DELETE FROM progress WHERE info_hash = ?", (info_hash,))
-            conn.commit()
-
-    def _progress_cleanup(self, active_hashes: set[str]) -> None:
-        """Remove progress records for hashes that are no longer actively downloading,
-        and records older than 10 minutes to prevent database bloat."""
-        now = time.time()
-        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
-            conn.execute(
-                "DELETE FROM progress WHERE recorded_at < ? AND rowid NOT IN (SELECT MAX(rowid) FROM progress GROUP BY info_hash)",
-                (now - 600,),
-            )
-            if not active_hashes:
-                conn.execute("DELETE FROM progress")
-            else:
-                placeholders = ",".join("?" for _ in active_hashes)
-                conn.execute(
-                    f"DELETE FROM progress WHERE info_hash NOT IN ({placeholders})",
-                    tuple(active_hashes),
-                )
-            conn.commit()
-
-    def _progress_avg_speed(self, info_hash: str) -> float | None:
-        """Return average download speed (bytes/s) using progress records from
-        the last 5 minutes, or None if there is not enough data.
-
-        Finds the record closest to 5 minutes ago and computes speed as
-        (latest.size - old.size) / (latest.recorded_at - old.recorded_at).
-        Falls back to the oldest available record if no record exists near
-        the 5-minute mark."""
-        now = time.time()
-        target_time = now - 300
-        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
-            latest = conn.execute(
-                "SELECT size, recorded_at FROM progress WHERE info_hash = ? ORDER BY recorded_at DESC LIMIT 1",
-                (info_hash,),
-            ).fetchone()
-            if latest is None:
-                return None
-
-            old = conn.execute(
-                "SELECT size, recorded_at FROM progress WHERE info_hash = ? AND recorded_at <= ? ORDER BY recorded_at DESC LIMIT 1",
-                (info_hash, target_time),
-            ).fetchone()
-            if old is None:
-                old = conn.execute(
-                    "SELECT size, recorded_at FROM progress WHERE info_hash = ? ORDER BY recorded_at ASC LIMIT 1",
-                    (info_hash,),
-                ).fetchone()
-
-            if old is None or old[1] >= latest[1]:
-                return None
-
-            size_diff = latest[0] - old[0]
-            time_diff = now - old[1]
-            if time_diff <= 0:
-                return None
-
-            return size_diff / time_diff
-
-    def _progress_slowest(self) -> tuple[str, float] | None:
-        """Return (info_hash, instantaneous_speed) of the slowest downloading torrent.
-
-        Uses the delta between the two most recent progress records as the
-        instantaneous download speed."""
-        with closing(sqlite3.connect(str(self._progress_db_path))) as conn:
-            rows = conn.execute(
-                "SELECT info_hash, size, recorded_at FROM progress ORDER BY info_hash, recorded_at"
-            ).fetchall()
-
-        if not rows:
-            return None
-
-        slowest_hash = None
-        slowest_speed = float("inf")
-        i = 0
-        while i < len(rows):
-            info_hash = rows[i][0]
-            group = []
-            while i < len(rows) and rows[i][0] == info_hash:
-                group.append(rows[i])
-                i += 1
-
-            if len(group) < 2:
-                continue
-
-            # Instantaneous speed = delta between the two most recent records
-            prev = group[-2]
-            latest = group[-1]
-            size_diff = latest[1] - prev[1]
-            time_diff = latest[2] - prev[2]
-            if time_diff <= 0 or size_diff <= 0:
-                continue
-            speed = size_diff / time_diff
-            if speed < slowest_speed:
-                slowest_speed = speed
-                slowest_hash = info_hash
-
-        if slowest_hash is None:
-            return None
-        return slowest_hash, slowest_speed
+    def _get_torrent_content(self, tid: int) -> bytes | None:
+        """Get torrent content, checking local SQLite cache first then falling back to S3."""
+        cached = self._torrent_cache_get(tid)
+        if cached is not None:
+            logger.debug("torrent cache hit for tid={}", tid)
+            return cached
+        content = self.store.read(tid)
+        if content is not None:
+            self._torrent_cache_put(tid, content)
+            logger.debug("torrent cache populated for tid={}", tid)
+        return content
 
     def start(self) -> None:
         logger.info("downloader started, entering main loop")
@@ -610,8 +517,6 @@ class Downloader:
                 failed_reason=failed_reason,
                 removed_reason=removed_reason,
             )
-        if info_hash:
-            self._progress_forget(info_hash)
 
     def __process_torrents(self) -> tuple[bool, float]:
         """Process all torrents in the download client in a single pass.
@@ -632,14 +537,13 @@ class Downloader:
         min_eta = 300.0
         # Mark jobs as removed-from-client if their torrent is no longer in client
         torrent_hashes = [x.hash for x in torrents]
-        removed_rows = self.db.fetch_all(
+        self.db.execute(
             """
                 update job set
                   status = $1,
                   removed_reason = $6,
                   updated_at = $5
                 where (not info_hash = any($2)) and node_id = $3 and status = $4
-                returning info_hash
                 """,
             [
                 ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
@@ -650,9 +554,6 @@ class Downloader:
                 "manual",
             ],
         )
-        for row in removed_rows:
-            self._progress_forget(row[0])
-
         # Fetch all downloading jobs for this node
         job_rows = self.db.fetch_all(
             """
@@ -676,8 +577,6 @@ class Downloader:
             for r in job_rows
         }
 
-        # Clean up progress records for torrents no longer actively downloading
-        self._progress_cleanup(managed_hashes)
         # Stalled detection via job.last_progress_at: no progress for N+ days
         stalled_hashes: set[str] = set()
         if managed_hashes:
@@ -810,12 +709,9 @@ class Downloader:
         status = ItemStatus.DOWNLOADING
         min_eta = 300.0
 
-        is_neptune = isinstance(self.client, NeptuneClient)
-
-        # For Neptune, compare against current job progress to detect changes
-        # without relying on the local SQLite progress database.
+        # Compare against current job progress to detect changes
         prev_progress: dict[str, float] = {}
-        if is_neptune and torrents:
+        if torrents:
             hashes = [t.hash for t in torrents]
             rows = self.db.fetch_all(
                 "select info_hash, progress from job where info_hash = any($1) and node_id = $2 and status = $3",
@@ -825,13 +721,9 @@ class Downloader:
 
         with self.db.connection() as conn, conn.pipeline():
             for t in torrents:
-                if is_neptune:
-                    new_progress = round(t.completed / t.size, 4) if t.size > 0 else 0.0
-                    progress_changed = new_progress != prev_progress.get(t.hash, -1.0)
-                    dlspeed = t.dlspeed
-                else:
-                    progress_changed = self._progress_record(t.hash, t.completed)
-                    dlspeed = self._progress_avg_speed(t.hash) or 0
+                new_progress = round(t.completed / t.size, 4) if t.size > 0 else 0.0
+                progress_changed = new_progress != prev_progress.get(t.hash, -1.0)
+                dlspeed = t.dlspeed
                 # Compute ETA from download speed
                 if dlspeed and dlspeed > 0:
                     eta = int(max(0, t.size - t.completed) / dlspeed)
@@ -884,7 +776,6 @@ class Downloader:
         logger.info("{} not managed, deleting from client", t.hash)
         self.client.torrents_delete(torrent_hashes=t.hash, delete_files=True)
         self._delete_torrent_files(t.hash)
-        self._progress_forget(t.hash)
 
     def __fix_file_selection(self, t: Torrent, selected_index: list[int], is_bdmv: bool) -> None:
         """Fix file priorities for torrents using the pre-computed selected_index."""
@@ -1008,7 +899,6 @@ class Downloader:
                    where info_hash = $2 and node_id = $3""",
                 [ItemStatus.DONE, t.hash, self.config.node_id],
             )
-        self._progress_forget(t.hash)
         self._delete_torrent_with_retry(t.hash)
         self._mediainfo_cache.pop(t.hash, None)
 
@@ -1180,7 +1070,6 @@ class Downloader:
                 self.__update_job_status(
                     status=ItemStatus.FAILED, tid=tid, failed_reason=format_exc(e)
                 )
-                self._progress_forget(info_hash)
                 with contextlib.suppress(TorrentNotFoundError):
                     self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
                 self._delete_torrent_files(info_hash)
@@ -1205,26 +1094,16 @@ class Downloader:
             return
 
         limit = int(self.config.min_download_speed)
-        is_neptune = isinstance(self.client, NeptuneClient)
-        if is_neptune:
-            total_speed = sum(t.dlspeed for t in downloading)
-        else:
-            total_speed = sum(self._progress_avg_speed(t.hash) or 0 for t in downloading)
+        total_speed = sum(t.dlspeed for t in downloading)
         if total_speed >= limit:
             return
 
         now = datetime.now(tz=TZ_SHANGHAI)
         cutoff = (now - timedelta(hours=24)).timestamp()
 
-        if is_neptune:
-            slowest = min(downloading, key=lambda t: t.dlspeed)
-            info_hash = slowest.hash
-            avg_speed = slowest.dlspeed
-        else:
-            result = self._progress_slowest()
-            if result is None:
-                return
-            info_hash, avg_speed = result
+        slowest = min(downloading, key=lambda t: t.dlspeed)
+        info_hash = slowest.hash
+        avg_speed = slowest.dlspeed
         # Only evict torrents that have been downloading for at least 24h
         start_time = self.db.fetch_val(
             "select start_download_time from job where info_hash = $1 and node_id = $2",
@@ -1256,7 +1135,7 @@ class Downloader:
         info_hash: str,
         selected_index: list[int] | None = None,
     ) -> None:
-        tc = self.store.read(tid)
+        tc = self._get_torrent_content(tid)
         if not tc:
             self.__update_job_status(
                 status=ItemStatus.FAILED,
@@ -1285,6 +1164,3 @@ class Downloader:
                 self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
             self._delete_torrent_files(info_hash)
             return
-        # Record initial progress sample for speed tracking (not needed for Neptune)
-        if not isinstance(self.client, NeptuneClient):
-            self._progress_record(info_hash, 0)

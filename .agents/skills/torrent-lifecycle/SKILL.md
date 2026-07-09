@@ -24,7 +24,6 @@ Tags are defined in `app/const.py`. They do NOT drive lifecycle logic — they a
 
 ```
 torrents_add (with tags=[downloading], download_limit=1, sequential)
-       │  _progress_record(hash, 0) for initial stalled-detection sample
        │
        ▼
   file-selected-4 not in tags → select largest video file (set others priority=0)
@@ -32,7 +31,7 @@ torrents_add (with tags=[downloading], download_limit=1, sequential)
        │
        ▼
   Downloading... (state is downloading)
-  Each loop: _progress_record() → _progress_avg_speed() → batch update job in PG
+  Each loop: use t.dlspeed directly → batch update job in PG
        │
        ▼
   Download complete (state.is_uploading)
@@ -48,14 +47,14 @@ torrents_add (with tags=[downloading], download_limit=1, sequential)
 The code in `__process_torrents()` determines the stage using torrent state, NOT tags:
 
 1. **Not in managed jobs**: Handled by `__handle_unmanaged_torrent()` — tries to reclaim if `removed-by-client`, otherwise deletes
-2. **Stalled** (no progress for 2 days via local `progress.db`): Removed from client, thread marked `torrent_invalid = 'stalled'`, job marked `removed_from_download_client` (reason: `stalled`)
+2. **Stalled** (no progress for N+ days via `job.last_progress_at`): Removed from client, thread marked `torrent_invalid = 'stalled'`, job marked `removed_from_download_client` (reason: `stalled`)
 3. **Error state** (`state.is_errored`): Deleted, job marked failed with "torrent error"
 4. **Has `process-error` tag**: Skipped entirely (the one exception where a tag affects logic)
 5. **Unselected category**: Deleted, job marked skipped
 6. **Uploading/seeding** (`state.is_uploading`): Swaps tag to `processing`, runs mediainfo extraction
 7. **File not yet selected** (`BT_TAG_FILE_SELECTED` not in tags): Selects largest video file, clears download limit, adds `BT_TAG_FILE_SELECTED` tag, resumes if paused
 8. **Stopped/paused** (`state.is_paused`): Swaps tag to `downloading`, resumes the torrent
-9. **Downloading** (default): Records progress sample to local `progress.db` via `_progress_record()`, computes avg speed via `_progress_avg_speed()`, batch-updates job progress/dlspeed/eta in PostgreSQL
+9. **Downloading** (default): Uses `t.dlspeed` directly (instantaneous speed from BT client), compares current progress against stored `job.progress` to detect changes, batch-updates job progress/dlspeed/eta in PostgreSQL
 
 ## Stage Details
 
@@ -71,9 +70,9 @@ The code in `__process_torrents()` determines the stage using torrent state, NOT
 
 - **Detected by**: Torrent state is downloading (not paused, not uploading, not errored)
 - **Entry**: After file selection or after resume from paused state
-- **Action**: `__batch_update_downloading()` records progress to local `progress.db` via `_progress_record()`, computes avg speed via `_progress_avg_speed()`, batch-updates job `progress`/`dlspeed`/`eta` in PostgreSQL via pipeline mode. Speed uses `(MAX(size)-MIN(size)) / (now - MIN(recorded_at))` so idle periods naturally decay the average.
-- **Stalled detection**: `_progress_stalled()` checks local `progress.db` — torrents with no sample for 2+ days are evicted.
-- **Slow eviction**: `_progress_slowest()` finds the slowest torrent; if total speed < `min_download_speed`, the slowest is evicted.
+- **Action**: `__batch_update_downloading()` uses `t.dlspeed` (instantaneous speed from BT client) directly, compares current progress against stored `job.progress` to detect changes, batch-updates job `progress`/`dlspeed`/`eta` in PostgreSQL via pipeline mode. Only updates `last_progress_at` when progress actually changed.
+- **Stalled detection**: Uses `job.last_progress_at` in PostgreSQL — jobs with no progress update for N+ days are evicted.
+- **Slow eviction**: `__maybe_evict_slowest()` uses `t.dlspeed` directly; if total speed < `min_download_speed` and the slowest torrent has been downloading 24h+, it is evicted.
 - **Exit**: When torrent state becomes uploading
 
 ### 3. Processing (uploading state)
@@ -82,8 +81,8 @@ The code in `__process_torrents()` determines the stage using torrent state, NOT
 - **Entry**: `__process_torrents()` phase 3 detects uploading torrents
 - **Action**: `__process_completed_torrent()` extracts mediainfo (BDMV or regular), checks hardcoded subtitles
 - **Tags set**: Remove `BT_TAG_DOWNLOADING`, add `BT_TAG_PROCESSING`
-- **Success exit**: Updates thread with mediainfo and `hard_coded_subtitle`, marks job done, deletes torrent + files, calls `_progress_forget()`
-- **Failure exit**: Adds `BT_TAG_PROCESS_ERROR` tag, marks job failed in DB, calls `_progress_forget()`
+- **Success exit**: Updates thread with mediainfo and `hard_coded_subtitle`, marks job done, deletes torrent + files
+- **Failure exit**: Adds `BT_TAG_PROCESS_ERROR` tag, marks job failed in DB
 
 ### 4. Process Error (terminal)
 
@@ -97,22 +96,11 @@ In `__process_torrents()`, paused torrents are detected and resumed with tag swa
 
 ## Cleanup
 
-- **Stalled torrents**: Torrents with no progress for 2 days (detected via local `progress.db` in `_progress_stalled()`) are removed from client, thread marked `torrent_invalid = 'stalled'`, job marked `removed_from_download_client` (reason: `stalled`)
+- **Stalled torrents**: Torrents with no progress for N+ days (detected via `job.last_progress_at` in PostgreSQL) are removed from client, thread marked `torrent_invalid = 'stalled'`, job marked `removed_from_download_client` (reason: `stalled`)
 - **Torrent error state**: Torrents in `state.is_errored` are deleted, job marked failed with "torrent error"
 - **Unselected category**: Torrents whose thread category is no longer in `SELECTED_CATEGORY` are deleted, job marked skipped
 - **Removed from client**: If a torrent disappears from qb (user deleted), job is marked `removed-by-client` (reason: `"manual"`)
 - **Unmanaged torrents**: Torrents not in any downloading job are deleted (with files); reclaimed if previously marked `removed-by-client`
-
-## Progress Tracking (local SQLite)
-
-Instead of writing to the remote PostgreSQL `job_download_size` table on every poll loop, each downloader node maintains a local SQLite database at `{data_dir}/progress.db`:
-
-- **`_progress_record(hash, size)`**: Inserts sample only when `size` differs from last recorded value. Returns `True` if a new sample was added.
-- **`_progress_avg_speed(hash, window=1800)`**: Average bytes/s using `(MAX(size)-MIN(size)) / (now - MIN(recorded_at))`. Uses current time as interval end so idle periods are reflected as decaying speed. Falls back 1800s → 600s → 0.
-- **`_progress_stalled(hashes, cutoff)`**: Returns hashes with no sample after `cutoff` (default 2 days).
-- **`_progress_slowest(cutoff)`**: Returns the slowest torrent for eviction decisions.
-- **`_progress_forget(hash)`**: Drops all samples when a job terminates.
-- **`_progress_cleanup(hashes)`**: Prunes samples for hashes no longer actively downloading.
 
 ## Related
 
