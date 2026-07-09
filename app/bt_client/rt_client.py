@@ -9,6 +9,8 @@ import bencode2
 from rtorrent_rpc import RTorrent
 from rtorrent_rpc.helper import parse_tags
 
+from app.utils import get_info_hash_v1_from_content
+
 from .base import (
     BTClient,
     Torrent,
@@ -174,6 +176,7 @@ class RTorrentClient(BTClient):
         tags: list[str] | None = None,
         download_limit: int = 0,
         is_sequential_download: bool = False,
+        selected_files: list[int] | None = None,
     ) -> str:
         for content in torrent_files:
             Path(save_path).mkdir(parents=True, exist_ok=True)
@@ -206,6 +209,17 @@ class RTorrentClient(BTClient):
 
             if download_limit > 0:
                 params.append("d.throttle_name.set=queue")
+
+            # File selection: set unwanted files to priority 0
+            if selected_files and b"files" in info and len(info[b"files"]) > 1:
+                info_hash = get_info_hash_v1_from_content(content).upper()
+                keep = set(selected_files)
+                file_count = len(info[b"files"])
+                for i in range(file_count):
+                    if i not in keep:
+                        params.append(f"f.priority.set={info_hash}:f{i},0")
+                params.append(f"d.update_priorities={info_hash}")
+                params.append(f"d.save_resume={info_hash}")
 
             self._call("load.raw", params)
 

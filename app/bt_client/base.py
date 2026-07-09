@@ -66,6 +66,7 @@ class BTClient(abc.ABC):
         tags: list[str] | None = None,
         download_limit: int = 0,
         is_sequential_download: bool = False,
+        selected_files: list[int] | None = None,
     ) -> str: ...
 
     @abc.abstractmethod

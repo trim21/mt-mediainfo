@@ -1121,9 +1121,6 @@ class Downloader:
                     )
                     return PickContext()
 
-            info_hash_to_is_bdmv: dict[str, bool] = {
-                row["info_hash"]: row.get("type") == "bdmv" for row in rows
-            }
             info_hash_to_selected_index: dict[str, list[int]] = {
                 row["info_hash"]: row["selected_index"] for row in rows
             }
@@ -1167,8 +1164,10 @@ class Downloader:
 
         # add to download client outside the lock to avoid blocking other nodes
         for tid, info_hash in picked:
+            selected_index = info_hash_to_selected_index[info_hash]
+
             try:
-                self.__add_torrent(tid, info_hash)
+                self.__add_torrent(tid, info_hash, selected_index)
             except TimeoutError, ConnectionRefusedError:
                 logger.warning("transient error adding torrent tid={}, will retry", tid)
                 self.db.execute(
@@ -1178,44 +1177,6 @@ class Downloader:
                 continue
             except Exception as e:
                 logger.exception("failed to add torrent tid={}: {}", tid, e)
-                self.__update_job_status(
-                    status=ItemStatus.FAILED, tid=tid, failed_reason=format_exc(e)
-                )
-                self._progress_forget(info_hash)
-                with contextlib.suppress(TorrentNotFoundError):
-                    self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
-                self._delete_torrent_files(info_hash)
-                continue
-
-            selected_index = info_hash_to_selected_index[info_hash]
-            is_bdmv = info_hash_to_is_bdmv[info_hash]
-
-            # Poll until torrent appears in client, then select files immediately
-            for _ in range(30):
-                try:
-                    current = self.client.torrents_info()
-                    if any(t.hash.lower() == info_hash.lower() for t in current):
-                        break
-                except Exception:
-                    logger.debug("polling torrents_info for {} failed, retrying", info_hash)
-                time.sleep(1)
-            else:
-                logger.error(
-                    "torrent {} (tid={}) did not appear in client after 30s",
-                    info_hash,
-                    tid,
-                )
-                self.__update_job_status(
-                    status=ItemStatus.FAILED,
-                    tid=tid,
-                    failed_reason="torrent did not appear in client after 30s",
-                )
-                continue
-
-            try:
-                self.__fix_file_selection_by_hash(info_hash, selected_index, is_bdmv)
-            except Exception as e:
-                logger.exception("failed immediate file selection for tid={}", tid)
                 self.__update_job_status(
                     status=ItemStatus.FAILED, tid=tid, failed_reason=format_exc(e)
                 )
@@ -1293,6 +1254,7 @@ class Downloader:
         self,
         tid: int,
         info_hash: str,
+        selected_index: list[int] | None = None,
     ) -> None:
         tc = self.store.read(tid)
         if not tc:
@@ -1313,6 +1275,7 @@ class Downloader:
             tags=[BT_TAG_DOWNLOADING],
             download_limit=1,
             is_sequential_download=True,
+            selected_files=selected_index,
         )
         if r != "Ok.":
             self.__update_job_status(

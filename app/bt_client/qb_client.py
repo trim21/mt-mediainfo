@@ -1,12 +1,14 @@
 import dataclasses
+import time
 from collections.abc import Sequence
 from typing import Annotated, Any
 
 import qbittorrentapi
 from pydantic import BeforeValidator
 from qbittorrentapi import NotFound404Error
+from sslog import logger
 
-from app.utils import parse_obj
+from app.utils import get_info_hash_v1_from_content, parse_obj
 
 from .base import (
     BTClient,
@@ -68,6 +70,7 @@ class QBittorrentClient(BTClient):
         tags: list[str] | None = None,
         download_limit: int = 0,
         is_sequential_download: bool = False,
+        selected_files: list[int] | None = None,
     ) -> str:
         r = self._client.torrents_add(
             torrent_files=torrent_files,
@@ -77,6 +80,34 @@ class QBittorrentClient(BTClient):
             download_limit=download_limit,
             is_sequential_download=is_sequential_download,
         )
+
+        if not selected_files:
+            return str(r)
+
+        info_hash = get_info_hash_v1_from_content(torrent_files[0])
+
+        for _ in range(30):
+            try:
+                current = self._client.torrents_info(torrent_hashes=info_hash)
+                if current:
+                    break
+            except Exception:
+                logger.debug("polling torrents_info for {} failed, retrying", info_hash)
+            time.sleep(1)
+        else:
+            raise TimeoutError(f"torrent {info_hash} did not appear in qBittorrent after 30s")
+
+        files = parse_obj(list[TorrentFile], self._client.torrents_files(torrent_hash=info_hash))
+        if len(files) <= 1:
+            return str(r)
+
+        keep = set(selected_files)
+        file_ids = [f.index for f in files if f.index not in keep and f.priority != 0]
+        if file_ids:
+            self._client.torrents_file_priority(
+                torrent_hash=info_hash, file_ids=file_ids, priority=0
+            )
+
         return str(r)
 
     def torrents_remove_tags(self, tags: list[str], torrent_hashes: str) -> None:

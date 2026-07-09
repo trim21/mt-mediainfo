@@ -87,6 +87,7 @@ class NeptuneClient(BTClient):
         tags: list[str] | None = None,
         download_limit: int = 0,
         is_sequential_download: bool = False,
+        selected_files: list[int] | None = None,
     ) -> str:
         for content in torrent_files:
             self._client.torrent_add(
@@ -95,6 +96,7 @@ class NeptuneClient(BTClient):
                     download_dir=save_path,
                     tags=tags or [],
                     is_base_dir=True,
+                    selected_files=selected_files,
                 )
             )
         return "Ok."
