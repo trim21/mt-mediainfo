@@ -5,6 +5,7 @@ import io
 import os.path
 import shutil
 import sqlite3
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
@@ -349,6 +350,34 @@ class Downloader:
         save_path = Path(self.config.download_path) / info_hash.lower()
         shutil.rmtree(save_path, ignore_errors=True)
 
+    def __trim_fs(self) -> None:
+        """Run fstrim on the download volume to reclaim freed blocks.
+
+        Requires CAP_SYS_ADMIN on the container and download_path
+        to be a real mount point (bind mount or named volume).
+        """
+        try:
+            result = subprocess.run(
+                ["fstrim", "-v", self.config.download_path],
+                capture_output=True,
+                timeout=600,
+                text=True,
+            )
+            if result.returncode == 0:
+                # fstrim output example: "/data: 10.5 GiB (11274289152 bytes) trimmed"
+                trimmed = result.stdout.strip() or result.stderr.strip()
+                logger.info("fstrim complete: {}", trimmed)
+            else:
+                logger.warning(
+                    "fstrim failed (code {}): {}", result.returncode, result.stderr.strip()
+                )
+        except FileNotFoundError:
+            logger.warning("fstrim binary not found, skip trimming")
+        except subprocess.TimeoutExpired:
+            logger.warning("fstrim timed out after 60s")
+        except Exception:
+            logger.exception("fstrim error")
+
     def __handle_cmd_delete_torrent(self, payload: DeleteTorrentPayload) -> dict[str, str]:
         self.client.torrents_delete(torrent_hashes=payload.info_hash, delete_files=True)
         self._delete_torrent_files(payload.info_hash)
@@ -427,6 +456,7 @@ class Downloader:
         else:
             logger.info("orphan cleanup done: no orphan files found")
 
+        self.__trim_fs()
         self._last_orphan_cleanup[0] = time.monotonic()
 
     def __run_at_interval(self) -> LoopContext:

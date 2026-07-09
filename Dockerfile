@@ -18,7 +18,7 @@ VOLUME ["/data"]
 
 ENTRYPOINT ["python", "main.py"]
 
-RUN apt-get update && apt-get install -y mediainfo ffmpeg postgresql-client libicu76 && \
+RUN apt-get update && apt-get install -y mediainfo ffmpeg postgresql-client libicu76 util-linux && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
 ADD https://github.com/tetrahydroc/BDInfoCLI/releases/download/v1.0.5/BDInfo-linux-x64.tar.gz /tmp/bdinfo.tar.gz
