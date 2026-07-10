@@ -82,6 +82,7 @@ class PickContext:
 @dataclasses.dataclass(frozen=True, slots=True)
 class LoopContext:
     min_eta: float = 300
+    had_work: bool = False
 
 
 class JobMeta(NamedTuple):
@@ -273,27 +274,27 @@ class Downloader:
             except Exception:
                 logger.exception("failed to process commands")
 
-            self.client.tick()
-
-            try:
-                loop_ctx = self.__run_at_interval()
-            except Exception:
-                logger.exception("failed to run")
-                loop_ctx = LoopContext()
+            had_work = True
+            loop_ctx = LoopContext()
+            while had_work:
+                self.client.tick()
+                try:
+                    loop_ctx = self.__run_at_interval()
+                except Exception:
+                    logger.exception("failed to run")
+                    loop_ctx = LoopContext()
+                had_work = loop_ctx.had_work
+                try:
+                    if self.__process_commands():
+                        had_work = True
+                except Exception:
+                    logger.exception("failed to process commands")
 
             interval = min(300, abs(int(loop_ctx.min_eta)) + 5)
 
             self._report_status(
                 f"sleep until {(datetime.now(tz=TZ_SHANGHAI) + timedelta(seconds=interval)):%H:%M:%S}"
             )
-            try:
-                commands_processed = self.__process_commands()
-            except Exception:
-                logger.exception("failed to process commands")
-                commands_processed = False
-            if commands_processed:
-                logger.info("rpc commands processed, skipping sleep")
-                continue
             logger.info("loop done, sleeping for {}s", interval)
 
     def __wait_for_notify(self, timeout: float) -> None:
@@ -467,7 +468,7 @@ class Downloader:
         ctx = self.__pick_and_add_jobs()
         if not completed and ctx.picked == 0 and ctx.no_space and ctx.has_pending:
             self.__maybe_evict_slowest()
-        return LoopContext(min_eta=min_eta)
+        return LoopContext(min_eta=min_eta, had_work=completed or ctx.picked > 0)
 
     def _report_status(self, status: str) -> None:
         """Update node status directly in DB for hang-debugging visibility."""
