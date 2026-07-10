@@ -1532,7 +1532,8 @@ def create_app() -> fastapi.FastAPI:
         jobs_raw = await pool.fetch(
             """
             select node_id, status, progress, failed_reason, removed_reason,
-                   start_download_time, updated_at, completed_at
+                   start_download_time, updated_at, completed_at,
+                   error_message, debug_info, dlspeed, eta
             from job
             where tid = $1
             order by updated_at desc
@@ -1540,7 +1541,14 @@ def create_app() -> fastapi.FastAPI:
             tid,
         )
 
-        jobs = [dict(r) for r in jobs_raw]
+        jobs = []
+        for r in jobs_raw:
+            j = dict(r)
+            dlspeed: int = j.get("dlspeed") or 0
+            j["speed_fmt"] = human_readable_byte_rate(dlspeed) if dlspeed > 0 else "-"
+            eta: int = j.get("eta") or 0
+            j["eta_fmt"] = _fmt_eta(eta) if eta > 0 else "-"
+            jobs.append(j)
 
         return render(
             "thread_detail.html.j2",

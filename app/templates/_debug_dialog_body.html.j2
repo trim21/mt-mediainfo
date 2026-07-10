@@ -1,0 +1,17 @@
+<dialog id="debug-dialog" class="debug-dialog">
+  <div class="debug-dialog-header">
+    <h3 id="debug-dialog-title" class="debug-dialog-title"></h3>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('debug-dialog').close()">Close</button>
+  </div>
+  <pre id="debug-dialog-body" class="debug-dialog-body"></pre>
+</dialog>
+
+<script>
+function showDebug(button) {
+  const source = button.closest('.detail-inline').querySelector('.detail-source');
+  const dialog = document.getElementById('debug-dialog');
+  document.getElementById('debug-dialog-title').textContent = 'Debug Info';
+  document.getElementById('debug-dialog-body').textContent = source?.content?.textContent || '';
+  dialog.showModal();
+}
+</script>
