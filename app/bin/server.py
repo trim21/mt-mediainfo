@@ -1892,7 +1892,7 @@ def create_app() -> fastapi.FastAPI:
         )
 
         last_progress_map: dict[str, datetime] = {
-            r["info_hash"]: r["last_progress_at"] for r in rows if r["last_progress_at"] is not None
+            r["info_hash"]: r["last_progress_at"] or r["start_download_time"] for r in rows
         }
 
         pager = _pagination(page, cast(int, total_count))
