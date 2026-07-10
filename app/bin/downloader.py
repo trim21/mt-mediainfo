@@ -326,12 +326,32 @@ class Downloader:
         save_path = Path(self.config.download_path) / info_hash.lower()
         shutil.rmtree(save_path, ignore_errors=True)
 
+    @staticmethod
+    def _is_ssd(path: str) -> bool:
+        """Check if the filesystem at `path` is backed by an SSD via lsblk ROTA."""
+        try:
+            result = subprocess.run(
+                ["lsblk", "-ndo", "ROTA", path],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return result.returncode == 0 and result.stdout.strip() == "0"
+        except Exception:
+            logger.warning("Cannot determine storage type of %s, assume not SSD", path)
+            return False
+
     def __trim_fs(self) -> None:
         """Run fstrim on the download volume to reclaim freed blocks.
 
         Requires CAP_SYS_ADMIN on the container and download_path
         to be a real mount point (bind mount or named volume).
+        Only runs when the backing storage is an SSD.
         """
+        if not self._is_ssd(self.config.download_path):
+            logger.info("download volume is not SSD, skip fstrim")
+            return
+
         try:
             result = subprocess.run(
                 ["fstrim", "-v", self.config.download_path],
