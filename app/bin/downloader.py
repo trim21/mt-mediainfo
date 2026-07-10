@@ -1081,7 +1081,8 @@ class Downloader:
             logger.info("pick {} items", len(picked))
 
         # add to download client outside the lock to avoid blocking other nodes
-        for tid, info_hash in picked:
+        for i, (tid, info_hash) in enumerate(picked, 1):
+            self._report_status(f"adding:{i}/{len(picked)}:{tid}")
             selected_index = info_hash_to_selected_index[info_hash]
 
             try:
