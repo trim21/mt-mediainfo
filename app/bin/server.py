@@ -1533,7 +1533,8 @@ def create_app() -> fastapi.FastAPI:
             """
             select node_id, status, progress, failed_reason, removed_reason,
                    start_download_time, updated_at, completed_at,
-                   error_message, debug_info, dlspeed, eta
+                   error_message, debug_info, dlspeed, eta,
+                   last_progress_at
             from job
             where tid = $1
             order by updated_at desc
@@ -1541,6 +1542,7 @@ def create_app() -> fastapi.FastAPI:
             tid,
         )
 
+        now = datetime.now(tz=TZ_SHANGHAI)
         jobs = []
         for r in jobs_raw:
             j = dict(r)
@@ -1548,6 +1550,9 @@ def create_app() -> fastapi.FastAPI:
             j["speed_fmt"] = human_readable_byte_rate(dlspeed) if dlspeed > 0 else "-"
             eta: int = j.get("eta") or 0
             j["eta_fmt"] = _fmt_eta(eta) if eta > 0 else "-"
+            j["no_progress_since"] = _timeago(
+                j.get("last_progress_at") or j.get("start_download_time"), now
+            )
             jobs.append(j)
 
         return render(

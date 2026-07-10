@@ -79,7 +79,7 @@
   {% if jobs %}
   <table class="table table-bordered table-sm" style="max-width: 960px;">
     <thead class="table-light">
-      <tr><th>Node</th><th>Status</th><th>Progress</th><th>Speed</th><th>ETA</th><th>Failed Reason</th><th>Removed Reason</th><th>Started</th><th>Updated</th><th>Completed</th><th>Error</th><th>Debug</th></tr>
+      <tr><th>Node</th><th>Status</th><th>Progress</th><th>Speed</th><th>ETA</th><th>No Progress Since</th><th>Failed Reason</th><th>Removed Reason</th><th>Started</th><th>Updated</th><th>Completed</th><th>Error</th><th>Debug</th></tr>
     </thead>
     <tbody>
       {% for j in jobs %}
@@ -89,6 +89,7 @@
         <td>{{ "%.1f%%" | format(j.progress * 100) }}</td>
         <td>{{ j.speed_fmt }}</td>
         <td>{{ j.eta_fmt }}</td>
+        <td>{{ j.no_progress_since }}</td>
         <td>{{ j.failed_reason or '-' }}</td>
         <td>{{ j.removed_reason or '-' }}</td>
         <td>{{ j.start_download_time | fmt_dt }}</td>
