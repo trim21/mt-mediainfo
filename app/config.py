@@ -9,7 +9,7 @@ from typing import Annotated, Any, cast
 
 import durationpy
 import yarl
-from pydantic import BeforeValidator, ByteSize, Field, HttpUrl
+from pydantic import BeforeValidator, ByteSize, Field
 
 from app.const import PickStrategy
 from app.utils import parse_obj
@@ -166,15 +166,6 @@ class DownloaderConfig(BaseConfig, S3Mixin):
             min_length=1,
             default_factory=default_node_id,
         ),
-    ]
-
-    qb_url: Annotated[HttpUrl | None, Field(alias="QB_URL", default=None, validate_default=True)]
-
-    rt_url: Annotated[str | None, Field(alias="RT_URL", default=None, validate_default=True)]
-
-    rt_timeout: Annotated[
-        float,
-        Field(alias="RT_TIMEOUT", default=30.0, validate_default=True),
     ]
 
     neptune_url: Annotated[

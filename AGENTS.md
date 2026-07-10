@@ -10,10 +10,9 @@ This project downloads torrents from M-Team, processes local media files to extr
 - `app/bin/downloader.py` - Downloader loop, BT client integration, local mediainfo extraction, hardcoded-subtitle detection, RPC polling
 - `app/bin/scrape.py` - Thread discovery, API mediainfo fetch, torrent download, S3 backup, and `selected_size` backfill
 - `app/bin/server.py` - FastAPI dashboard, JSON endpoints, daily stats cache, node and RPC views
-- `app/bt_client/__init__.py` - Re-exports `BTClient`, `Torrent`, `TorrentFile`, `TorrentState`, `TorrentNotFoundError`, `ETA_INF` from `base.py`
+- `app/bt_client/__init__.py` - Re-exports `BTClient`, `Torrent`, `TorrentFile`, `TorrentState`, `TorrentNotFoundError`, `ETA_INF`, `NeptuneClient` from `base.py`
 - `app/bt_client/base.py` - Abstract `BTClient` base class defining the torrent client interface (add, delete, list, resume, pause, get files, set file priority)
-- `app/bt_client/qb_client.py` - `QBittorrentClient` implementation of `BTClient` using `qbittorrentapi`
-- `app/bt_client/rt_client.py` - `RTorrentClient` implementation of `BTClient` using XML-RPC (`rtorrent-rpc`)
+- `app/bt_client/neptune_client.py` - `NeptuneClient` implementation of `BTClient` using `neptune-sdk`
 - `app/rpc.py` - RPC method definitions, payload validation, queue polling, and enqueue helpers
 - `app/config.py` - Pydantic-based config from environment variables for downloader, scraper, and server
 - `app/const.py` - Status, tag, lock, category, and pick-strategy constants
@@ -38,7 +37,7 @@ This project downloads torrents from M-Team, processes local media files to extr
 ## Runtime Invariants
 
 - Python 3.14 project with environment-driven config in `app/config.py`
-- `app/bin/downloader.py` uses `BTClient` abstraction; concrete clients are `QBittorrentClient` (`qbittorrentapi`) and `RTorrentClient` (`rtorrent-rpc`)
+- `app/bin/downloader.py` uses `BTClient` abstraction; the concrete client is `NeptuneClient` (`neptune-sdk`)
 - Downloader loop order matters: heartbeat -> wait for PG notify or timeout -> process RPC commands -> process qBittorrent torrents -> pick new jobs
 - `app/bin/downloader.py` and `app/bin/scrape.py` use psycopg-based sync DB access; `app/bin/server.py` uses asyncpg
 - `app/sql/migrations/` contains all SQL migrations; `001_initial_schema.sql` creates the initial tables; subsequent migrations add columns and indexes; `schema_version` table tracks which migrations have run (absent = 0)

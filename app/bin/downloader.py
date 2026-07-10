@@ -14,23 +14,19 @@ from typing import Any, LiteralString, NamedTuple, cast
 
 import jinja2
 import psycopg
-import qbittorrentapi
 from psycopg.rows import dict_row
 from rich.console import Console
-from rtorrent_rpc import RTorrent
 from sslog import logger
 
 from app.bt_client import (
     ETA_INF,
     BTClient,
+    NeptuneClient,
     Torrent,
     TorrentFile,
     TorrentNotFoundError,
     TorrentState,
 )
-from app.bt_client.neptune_client import NeptuneClient
-from app.bt_client.qb_client import QBittorrentClient
-from app.bt_client.rt_client import RTorrentClient
 from app.config import DownloaderConfig
 from app.const import (
     BT_TAG_DOWNLOADING,
@@ -188,32 +184,12 @@ class Downloader:
         logger.info("connecting to database...")
         db = Database(cfg.pg_dsn())
         logger.info("database pool created")
-        if cfg.neptune_url and cfg.neptune_token:
-            client: BTClient = NeptuneClient(
-                base_url=cfg.neptune_url,
-                token=cfg.neptune_token,
-            )
-        elif cfg.rt_url:
-            client = RTorrentClient(
-                RTorrent(cfg.rt_url, timeout=cfg.rt_timeout),
-            )
-        elif cfg.qb_url:
-            client = QBittorrentClient(
-                qbittorrentapi.Client(
-                    host=str(cfg.qb_url),
-                    password=cfg.qb_url.password,
-                    username=cfg.qb_url.username,
-                    SIMPLE_RESPONSES=True,
-                    FORCE_SCHEME_FROM_HOST=True,
-                    VERBOSE_RESPONSE_LOGGING=False,
-                    RAISE_NOTIMPLEMENTEDERROR_FOR_UNIMPLEMENTED_API_ENDPOINTS=True,
-                    REQUESTS_ARGS={"timeout": 10},
-                ),
-            )
-        else:
-            raise ValueError(
-                "no download client configured: set NEPTUNE_URL+NEPTUNE_TOKEN, RT_URL or QB_URL"
-            )
+        if not cfg.neptune_url or not cfg.neptune_token:
+            raise ValueError("no download client configured: set NEPTUNE_URL and NEPTUNE_TOKEN")
+        client: BTClient = NeptuneClient(
+            base_url=cfg.neptune_url,
+            token=cfg.neptune_token,
+        )
 
         logger.info("download client created, type={}", type(client).__name__)
 
