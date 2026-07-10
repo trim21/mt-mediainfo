@@ -756,10 +756,11 @@ class Downloader:
                 else:
                     eta = ETA_INF
                 min_eta = min(min_eta, eta)
+                debug = self.client.torrent_debug_info(t.hash)
                 conn.execute(
                     "update job set progress=$1, dlspeed=$2, eta=$3,"
-                    " error_message=$4, updated_at=$5"
-                    + (", last_progress_at=$9" if progress_changed else "")
+                    " error_message=$4, updated_at=$5, debug_info=$9"
+                    + (", last_progress_at=$10" if progress_changed else "")
                     + " where info_hash=$6 and node_id=$7 and status=$8",
                     [
                         round(t.completed / t.size, 4) if t.size > 0 else 0.0,
@@ -770,6 +771,7 @@ class Downloader:
                         t.hash,
                         node_id,
                         status,
+                        debug,
                     ]
                     + ([now] if progress_changed else []),
                 )

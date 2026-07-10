@@ -1,4 +1,5 @@
 import contextlib
+import json
 
 from neptune_sdk import NeptuneClient as SDKClient
 from neptune_sdk.exceptions import NeptuneRPCError
@@ -55,6 +56,7 @@ class NeptuneClient(BTClient):
 
     def __init__(self, base_url: str, *, token: str, timeout: float = 30.0) -> None:
         self._client = SDKClient(base_url, token=token, timeout=timeout)
+        self._raw_torrents: dict[str, SDKTorrent] = {}
 
     def app_version(self) -> str:
         with contextlib.suppress(Exception):
@@ -62,7 +64,38 @@ class NeptuneClient(BTClient):
         return "neptune"
 
     def torrents_info(self) -> list[Torrent]:
-        return [_convert_torrent(t) for t in self._client.torrent_list().torrents]
+        raw = self._client.torrent_list().torrents
+        self._raw_torrents = {t.hash: t for t in raw}
+        return [_convert_torrent(t) for t in raw]
+
+    def torrent_debug_info(self, info_hash: str) -> str:
+        raw = self._raw_torrents.get(info_hash)
+        if raw is None:
+            return ""
+        return json.dumps(
+            {
+                "name": raw.name,
+                "hash": raw.hash,
+                "state": raw.state,
+                "download_rate": raw.download_rate,
+                "upload_rate": raw.upload_rate,
+                "download_total": raw.download_total,
+                "upload_total": raw.upload_total,
+                "completed": raw.completed,
+                "total_length": raw.total_length,
+                "selected_size": raw.selected_size,
+                "connection_count": raw.connection_count,
+                "total_seeding": raw.total_seeding,
+                "total_downloading": raw.total_downloading,
+                "connected_seeding": raw.connected_seeding,
+                "connected_downloading": raw.connected_downloading,
+                "corrupted": raw.corrupted,
+                "message": raw.message,
+                "tracker_errors": raw.tracker_errors,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
 
     def torrents_files(self, torrent_hash: str) -> list[TorrentFile]:
         try:

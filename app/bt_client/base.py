@@ -91,3 +91,8 @@ class BTClient(abc.ABC):
 
         The default implementation is a no-op.
         """
+
+    @abc.abstractmethod
+    def torrent_debug_info(self, info_hash: str) -> str:
+        """Return raw client-side state for a torrent as a JSON string."""
+        ...

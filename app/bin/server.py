@@ -1877,6 +1877,7 @@ def create_app() -> fastapi.FastAPI:
                        job.start_download_time, job.updated_at,
                        job.dlspeed, job.eta, job.info_hash,
                        job.completed_at, job.last_progress_at,
+                       job.debug_info,
                        thread.size, thread.selected_size, thread.seeders
                 from job
                 join thread on (thread.tid = job.tid)
