@@ -6,6 +6,7 @@ from neptune_sdk.exceptions import NeptuneRPCError
 from neptune_sdk.models import AddTorrentRequest
 from neptune_sdk.models import MainDataTorrent as SDKTorrent
 from neptune_sdk.models import TorrentFile as SDKFile
+from neptune_sdk.models import TorrentState as SDKTorrentState
 
 from app.utils import human_readable_byte_rate, human_readable_size
 
@@ -17,16 +18,20 @@ from .base import (
     TorrentState,
 )
 
-_STATE_MAP: dict[str, TorrentState] = {
-    "Stopped": TorrentState.PAUSED,
-    "Downloading": TorrentState.DOWNLOADING,
-    "Seeding": TorrentState.UPLOADING,
-    "Error": TorrentState.ERRORED,
+_STATE_MAP: dict[SDKTorrentState, TorrentState] = {
+    SDKTorrentState.Downloading: TorrentState.DOWNLOADING,
+    SDKTorrentState.PendingDownloading: TorrentState.DOWNLOADING,
+    SDKTorrentState.Seeding: TorrentState.UPLOADING,
+    SDKTorrentState.Checking: TorrentState.PAUSED,
+    SDKTorrentState.Stopped: TorrentState.PAUSED,
+    SDKTorrentState.Moving: TorrentState.PAUSED,
+    SDKTorrentState.Error: TorrentState.ERRORED,
 }
 
 
 def _convert_torrent(t: SDKTorrent) -> Torrent:
-    state = _STATE_MAP.get(t.state, TorrentState.DOWNLOADING)
+    nstate = SDKTorrentState(t.state)
+    state = _STATE_MAP.get(nstate, TorrentState.DOWNLOADING)
     size = t.selected_size if t.selected_size > 0 else t.total_length
 
     return Torrent(
@@ -78,7 +83,7 @@ class NeptuneClient(BTClient):
             {
                 "name": raw.name,
                 "hash": raw.hash,
-                "state": raw.state,
+                "state": SDKTorrentState(raw.state).name,
                 "download_rate": raw.download_rate,
                 "download_rate_fmt": human_readable_byte_rate(raw.download_rate),
                 "upload_rate": raw.upload_rate,
