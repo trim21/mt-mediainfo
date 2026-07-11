@@ -7,11 +7,25 @@
 </dialog>
 
 <script>
-function showDebug(button) {
-  const source = button.closest('.detail-inline').querySelector('.detail-source');
+async function showDebug(nodeId, infoHash) {
   const dialog = document.getElementById('debug-dialog');
-  document.getElementById('debug-dialog-title').textContent = 'Debug Info';
-  document.getElementById('debug-dialog-body').textContent = source?.content?.textContent || '';
+  const title = document.getElementById('debug-dialog-title');
+  const body = document.getElementById('debug-dialog-body');
+
+  title.textContent = 'Debug Info';
+  body.textContent = 'Loading...';
   dialog.showModal();
+
+  try {
+    const resp = await fetch('/api/job/debug-info?node_id=' + encodeURIComponent(nodeId) + '&info_hash=' + encodeURIComponent(infoHash));
+    const data = await resp.json();
+    if (!resp.ok) {
+      body.textContent = 'Error: ' + (data.error || resp.statusText);
+    } else {
+      body.textContent = data.debug_info || '(empty)';
+    }
+  } catch (e) {
+    body.textContent = 'Request failed: ' + e;
+  }
 }
 </script>

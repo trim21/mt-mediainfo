@@ -2029,6 +2029,20 @@ def create_app() -> fastapi.FastAPI:
         ]
         return render("exports.html.j2", ctx={"records": records})
 
+    @app.get("/api/job/debug-info")
+    async def get_job_debug_info(
+        node_id: Annotated[str, Query()],
+        info_hash: Annotated[str, Query()],
+    ) -> JSONResponse:
+        row = await pool.fetchrow(
+            "select debug_info from job where node_id = $1 and info_hash = $2",
+            node_id,
+            info_hash,
+        )
+        if row is None:
+            return ORJSONResponse({"error": "job not found"}, status_code=404)
+        return ORJSONResponse({"debug_info": row["debug_info"] or ""})
+
     @app.post("/api/export-records/{export_date}/reset")
     async def reset_export(export_date: str) -> HTMLResponse:
         try:

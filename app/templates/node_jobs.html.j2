@@ -104,12 +104,7 @@
        <td>{{ (j.completed_at if status == 'done' else j.updated_at) | fmt_dt }}</td>
         {% if status == 'downloading' %}
         <td>
-          {% if j.debug_info %}
-          <div class="detail-inline">
-            <button type="button" class="detail-link" onclick="showDebug(this)">view</button>
-            <template class="detail-source">{{ j.debug_info }}</template>
-          </div>
-          {% endif %}
+          <button type="button" class="detail-link" onclick="showDebug('{{ node_id }}', '{{ j.info_hash }}')">view</button>
         </td>
         {% endif %}
       <td><a href="https://kp.m-team.cc/detail/{{ j.tid }}" target="_blank">MT</a></td>
@@ -182,6 +177,8 @@ async function deleteTorrent(nodeId, infoHash) {
     btn.textContent = 'Delete';
   }
 }
+
+
 </script>
 
 </body>

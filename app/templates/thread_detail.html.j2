@@ -97,12 +97,7 @@
         <td>{{ j.completed_at | fmt_dt }}</td>
         <td>{% if j.error_message %}<span class="text-danger" title="{{ j.error_message }}">{{ j.error_message[:50] }}{% if j.error_message | length > 50 %}&hellip;{% endif %}</span>{% else %}-{% endif %}</td>
         <td>
-          {% if j.debug_info %}
-          <div class="detail-inline">
-            <button type="button" class="detail-link" onclick="showDebug(this)">view</button>
-            <template class="detail-source">{{ j.debug_info }}</template>
-          </div>
-          {% else %}-{% endif %}
+          <button type="button" class="detail-link" onclick="showDebug('{{ j.node_id }}', '{{ j.info_hash }}')">view</button>
         </td>
       </tr>
       {% endfor %}
