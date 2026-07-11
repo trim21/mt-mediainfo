@@ -1534,7 +1534,7 @@ def create_app() -> fastapi.FastAPI:
             select node_id, status, progress, failed_reason, removed_reason,
                    start_download_time, updated_at, completed_at,
                    error_message, debug_info, dlspeed, eta,
-                   last_progress_at
+                   last_progress_at, info_hash
             from job
             where tid = $1
             order by updated_at desc
