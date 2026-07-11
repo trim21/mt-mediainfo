@@ -168,7 +168,7 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         ),
     ]
 
-    neptune_url: Annotated[
+    neptune_base_url: Annotated[
         str | None, Field(alias="NEPTUNE_URL", default=None, validate_default=True)
     ]
 

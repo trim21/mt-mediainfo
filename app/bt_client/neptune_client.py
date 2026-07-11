@@ -1,14 +1,13 @@
 import contextlib
 import json
 
+import httpx
 from neptune_sdk import NeptuneClient as SDKClient
 from neptune_sdk.exceptions import NeptuneRPCError
 from neptune_sdk.models import AddTorrentRequest
 from neptune_sdk.models import MainDataTorrent as SDKTorrent
 from neptune_sdk.models import TorrentFile as SDKFile
 from neptune_sdk.models import TorrentState as SDKTorrentState
-
-from app.utils import human_readable_byte_rate, human_readable_size
 
 from .base import (
     BTClient,
@@ -62,8 +61,8 @@ class NeptuneClient(BTClient):
     """BTClient implementation for the Neptune BitTorrent client."""
 
     def __init__(self, base_url: str, *, token: str, timeout: float = 30.0) -> None:
-        self._client = SDKClient(base_url, token=token, timeout=timeout)
-        self._raw_torrents: dict[str, SDKTorrent] = {}
+        self._base_url = base_url.rstrip("/")
+        self._client = SDKClient(f"{self._base_url}/json_rpc", token=token, timeout=timeout)
 
     def app_version(self) -> str:
         with contextlib.suppress(Exception):
@@ -72,45 +71,15 @@ class NeptuneClient(BTClient):
 
     def torrents_info(self) -> list[Torrent]:
         raw = self._client.torrent_list().torrents
-        self._raw_torrents = {t.hash: t for t in raw}
         return [_convert_torrent(t) for t in raw]
 
     def torrent_debug_info(self, info_hash: str) -> str:
-        raw = self._raw_torrents.get(info_hash)
-        if raw is None:
-            return ""
-        return json.dumps(
-            {
-                "name": raw.name,
-                "hash": raw.hash,
-                "state": SDKTorrentState(raw.state).name,
-                "download_rate": raw.download_rate,
-                "download_rate_fmt": human_readable_byte_rate(raw.download_rate),
-                "upload_rate": raw.upload_rate,
-                "upload_rate_fmt": human_readable_byte_rate(raw.upload_rate),
-                "download_total": raw.download_total,
-                "download_total_fmt": human_readable_size(raw.download_total),
-                "upload_total": raw.upload_total,
-                "upload_total_fmt": human_readable_size(raw.upload_total),
-                "completed": raw.completed,
-                "completed_fmt": human_readable_size(raw.completed),
-                "total_length": raw.total_length,
-                "total_length_fmt": human_readable_size(raw.total_length),
-                "selected_size": raw.selected_size,
-                "selected_size_fmt": human_readable_size(raw.selected_size),
-                "corrupted": raw.corrupted,
-                "corrupted_fmt": human_readable_size(raw.corrupted),
-                "connection_count": raw.connection_count,
-                "total_seeding": raw.total_seeding,
-                "total_downloading": raw.total_downloading,
-                "connected_seeding": raw.connected_seeding,
-                "connected_downloading": raw.connected_downloading,
-                "message": raw.message,
-                "tracker_errors": raw.tracker_errors,
-            },
-            indent=2,
-            ensure_ascii=False,
-        )
+        try:
+            resp = httpx.get(f"{self._base_url}/debug/neptune/{info_hash}.json", timeout=10.0)
+            resp.raise_for_status()
+            return json.dumps(resp.json(), indent=2, ensure_ascii=False)
+        except Exception as e:
+            return repr(e)
 
     def torrents_files(self, torrent_hash: str) -> list[TorrentFile]:
         try:

@@ -185,10 +185,10 @@ class Downloader:
         logger.info("connecting to database...")
         db = Database(cfg.pg_dsn())
         logger.info("database pool created")
-        if not cfg.neptune_url or not cfg.neptune_token:
+        if not cfg.neptune_base_url or not cfg.neptune_token:
             raise ValueError("no download client configured: set NEPTUNE_URL and NEPTUNE_TOKEN")
         client: BTClient = NeptuneClient(
-            base_url=cfg.neptune_url,
+            base_url=cfg.neptune_base_url,
             token=cfg.neptune_token,
         )
 
