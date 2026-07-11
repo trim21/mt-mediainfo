@@ -1131,21 +1131,49 @@ class Downloader:
         now = datetime.now(tz=TZ_SHANGHAI)
         cutoff = (now - timedelta(hours=24)).timestamp()
 
-        slowest = min(downloading, key=lambda t: t.dlspeed)
-        info_hash = slowest.hash
-        avg_speed = slowest.dlspeed
-        # Only evict torrents that have been downloading for at least 24h
-        start_time = self.db.fetch_val(
-            "select start_download_time from job where info_hash = $1 and node_id = $2",
-            [info_hash, self.config.node_id],
+        # Get start_download_time for all downloading torrents in one query
+        hashes = [t.hash for t in downloading]
+        rows = self.db.fetch_all(
+            "select info_hash, start_download_time from job where info_hash = any($1) and node_id = $2",
+            [hashes, self.config.node_id],
         )
+        start_times: dict[str, datetime] = {}
+        for row in rows:
+            if row[1] is not None:
+                start_times[row[0]] = row[1]
+
+        # Sort by speed ascending, then by progress ascending (0 first), then by start time ascending
+        def eviction_key(t: Torrent) -> tuple[float, float, datetime]:
+            # Get start_download_time from cache
+            start_time = start_times.get(t.hash)
+            # If no start_time found, use a very old time to prioritize eviction
+            if start_time is None:
+                start_time = datetime.min.replace(tzinfo=TZ_SHANGHAI)
+
+            # Calculate progress (0.0 if size is 0, otherwise completed/size)
+            progress = t.completed / t.size if t.size > 0 else 0.0
+
+            # Return tuple for sorting: (speed, progress, start_time)
+            # Lower speed, lower progress (0 first), earlier start_time are prioritized for eviction
+            return (t.dlspeed, progress, start_time)
+
+        # Find the torrent to evict using the new criteria
+        to_evict = min(downloading, key=eviction_key)
+
+        # Check if the torrent has been downloading for at least 24h
+        start_time = start_times.get(to_evict.hash)
         if start_time is None or start_time.timestamp() > cutoff:
             return
 
+        info_hash = to_evict.hash
+        avg_speed = to_evict.dlspeed
+        progress = to_evict.completed / to_evict.size if to_evict.size > 0 else 0.0
+
         logger.info(
-            "evicting slowest torrent {} (avg_speed={:.0f} B/s, limit={} B/s)",
+            "evicting slowest torrent {} (avg_speed={:.0f} B/s, progress={:.2f}, limit={} B/s)",
             info_hash,
             avg_speed,
+            progress,
             limit,
         )
         self.__update_job_status(
