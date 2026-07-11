@@ -908,6 +908,9 @@ class Downloader:
                 return
             self._mediainfo_cache[t.hash] = (media_info, hard_code_subtitle)
 
+        # Grab final debug info before deleting the torrent
+        debug_info = self.client.torrent_debug_info(t.hash)
+
         with (
             self.db.connection() as conn,
             conn.transaction(),
@@ -924,9 +927,9 @@ class Downloader:
             )
             conn.execute(
                 """update job set status = $1, failed_reason = '', updated_at = current_timestamp,
-                   completed_at = current_timestamp
+                   completed_at = current_timestamp, debug_info = $4
                    where info_hash = $2 and node_id = $3""",
-                [ItemStatus.DONE, t.hash, self.config.node_id],
+                [ItemStatus.DONE, t.hash, self.config.node_id, debug_info],
             )
         self._delete_torrent_with_retry(t.hash)
         self._mediainfo_cache.pop(t.hash, None)
