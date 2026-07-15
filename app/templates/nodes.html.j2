@@ -63,6 +63,7 @@
       <td>{{ n.total }}</td>
       <td>
         <button class="btn btn-sm btn-outline-primary" onclick="pingNode('{{ n.id }}', this)">Ping</button>
+        <button class="btn btn-sm btn-outline-info" onclick="showDebugInfo('{{ n.id }}', '{{ n.debug_info }}')">Debug</button>
       </td>
     </tr>
     {% endfor %}
@@ -89,6 +90,24 @@
 const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
 function showStatus(text) {
   document.getElementById('statusFull').textContent = text || '(empty)';
+  statusModal.show();
+}
+
+function showDebugInfo(nodeId, debugInfo) {
+  const modalTitle = document.querySelector('#statusModal .modal-title');
+  modalTitle.textContent = 'Debug Info for ' + nodeId;
+
+  let displayText = debugInfo || '(empty)';
+  try {
+    // Try to format JSON nicely
+    const parsed = JSON.parse(debugInfo);
+    displayText = JSON.stringify(parsed, null, 2);
+  } catch (e) {
+    // If not valid JSON, show as-is
+    displayText = debugInfo || '(empty)';
+  }
+
+  document.getElementById('statusFull').textContent = displayText;
   statusModal.show();
 }
 

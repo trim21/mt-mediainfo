@@ -481,15 +481,19 @@ class Downloader:
             )
 
     def __heart_beat(self) -> None:
+        # Get global debug info from BT client
+        debug_info = self.client.global_debug_info()
+
         self.db.execute(
             """
-            insert into node (id, last_seen, version) values ($1, $2, $3)
-            on conflict (id) do update set last_seen = excluded.last_seen, version = excluded.version
+            insert into node (id, last_seen, version, debug_info) values ($1, $2, $3, $4)
+            on conflict (id) do update set last_seen = excluded.last_seen, version = excluded.version, debug_info = excluded.debug_info
             """,
             [
                 self.config.node_id,
                 datetime.now(tz=TZ_SHANGHAI),
                 self.config.version,
+                debug_info,
             ],
         )
 

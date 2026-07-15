@@ -96,3 +96,8 @@ class BTClient(abc.ABC):
     def torrent_debug_info(self, info_hash: str) -> str:
         """Return raw client-side state for a torrent as a JSON string."""
         ...
+
+    @abc.abstractmethod
+    def global_debug_info(self) -> str:
+        """Return global client debug info (transfer stats, connection counts, etc.) as a JSON string."""
+        ...
