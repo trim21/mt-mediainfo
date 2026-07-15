@@ -1,4 +1,5 @@
 import contextlib
+import dataclasses
 import json
 
 import httpx
@@ -132,3 +133,11 @@ class NeptuneClient(BTClient):
 
     def torrents_file_priority(self, torrent_hash: str, file_ids: list[int], priority: int) -> None:
         self._client.torrent_set_file_priority(torrent_hash, file_ids, priority)
+
+    def global_debug_info(self) -> str:
+        """Return global client debug info as a JSON string."""
+        try:
+            transfer = self._client.transfer_summary()
+            return json.dumps(dataclasses.asdict(transfer), ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": repr(e)}, ensure_ascii=False)

@@ -86,7 +86,7 @@ requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "mypy-boto3-s3", specifier = "==1.43.31" },
-    { name = "neptune-sdk", specifier = "==0.0.1.dev798" },
+    { name = "neptune-sdk", specifier = "==0.0.1.dev837" },
     { name = "opendal", specifier = "==0.47.2" },
     { name = "orjson", specifier = "==3.11.9" },
     { name = "pg-dlock", specifier = "==0.0.0a2" },
@@ -565,15 +565,15 @@ wheels = [
 
 [[package]]
 name = "neptune-sdk"
-version = "0.0.1.dev798"
+version = "0.0.1.dev837"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/df/56/026c856588dc595e1c3dd7590170462b0bdd80064dae99d31b5db78af84f/neptune_sdk-0.0.1.dev798.tar.gz", hash = "sha256:8c63467b59d6649618d58e5c19a6890ae0891fc76be6c63a5d1f4c1adc8660d0", size = 7125, upload-time = "2026-07-10T14:13:55.213Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/dc/c4fe93d4137035813b1fb4b2c565bd8920551b92b5e2ab60bd7d4408e095/neptune_sdk-0.0.1.dev837.tar.gz", hash = "sha256:9ac2adb9d320e63e25fca446eca4e9fbb67cc4ef6f04f863dce027e129d83960", size = 7216, upload-time = "2026-07-15T04:38:25.109Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/67/6c692c1be9b1b825d79d48cded089fa03e0b408a4750843819b2f885e7f1/neptune_sdk-0.0.1.dev798-py3-none-any.whl", hash = "sha256:480db96b7e331fee4b18567eac2c6e3861c0a677f8862d7fe46493b0598317b9", size = 6976, upload-time = "2026-07-10T14:13:54.44Z" },
+    { url = "https://files.pythonhosted.org/packages/06/1a/a6f452582c44f4849c13b0382974ec69e8c9e66af064d83aa7bd17d18d81/neptune_sdk-0.0.1.dev837-py3-none-any.whl", hash = "sha256:e016c1c19df017a52b3448aa3e2e3875c3aba7b97331cbeb4904c7ba49d4137b", size = 7061, upload-time = "2026-07-15T04:38:24.31Z" },
 ]
 
 [[package]]
