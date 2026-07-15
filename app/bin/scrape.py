@@ -736,8 +736,8 @@ class Scrape:
                 for row in cur.stream(
                     """select tid, mediainfo, hard_coded_subtitle from thread
                        where api_mediainfo_at is not null
+                         and api_mediainfo = ''
                          and mediainfo != ''
-                         and mediainfo != api_mediainfo
                          and exported_at = 0
                          and seeders != 0
                          and deleted = false"""
