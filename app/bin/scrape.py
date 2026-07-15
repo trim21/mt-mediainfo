@@ -735,7 +735,7 @@ class Scrape:
             with zstd_writer(buf) as writer:
                 for row in cur.stream(
                     """select tid, mediainfo, hard_coded_subtitle from thread
-                       where api_mediainfo != ''
+                       where api_mediainfo_at is not null
                          and mediainfo != ''
                          and mediainfo != api_mediainfo
                          and exported_at = 0
