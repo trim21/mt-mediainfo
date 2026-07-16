@@ -1117,6 +1117,7 @@ class Downloader:
             self.client.torrents_add_tags(tags=[BT_TAG_FILE_SELECTED], torrent_hashes=info_hash)
             self.client.torrents_set_download_limit(limit=0, torrent_hashes=info_hash)
             self.client.torrents_resume(torrent_hashes=info_hash)
+            time.sleep(1)
         return PickContext(picked=len(picked), has_pending=has_pending, no_space=no_space)
 
     def __maybe_evict_slowest(self) -> None:
