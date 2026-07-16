@@ -708,13 +708,15 @@ class Downloader:
         if downloading_torrents:
             min_eta = self.__batch_update_downloading(downloading_torrents, now)
 
-        # ---- Phase 3: process completed torrents one by one (mediainfo extraction) ----
-        uploading_count = len(uploading_torrents)
-        for i, t in enumerate(uploading_torrents, 1):
+        # ---- Phase 3: process at most one completed torrent (mediainfo extraction) ----
+        # Limit to one per call so that __pick_and_add_jobs() runs between
+        # mediainfo extractions, keeping the download pipeline responsive.
+        if uploading_torrents:
+            t = uploading_torrents[0]
             completed = True
             self.__set_tags(t.hash, remove=BT_TAG_DOWNLOADING, add=BT_TAG_PROCESSING)
             meta = hash_to_meta[t.hash.lower()]
-            self._report_status(f"mediainfo:{i}/{uploading_count}:{meta.tid}:{t.name[:20]}")
+            self._report_status(f"mediainfo:{meta.tid}:{t.name[:20]}")
             self.__process_completed_torrent(t, meta)
             counts["uploading"] = counts.get("uploading", 0) + 1
 

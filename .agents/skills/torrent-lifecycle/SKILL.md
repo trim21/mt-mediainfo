@@ -51,7 +51,7 @@ The code in `__process_torrents()` determines the stage using torrent state, NOT
 3. **Error state** (`state.is_errored`): Deleted, job marked failed with "torrent error"
 4. **Has `process-error` tag**: Skipped entirely (the one exception where a tag affects logic)
 5. **Unselected category**: Deleted, job marked skipped
-6. **Uploading/seeding** (`state.is_uploading`): Swaps tag to `processing`, runs mediainfo extraction
+6. **Uploading/seeding** (`state.is_uploading`): Swaps tag to `processing`, runs mediainfo extraction (at most one per `__process_torrents()` call; remaining uploading torrents wait for the next inner-loop iteration so `__pick_and_add_jobs()` can run in between)
 7. **File not yet selected** (`BT_TAG_FILE_SELECTED` not in tags): Selects largest video file, clears download limit, adds `BT_TAG_FILE_SELECTED` tag, resumes if paused
 8. **Stopped/paused** (`state.is_paused`): Swaps tag to `downloading`, resumes the torrent
 9. **Downloading** (default): Uses `t.dlspeed` directly (instantaneous speed from BT client), compares current progress against stored `job.progress` to detect changes, batch-updates job progress/dlspeed/eta in PostgreSQL
