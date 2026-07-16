@@ -41,7 +41,7 @@ class PickStrategy(str, enum.Enum):
 
 def pick_order_clause(strategy: PickStrategy) -> LiteralString:
     if strategy == PickStrategy.seeders:
-        return "order by seeders desc, priority desc, selected_size asc, tid asc"
+        return "order by seeders desc, priority desc, tid asc"
     return "order by tid asc, priority desc"
 
 
