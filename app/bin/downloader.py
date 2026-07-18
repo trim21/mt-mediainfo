@@ -474,8 +474,10 @@ class Downloader:
             )
 
     def __heart_beat(self) -> None:
-        # Get global debug info from BT client
-        debug_info = self.client.global_debug_info()
+        if self.config.disable_debug_info:
+            debug_info = ""
+        else:
+            debug_info = self.client.global_debug_info()
 
         self.db.execute(
             """
@@ -756,7 +758,10 @@ class Downloader:
                 else:
                     eta = ETA_INF
                 min_eta = min(min_eta, eta)
-                debug = self.client.torrent_debug_info(t.hash)
+                if self.config.disable_debug_info:
+                    debug = ""
+                else:
+                    debug = self.client.torrent_debug_info(t.hash)
                 conn.execute(
                     "update job set progress=$1, dlspeed=$2, eta=$3,"
                     " error_message=$4, updated_at=$5, debug_info=$9"
@@ -914,8 +919,10 @@ class Downloader:
                 return
             self._mediainfo_cache[t.hash] = (media_info, hard_code_subtitle)
 
-        # Grab final debug info before deleting the torrent
-        debug_info = self.client.torrent_debug_info(t.hash)
+        if self.config.disable_debug_info:
+            debug_info = ""
+        else:
+            debug_info = self.client.torrent_debug_info(t.hash)
 
         with (
             self.db.connection() as conn,

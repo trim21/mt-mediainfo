@@ -225,6 +225,11 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         Field(alias="DISABLE_STATUS_REPORT", default=False, validate_default=True),
     ]
 
+    disable_debug_info: Annotated[
+        bool,
+        Field(alias="DISABLE_DEBUG_INFO", default=False, validate_default=True),
+    ]
+
     version: Annotated[
         str,
         Field(alias="APP_VERSION", default="", validate_default=True),
