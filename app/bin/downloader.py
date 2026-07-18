@@ -872,6 +872,13 @@ class Downloader:
         selected_index = meta.selected_index
         is_bdmv = meta.is_bdmv
 
+        # Update job progress before potentially slow mediainfo extraction
+        self.db.execute(
+            "update job set progress=1, dlspeed=0, eta=0, updated_at=current_timestamp "
+            "where info_hash=$1 and node_id=$2",
+            [t.hash, self.config.node_id],
+        )
+
         cached = self._mediainfo_cache.get(t.hash)
         if cached is not None:
             logger.info("reusing cached mediainfo for torrent {}", t.name)
