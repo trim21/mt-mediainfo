@@ -169,7 +169,6 @@ class Downloader:
     client: BTClient
     store: TorrentStore
     _torrent_cache_db_path: Path
-    _last_orphan_cleanup: list[float] = dataclasses.field(default_factory=lambda: [0.0])
     mediainfo_bin: str = dataclasses.field(
         default_factory=lambda: must_find_executable("mediainfo")
     )
@@ -388,13 +387,9 @@ class Downloader:
     def __cleanup_orphan_files(self) -> None:
         """Delete download directories that have no corresponding active job.
 
-        Runs every 3 hours. Scans download_path for info_hash directories
-        and removes any that don't have an active job in the database.
+        Scans download_path for info_hash directories and removes any that
+        don't have an active job in the database.
         """
-        elapsed = time.monotonic() - self._last_orphan_cleanup[0]
-        if elapsed < 3 * 3600:
-            return
-
         download_path = Path(self.config.download_path)
         if not download_path.is_dir():
             return
@@ -454,20 +449,18 @@ class Downloader:
             logger.info("orphan cleanup done: no orphan files found")
 
         self.__trim_fs()
-        self._last_orphan_cleanup[0] = time.monotonic()
 
     def __run_at_interval(self) -> LoopContext:
-        with contextlib.suppress(Exception):
-            self.__cleanup_orphan_files()
-
         self._report_status("torrents")
         completed, min_eta = self.__process_torrents()
-        with contextlib.suppress(Exception):
-            self.__cleanup_orphan_files()
         self._report_status("picking")
         ctx = self.__pick_and_add_jobs()
         if not completed and ctx.picked == 0 and ctx.no_space and ctx.has_pending:
             self.__maybe_evict_slowest()
+        try:
+            self.__cleanup_orphan_files()
+        except Exception:
+            logger.exception("orphan cleanup failed")
         return LoopContext(min_eta=min_eta, had_work=completed or ctx.picked > 0)
 
     def _report_status(self, status: str) -> None:
@@ -1196,6 +1189,7 @@ class Downloader:
             [info_hash],
         )
         self.client.torrents_delete(torrent_hashes=info_hash, delete_files=True)
+        self._delete_torrent_files(info_hash)
 
     def __add_torrent(
         self,
