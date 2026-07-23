@@ -77,7 +77,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = "==0.31.0" },
-    { name = "bencode2", specifier = "==0.3.30" },
+    { name = "bencode2", specifier = "==0.3.33" },
     { name = "boto3", specifier = "==1.43.54" },
     { name = "botocore", specifier = "==1.43.54" },
     { name = "click", specifier = "==8.4.2" },
@@ -193,28 +193,28 @@ wheels = [
 
 [[package]]
 name = "bencode2"
-version = "0.3.30"
+version = "0.3.33"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/10/74aad532ebe73720e285c47a09798fa9792f2b808a1e8d1eee425282e6eb/bencode2-0.3.30-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:c52a9210fdc353b01320e564fcc326fa7605abb16aa4d812f003399312754929", size = 92806, upload-time = "2026-04-11T19:22:08.246Z" },
-    { url = "https://files.pythonhosted.org/packages/90/91/639953ed5edb43b54f65fa62d3f8439d0ae736d647e121554a68970b94d7/bencode2-0.3.30-cp312-abi3-macosx_11_0_x86_64.whl", hash = "sha256:10927e69a00d3e87c2db63a64fde4d137992447af94540ac68c505f24b65c6ec", size = 105111, upload-time = "2026-04-11T19:22:09.773Z" },
-    { url = "https://files.pythonhosted.org/packages/3e/eb/07fea7eb232541c000e86cd51ea21c0deb78ed37d56b738a8c4f926f7b28/bencode2-0.3.30-cp312-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:44d9306830f518a5086b4269a7f245c9170972f2d8fd79e475be396451dd83ca", size = 268063, upload-time = "2026-04-11T19:22:11.463Z" },
-    { url = "https://files.pythonhosted.org/packages/ee/9b/65702af39976ca569f498dd770f4502a218f7c0168c51c1d60b3596c7142/bencode2-0.3.30-cp312-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:24767a6836dfe75723f9f16e591b0847baeb14096ea89de61de904dca3ffb45a", size = 288153, upload-time = "2026-04-11T19:22:13.199Z" },
-    { url = "https://files.pythonhosted.org/packages/2f/93/e2b2ab93130a14136f504b137683171706399c1ca6d775dd1a849747e69a/bencode2-0.3.30-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:f3ba4ae2548c421bd0e854b11974dbe926bf0a362627572c1aea43d6e3220deb", size = 94665, upload-time = "2026-04-11T19:22:45.425Z" },
-    { url = "https://files.pythonhosted.org/packages/1e/be/8fa19f8afd42168cde73dfea7cc577a0c4969206f04c165e18a7815b8c41/bencode2-0.3.30-cp314-cp314-macosx_11_0_x86_64.whl", hash = "sha256:e1500688eeb69b58bbf8b016e4c7f9bb5c2a7b3a58b73b66aaef659727af9f90", size = 106773, upload-time = "2026-04-11T19:22:46.915Z" },
-    { url = "https://files.pythonhosted.org/packages/e7/89/a901260d151829cadf4e8e23221fdfbd72b27c3563217349872c344e4cc1/bencode2-0.3.30-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:92d9ba1d412fc405df6da8d6a4a2a484247e16d39e0110fcffa4fd8a27012557", size = 268968, upload-time = "2026-04-11T19:22:48.562Z" },
-    { url = "https://files.pythonhosted.org/packages/31/4e/d7ba3e4d7366d9ce505bd45c7adfc50bda26ce96d8773118ce2cf3bd6a8d/bencode2-0.3.30-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:5edba1ac3339ec940f5925c24c87e9277d389982aa2f729e745849b69f40b161", size = 289184, upload-time = "2026-04-11T19:22:50.452Z" },
-    { url = "https://files.pythonhosted.org/packages/40/6a/d69fa31fa35613b145bad17e6e2f53b981c6b9111b5b0d86a03d5872d4d3/bencode2-0.3.30-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:b31d3f828ffd1ff21c6d23a6a9badb7c680ae74aafb638d87632573351dd81c1", size = 1095433, upload-time = "2026-04-11T19:22:52.285Z" },
-    { url = "https://files.pythonhosted.org/packages/17/a6/c890f20880f35304e7cc1bfbac006c1f4e4c876bd9cd11df0647f40a9f66/bencode2-0.3.30-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:28dc3dada08be8553b1484c704cba7481ef60c63c16bc37caab3b8ca3287d385", size = 1154765, upload-time = "2026-04-11T19:22:53.86Z" },
-    { url = "https://files.pythonhosted.org/packages/fe/09/74b5d606bc9b3dfc830f71f57f79e93dcf747cb13c912698196c1b81eaa2/bencode2-0.3.30-cp314-cp314-win_amd64.whl", hash = "sha256:0f81f75fbd5dfc4712a7f36706ed7afc57a7ff9de444ac63a8198c1e4028f699", size = 97272, upload-time = "2026-04-11T19:22:55.426Z" },
-    { url = "https://files.pythonhosted.org/packages/c3/9b/a9a96392ac03d4abe25df44f77b0bd872c514322c4a300606197c0dc9179/bencode2-0.3.30-cp314-cp314-win_arm64.whl", hash = "sha256:95b47660fecc295978c7d8166170b0ddcc2c2e19fd821cee1d86666bab01f4f6", size = 93436, upload-time = "2026-04-11T19:22:56.765Z" },
-    { url = "https://files.pythonhosted.org/packages/f8/dd/10b95c42fa7299aeaf69f71dd44ec4408812a7d202032a508d0aa418655c/bencode2-0.3.30-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:af738f21a47e10ab573d54fb4bf7ebc78d7bace8da0e208bb1069f712a3f4e41", size = 95078, upload-time = "2026-04-11T19:22:58.476Z" },
-    { url = "https://files.pythonhosted.org/packages/b3/98/18995bb0047705d520775967ff7db9080ecf629edcda21f778de5417772c/bencode2-0.3.30-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:0429ed29853f62cb42a17c0c5e74774aa7ee55968d80dc70c6abcc5b7a158d77", size = 1093920, upload-time = "2026-04-11T19:22:59.862Z" },
-    { url = "https://files.pythonhosted.org/packages/af/36/9b02cc939a910203209319afefdb85066425b87090aac66132e4260b65b1/bencode2-0.3.30-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:401216f5b223e3bcfeb9dc2ce338a5504ac7d132c890feb667b2af6b1a139aac", size = 1152370, upload-time = "2026-04-11T19:23:01.558Z" },
-    { url = "https://files.pythonhosted.org/packages/82/9b/f253475f722b99fa57157055ee5518ee3b4c23a3feb4e174aa409916092d/bencode2-0.3.30-py3-none-any.whl", hash = "sha256:252a3d38463ae47e3516828e31b52983a91b9f0b4453dd81c372f4512acaacfa", size = 15036, upload-time = "2026-04-11T19:23:03.49Z" },
+    { url = "https://files.pythonhosted.org/packages/01/42/f271db4ab4673255c91bd81b28e9629e2e5ec725927d2d3dd3dd8a2c698b/bencode2-0.3.33-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:81b0a19907a4dba2f6a87329a2e6f58f47da1224ec482ccd020bc9d1de0c6424", size = 102272, upload-time = "2026-07-19T14:47:17.054Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/28/487b83e2e36f35416484bd7f4a97cc04550cbbf2509d68c5286a144f9710/bencode2-0.3.33-cp312-abi3-macosx_11_0_x86_64.whl", hash = "sha256:99ea97287346d0c67952c6b4953f19dc766ddd370b64bfe71060a33a19397e2d", size = 113750, upload-time = "2026-07-19T14:47:18.527Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/17/ba6b0eaeb3d9947ddaad50b1f4a71d17d9ca8724429c12ccf109a9fcaf68/bencode2-0.3.33-cp312-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:a2830980e69ab89303b806cf67f588badb336d316720893f90f49b7cacdf62e2", size = 238422, upload-time = "2026-07-19T14:47:20.035Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/57/160bfc9f80415976a996936efe2fcd5bae7669d256db2cca0cb48c36117e/bencode2-0.3.33-cp312-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:e2d3667c1f2dfbd8965fec0709c1326cc8165522dd8d435a74ef5ff7c7ea690d", size = 255217, upload-time = "2026-07-19T14:47:21.574Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/5e/2e07be2b9b18b4ce9d4fa09dc288931f981b04e76dbbfc4016b4ff6094e7/bencode2-0.3.33-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:adfeb41375329ac49252c2d5491557acedc08b261f84db877bf65d5e0b5432db", size = 104169, upload-time = "2026-07-19T14:47:46.707Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/6d/a30ba6573bfab7ccdc1cbda4abcc477e8dc7162e9f63aefcc49e398ff2ee/bencode2-0.3.33-cp314-cp314-macosx_11_0_x86_64.whl", hash = "sha256:fc93222b72686ce75fb8b470a856942b4b3e8beca0ae0435fcfaeba02613a581", size = 115558, upload-time = "2026-07-19T14:47:48.194Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/c5/89228601016e10d34537d5ee34f28ed9e23a5b9d24fe8f7c936fe795b524/bencode2-0.3.33-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:9fb105b7fc5b90380b4594a2e5df41801f077046d1bb5be1338576d15c99ed20", size = 239274, upload-time = "2026-07-19T14:47:49.538Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/2d/7fd24fed156417e1d8ae43ef2570182a74f6c276d7483ec755f4940facb7/bencode2-0.3.33-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:497ba9ac626ca4d2fcc6c8e0fd55f330ca29b80e736fae7ef6885b2020662e40", size = 255974, upload-time = "2026-07-19T14:47:51.119Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/d3/00c0bdc166a943edc829e40fc2843fa0bfd58c7dd4575b2ccdd956b07e82/bencode2-0.3.33-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:7a4ca6302927639a26b92388cf7d7bebda5c2996f34bdcb9657cd3e55cb01dc2", size = 1105444, upload-time = "2026-07-19T14:47:52.701Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/59/978aa16cae94f5c4c60a062da8c9acd51647fb0b4c11994c768e0c7a07c5/bencode2-0.3.33-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:dfae00956f82b482235ff26c8b2aa51657ecb31581c6faf22ffcbb6beb811836", size = 1164253, upload-time = "2026-07-19T14:47:54.203Z" },
+    { url = "https://files.pythonhosted.org/packages/38/c0/eaa83e5c7b54f82c7d81c73b86fe258df14a7a2b02e9cedacced1c7ff404/bencode2-0.3.33-cp314-cp314-win_amd64.whl", hash = "sha256:acaac71424d95573853ff685e2216375c216dc22c56264a2667e039e4f11c0a0", size = 317978, upload-time = "2026-07-19T14:47:55.793Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/69/f9ac68ed23ca726d27956305c6a63f7747e08dede79c092db1c6d4dd5e43/bencode2-0.3.33-cp314-cp314-win_arm64.whl", hash = "sha256:0518b02e1865965c4186ba1e791682b4e4df71896280a685ac0b46231f5aff70", size = 473657, upload-time = "2026-07-19T14:47:57.709Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/7d/8fdd91808da1e9b8bf4da70991e98f9c47e2a6970c6d047ad512699a725a/bencode2-0.3.33-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:99fe69959f14752885ac76cfbdaf839d7b7b0a3942183c508da22b4fd67d6e8d", size = 104578, upload-time = "2026-07-19T14:47:59.538Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/90/09c1961b065ba668f09e82a346fca854254abf5b78b4c621c41da6a596a2/bencode2-0.3.33-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:877825d00304d567e2f04011562fc96c41c6165c5366fa078d46ad00b3973e41", size = 1103634, upload-time = "2026-07-19T14:48:01.09Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/08/21ca321860e9f83c9173321833bab0bfdb68d8e2b6ea4c52375ed7232704/bencode2-0.3.33-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:d1c54268b6589f0aa9ac5d391693efe255659442784fefb00b7d42210c4c8676", size = 1161443, upload-time = "2026-07-19T14:48:03.145Z" },
+    { url = "https://files.pythonhosted.org/packages/74/ad/fc780eb908568b6b78af4668442a22b49260554746909de7436ee9457d4e/bencode2-0.3.33-py3-none-any.whl", hash = "sha256:0974357ce34da44725927cc5502d61048ac0c240393b201eaac55f4d850cf3f9", size = 15046, upload-time = "2026-07-19T14:48:04.775Z" },
 ]
 
 [[package]]
