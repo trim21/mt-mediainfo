@@ -6,7 +6,7 @@ description = ''
 dependencies = [
   'orjson==3.11.9',
   'rich==15.0.0',
-  'xxhash==3.8.0',
+  'xxhash==3.8.1',
   'click==8.4.2',
   'pydantic==2.13.4',
   'httpx==0.28.1',
@@ -14,7 +14,7 @@ dependencies = [
   'yarl==1.24.2',
   'psycopg[binary,pool]==3.3.4',
   'durationpy==0.10',
-  'fastapi==0.139.0',
+  'fastapi==0.139.2',
   'uvicorn==0.50.0',
   'rapidocr-onnxruntime==1.4.4',
   'jinja2==3.1.6',
@@ -38,7 +38,7 @@ dev = [
   "asyncpg-stubs==0.31.3",
   "mypy==2.3.0",
   "pytest==9.1.1",
-  "ty==0.0.56",
+  "ty==0.0.63",
   "types-regex==2026.7.19.20260720",
 ]
 
