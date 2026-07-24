@@ -53,6 +53,7 @@ class Scrape:
     __config: ScrapeConfig
 
     KV_QUOTA_EXHAUSTED = "quota_exhausted.today"
+    SEARCH_CURSOR_THRESHOLD = timedelta(hours=2)
 
     def __init__(self, c: ScrapeConfig):
         self.__config = c
@@ -145,6 +146,14 @@ class Scrape:
                     r.status.seeders,
                 ],
             )
+
+    def _should_run_search(self, mode: str) -> bool:
+        cursor_key = search_cursor_key(mode)
+        row = self.__kv.get(cursor_key)
+        if row is None:
+            return True
+        cursor = datetime.strptime(row, "%Y-%m-%d %H:%M:%S").replace(tzinfo=TZ_SHANGHAI)
+        return datetime.now(TZ_SHANGHAI) - cursor >= self.SEARCH_CURSOR_THRESHOLD
 
     def scrape_search(self, *, mode: str) -> None:
         """Scrape thread list using /torrent/search sorted by CREATED_DATE ASC.
@@ -501,27 +510,20 @@ class Scrape:
         return RunResult.ok
 
     def __run_search(self) -> RunResult:
-        try:
-            self.scrape_search(mode="normal")
-        except httpx_network_errors:
-            return RunResult.error
-        except MTeamRequestError as e:
-            if self.__is_rate_limited(e):
-                logger.info("operator {!r} get rate limited: {}", e.op, e.message)
-                return RunResult.rate_limited
-            logger.exception("failed to search threads")
-            return RunResult.error
-
-        try:
-            self.scrape_search(mode="adult")
-        except httpx_network_errors:
-            return RunResult.error
-        except MTeamRequestError as e:
-            if self.__is_rate_limited(e):
-                logger.info("operator {!r} get rate limited: {}", e.op, e.message)
-                return RunResult.rate_limited
-            logger.exception("failed to search adult threads")
-            return RunResult.error
+        for mode in ("normal", "adult"):
+            if not self._should_run_search(mode):
+                logger.debug("search({}) skipped, cursor is recent", mode)
+                continue
+            try:
+                self.scrape_search(mode=mode)
+            except httpx_network_errors:
+                return RunResult.error
+            except MTeamRequestError as e:
+                if self.__is_rate_limited(e):
+                    logger.info("operator {!r} get rate limited: {}", e.op, e.message)
+                    return RunResult.rate_limited
+                logger.exception("failed to search {} threads", mode)
+                return RunResult.error
         return RunResult.ok
 
     def scrape_mediainfo(self, limit: int = 10000) -> None:
