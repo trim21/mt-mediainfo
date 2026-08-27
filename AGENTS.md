@@ -26,7 +26,7 @@ This project downloads torrents from M-Team, processes local media files to extr
 - `app/utils.py` - Shared utilities (subprocess helpers, bencode helpers, hashing, date formatting)
 - `app/db/__init__.py` - Re-exports `Database` and `Connection` from `database.py`
 - `app/db/database.py` - `Database` class with psycopg connection pool, advisory locks, and migration runner; `Connection` subclass with `fetch_val`/`fetch_one`/`fetch_all` helpers
-- `app/db/kv.py` - `KVConfig` store with TTL support (backed by `config` table)
+- `app/db/kv.py` - `KVConfig` store with TTL/`ex` support (backed by `config` table)
 - `app/sql/migrations/` - Numbered SQL migrations executed once on server startup; version tracked in the `schema_version` table. To add a new migration, create a file named `NNN_description.sql` (e.g. `009_add_column.sql`) where `NNN` is the next integer in sequence. The runner in `app/db/database.py` (`Database.run_migrations`) sorts files by name, parses the numeric prefix, and applies any migration whose version exceeds the stored `schema_version`.
 - `app/sql/views.sql` - View definitions (`CREATE OR REPLACE VIEW`) executed on every server startup after migrations. All pipeline views (`pending_mediainfo_threads`, `pending_torrent_threads`, `pending_download_threads`, `completed_threads`, `skipped_threads`, `dormant_threads`) are defined here. When adding columns to the `thread` table, no migration is needed for views — just update `views.sql`.
 - `app/templates/` - Jinja2 HTML templates for the server dashboard
@@ -80,11 +80,11 @@ General-purpose key-value store with optional TTL (`expires_at` column).
 - **Inserted/Updated**: Upserted by `KVConfig.set()` in `app/db/kv.py` and by admin config API in `app/bin/server.py`.
 - **Deleted**: By `KVConfig.delete()`, `KVConfig.cleanup()` (expired rows), and admin APIs (single key or prefix group).
 - **Read**: By `KVConfig.get()` (filters expired) and server dashboard.
-- **Notable keys**: `search_cursor:normal`, `search_cursor:adult`, `quota_exhausted.*`, `torrent_dl:{today}:{tid}`, `daily_torrent_dl:{today}`, `last_backup_date`.
+- **Notable keys**: `search_cursor:normal`, `search_cursor:adult`, `quota_exhausted.*`, `torrent_dl:{today}:{tid}`, `daily_torrent_dl:{today}`, `last_backup_date`, `eta:download`.
 
 ### `daily_stats`
 
-Pre-computed daily aggregate statistics for chart endpoints. Columns include `downloaded_bytes`, `downloaded_count`, `fetched_bytes`, `fetched_count`, `thread_count`, `torrent_count`, `mediainfo_count`, and per-node breakdown (`node_downloaded` JSONB).
+Pre-computed daily aggregate statistics for chart endpoints. Columns include `downloaded_bytes`, `downloaded_count`, `bdmv_downloaded_bytes`, `bdmv_downloaded_count`, `fetched_bytes`, `fetched_count`, `thread_count`, `torrent_count`, `mediainfo_count`, and per-node breakdown (`node_downloaded` JSONB).
 
 - **Inserted/Updated**: Upserted by `_backfill_daily_stats()` in `app/bin/server.py`, triggered on chart page loads.
 - **Deleted**: By admin `POST /api/daily-stats/clear` to force full re-backfill.
@@ -170,6 +170,7 @@ Tracks per-thread work items for oneshot backfill jobs. Each backfill name gets 
 ## Change Guidelines
 
 - Always use a dataclass to receive JSON request bodies in FastAPI endpoints; never call `request.json()` and manually extract fields
+- Do not pass `Any` (including `dict[str, Any]`) between functions. Use a dataclass or `NamedTuple` for structured values.
 - Keep statuses, tags, and selected-category definitions in `app/const.py` as the source of truth
 - Treat this project as an application rather than a reusable library: preserve data compatibility during refactors, but backward compatibility of internal code interfaces is not required
 - When changing thread or job state queries, keep `app/bin/downloader.py`, `app/bin/scrape.py`, and `app/bin/server.py` aligned with `thread-lifecycle`

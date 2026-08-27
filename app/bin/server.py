@@ -1,6 +1,6 @@
 import asyncio
 import dataclasses
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator, Iterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -19,6 +19,7 @@ from botocore.config import Config as BotoConfig
 from fastapi import Depends, Query, Request
 from fastapi.templating import Jinja2Templates
 from mypy_boto3_s3 import S3Client
+from pydantic import ValidationError
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from app.config import ServerConfig, load_s3_config, load_server_config, prepare_pg_ssl_key
@@ -34,7 +35,15 @@ from app.db import Database
 from app.file_cache import get_cached_files
 from app.rpc import PAYLOAD_TYPES, RpcRequest, enqueue_command
 from app.torrent_store import _s3_key, create_operator, generate_presigned_url
-from app.utils import date_to_int, human_readable_byte_rate, human_readable_size, parse_obj
+from app.utils import (
+    date_to_int,
+    human_readable_byte_rate,
+    human_readable_size,
+    parse_json_as,
+    parse_obj,
+)
+
+ETA_DOWNLOAD_KEY = "eta:download"
 
 
 class ORJSONResponse(JSONResponse):
@@ -51,6 +60,108 @@ def _fmt_eta(seconds: float) -> str:
     if seconds <= 0 or seconds > 365 * 24 * 3600:
         return "∞"
     return durationpy.to_str(timedelta(seconds=int(seconds)))
+
+
+def _next_shanghai_midnight(now: datetime | None = None) -> datetime:
+    current = (now or datetime.now(TZ_SHANGHAI)).astimezone(TZ_SHANGHAI)
+    today = datetime(current.year, current.month, current.day, tzinfo=TZ_SHANGHAI)
+    return today + timedelta(days=1)
+
+
+@dataclass(slots=True, frozen=True)
+class DownloadRemaining:
+    count: int = 0
+    size: int = 0
+
+
+@dataclass(slots=True, frozen=True)
+class DownloadThroughput:
+    bytes: int = 0
+    count: int = 0
+
+
+@dataclass(slots=True, frozen=True)
+class DownloadEtaKind:
+    label: str
+    remaining_count: int
+    remaining_size: int
+    remaining_size_fmt: str
+    downloaded_bytes: int
+    downloaded_count: int
+    byte_rate: float
+    byte_rate_fmt: str
+    eta_fmt: str
+    finish_at_fmt: str
+
+
+@dataclass(slots=True, frozen=True)
+class DownloadEta:
+    bdmv: DownloadEtaKind
+    other: DownloadEtaKind
+
+    def __iter__(self) -> Iterator[DownloadEtaKind]:
+        yield self.bdmv
+        yield self.other
+
+
+def _build_download_eta_kind(
+    *,
+    label: str,
+    remaining: DownloadRemaining,
+    throughput: DownloadThroughput,
+    window_seconds: float,
+    now: datetime,
+) -> DownloadEtaKind:
+    byte_rate = throughput.bytes / window_seconds if window_seconds > 0 else 0.0
+    if remaining.size <= 0:
+        eta_fmt = "done"
+        finish_at_fmt = "-"
+    elif byte_rate <= 0:
+        eta_fmt = "∞"
+        finish_at_fmt = "∞"
+    else:
+        eta_seconds = remaining.size / byte_rate
+        eta_fmt = _fmt_eta(eta_seconds)
+        finish_at_fmt = "∞" if eta_fmt == "∞" else _fmt_dt(now + timedelta(seconds=eta_seconds))
+    return DownloadEtaKind(
+        label=label,
+        remaining_count=remaining.count,
+        remaining_size=remaining.size,
+        remaining_size_fmt=human_readable_size(remaining.size),
+        downloaded_bytes=throughput.bytes,
+        downloaded_count=throughput.count,
+        byte_rate=byte_rate,
+        byte_rate_fmt=human_readable_byte_rate(byte_rate),
+        eta_fmt=eta_fmt,
+        finish_at_fmt=finish_at_fmt,
+    )
+
+
+def _build_download_eta(
+    *,
+    bdmv_remaining: DownloadRemaining,
+    other_remaining: DownloadRemaining,
+    bdmv_throughput: DownloadThroughput,
+    other_throughput: DownloadThroughput,
+    window_seconds: float,
+    now: datetime,
+) -> DownloadEta:
+    return DownloadEta(
+        bdmv=_build_download_eta_kind(
+            label="BDMV",
+            remaining=bdmv_remaining,
+            throughput=bdmv_throughput,
+            window_seconds=window_seconds,
+            now=now,
+        ),
+        other=_build_download_eta_kind(
+            label="Non-BDMV",
+            remaining=other_remaining,
+            throughput=other_throughput,
+            window_seconds=window_seconds,
+            now=now,
+        ),
+    )
 
 
 def _fmt_dt(dt: datetime | None) -> str:
@@ -89,6 +200,8 @@ class DailyStatsSnapshot:
     day: date
     downloaded_bytes: int
     downloaded_count: int
+    bdmv_downloaded_bytes: int
+    bdmv_downloaded_count: int
     fetched_bytes: int
     fetched_count: int
     thread_count: int
@@ -103,6 +216,8 @@ class DailyStatsSnapshot:
             day=record["day"],
             downloaded_bytes=int(record["downloaded_bytes"]),
             downloaded_count=int(record["downloaded_count"]),
+            bdmv_downloaded_bytes=int(record["bdmv_downloaded_bytes"]),
+            bdmv_downloaded_count=int(record["bdmv_downloaded_count"]),
             fetched_bytes=int(record["fetched_bytes"]),
             fetched_count=int(record["fetched_count"]),
             thread_count=int(record["thread_count"]),
@@ -951,7 +1066,12 @@ def create_app() -> fastapi.FastAPI:
                             at time zone 'Asia/Shanghai')::date as day,
                            job.node_id::text as node_id,
                            count(1)::int as count,
-                           coalesce(sum(thread.selected_size), 0)::int8 as bytes
+                           coalesce(sum(thread.selected_size), 0)::int8 as bytes,
+                           count(1) filter (where thread.type = 'bdmv')::int as bdmv_count,
+                           coalesce(
+                             sum(thread.selected_size) filter (where thread.type = 'bdmv'),
+                             0
+                           )::int8 as bdmv_bytes
                     from job
                     join thread on (thread.tid = job.tid)
                     where job.status = $1 and thread.selected_size > 0
@@ -1007,6 +1127,8 @@ def create_app() -> fastapi.FastAPI:
                     days_data[d] = {
                         "downloaded_bytes": 0,
                         "downloaded_count": 0,
+                        "bdmv_downloaded_bytes": 0,
+                        "bdmv_downloaded_count": 0,
                         "fetched_bytes": 0,
                         "fetched_count": 0,
                         "thread_count": 0,
@@ -1020,6 +1142,8 @@ def create_app() -> fastapi.FastAPI:
                 d = _ensure_day(r["day"])
                 d["downloaded_bytes"] += r["bytes"]
                 d["downloaded_count"] += r["count"]
+                d["bdmv_downloaded_bytes"] += r["bdmv_bytes"]
+                d["bdmv_downloaded_count"] += r["bdmv_count"]
                 d["node_downloaded"][r["node_id"]] = {
                     "bytes": int(r["bytes"]),
                     "count": int(r["count"]),
@@ -1045,6 +1169,8 @@ def create_app() -> fastapi.FastAPI:
                         current,
                         data["downloaded_bytes"],
                         data["downloaded_count"],
+                        data["bdmv_downloaded_bytes"],
+                        data["bdmv_downloaded_count"],
                         data["fetched_bytes"],
                         data["fetched_count"],
                         data["thread_count"],
@@ -1053,19 +1179,22 @@ def create_app() -> fastapi.FastAPI:
                         data["node_downloaded"],
                     ))
                 else:
-                    rows_to_insert.append((current, 0, 0, 0, 0, 0, 0, 0, {}))
+                    rows_to_insert.append((current, 0, 0, 0, 0, 0, 0, 0, 0, 0, {}))
 
             if rows_to_insert:
                 await pool.executemany(
                     """
                     insert into daily_stats
                         (day, downloaded_bytes, downloaded_count,
+                         bdmv_downloaded_bytes, bdmv_downloaded_count,
                          fetched_bytes, fetched_count, thread_count,
                          torrent_count, mediainfo_count, node_downloaded)
-                    values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+                    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
                     on conflict (day) do update set
                         downloaded_bytes = excluded.downloaded_bytes,
                         downloaded_count = excluded.downloaded_count,
+                        bdmv_downloaded_bytes = excluded.bdmv_downloaded_bytes,
+                        bdmv_downloaded_count = excluded.bdmv_downloaded_count,
                         fetched_bytes = excluded.fetched_bytes,
                         fetched_count = excluded.fetched_count,
                         thread_count = excluded.thread_count,
@@ -1090,7 +1219,12 @@ def create_app() -> fastapi.FastAPI:
                 """
                 select job.node_id::text as node_id,
                        count(1)::int as count,
-                       coalesce(sum(thread.selected_size), 0)::int8 as bytes
+                       coalesce(sum(thread.selected_size), 0)::int8 as bytes,
+                       count(1) filter (where thread.type = 'bdmv')::int as bdmv_count,
+                       coalesce(
+                         sum(thread.selected_size) filter (where thread.type = 'bdmv'),
+                         0
+                       )::int8 as bdmv_bytes
                 from job
                 join thread on (thread.tid = job.tid)
                 where job.status = $1 and thread.selected_size > 0
@@ -1129,11 +1263,15 @@ def create_app() -> fastapi.FastAPI:
         node_downloaded: dict[str, NodeDownloadStat] = {}
         total_downloaded_bytes = 0
         total_downloaded_count = 0
+        total_bdmv_downloaded_bytes = 0
+        total_bdmv_downloaded_count = 0
         for r in downloaded_rows:
             b = int(r["bytes"])
             c = int(r["count"])
             total_downloaded_bytes += b
             total_downloaded_count += c
+            total_bdmv_downloaded_bytes += int(r["bdmv_bytes"])
+            total_bdmv_downloaded_count += int(r["bdmv_count"])
             node_downloaded[r["node_id"]] = NodeDownloadStat(downloaded_bytes=b, count=c)
 
         fetched_row = cast(asyncpg.Record, fetched_row)
@@ -1142,6 +1280,8 @@ def create_app() -> fastapi.FastAPI:
             day=today.date(),
             downloaded_bytes=total_downloaded_bytes,
             downloaded_count=total_downloaded_count,
+            bdmv_downloaded_bytes=total_bdmv_downloaded_bytes,
+            bdmv_downloaded_count=total_bdmv_downloaded_count,
             fetched_bytes=int(fetched_row["bytes"]),
             fetched_count=int(fetched_row["count"]),
             thread_count=int(thread_count),
@@ -1150,9 +1290,118 @@ def create_app() -> fastapi.FastAPI:
             node_downloaded=node_downloaded,
         )
 
+    async def _read_download_eta_cache() -> DownloadEta | None:
+        raw = await pool.fetchval(
+            """
+            select value from config
+            where key = $1 and (expires_at is null or expires_at > current_timestamp)
+            """,
+            ETA_DOWNLOAD_KEY,
+        )
+        if raw is None:
+            return None
+        try:
+            return parse_json_as(DownloadEta, raw)
+        except orjson.JSONDecodeError, ValidationError, TypeError:
+            return None
+
+    async def _write_download_eta_cache(value: DownloadEta) -> None:
+        await pool.execute(
+            """
+            insert into config (key, value, expires_at) values ($1, $2, $3)
+            on conflict (key) do update
+              set value = excluded.value, expires_at = excluded.expires_at
+            """,
+            ETA_DOWNLOAD_KEY,
+            orjson.dumps(value).decode(),
+            _next_shanghai_midnight(),
+        )
+
+    _eta_lock = asyncio.Lock()
+
+    async def _compute_download_eta() -> DownloadEta:
+        now = datetime.now(TZ_SHANGHAI)
+        today = _today_start().date()
+        history_start = today - timedelta(days=7)
+        await _backfill_daily_stats(history_start)
+        history_rows, remaining_rows = await asyncio.gather(
+            pool.fetch(
+                "select * from daily_stats where day >= $1 and day < $2",
+                history_start,
+                today,
+            ),
+            pool.fetch(
+                """
+                select
+                  (thread.type = 'bdmv') as is_bdmv,
+                  count(1)::int as count,
+                  coalesce(sum(thread.selected_size), 0)::int8 as size
+                from pending_download_threads thread
+                where not (thread.category = any($1))
+                  and (
+                    not exists (select 1 from job where job.tid = thread.tid)
+                    or exists (
+                      select 1 from job
+                      where job.tid = thread.tid and job.status = $2
+                    )
+                  )
+                group by thread.type = 'bdmv'
+                """,
+                EXCLUDED_CATEGORY,
+                ItemStatus.DOWNLOADING,
+            ),
+        )
+        total_throughput = DownloadThroughput()
+        bdmv_throughput = DownloadThroughput()
+        for row in history_rows:
+            snapshot = DailyStatsSnapshot.from_record(row)
+            total_throughput = DownloadThroughput(
+                bytes=total_throughput.bytes + snapshot.downloaded_bytes,
+                count=total_throughput.count + snapshot.downloaded_count,
+            )
+            bdmv_throughput = DownloadThroughput(
+                bytes=bdmv_throughput.bytes + snapshot.bdmv_downloaded_bytes,
+                count=bdmv_throughput.count + snapshot.bdmv_downloaded_count,
+            )
+        bdmv_remaining = DownloadRemaining()
+        other_remaining = DownloadRemaining()
+        for row in remaining_rows:
+            remaining = DownloadRemaining(count=int(row["count"]), size=int(row["size"]))
+            if row["is_bdmv"]:
+                bdmv_remaining = remaining
+            else:
+                other_remaining = remaining
+        return _build_download_eta(
+            bdmv_remaining=bdmv_remaining,
+            other_remaining=other_remaining,
+            bdmv_throughput=bdmv_throughput,
+            other_throughput=DownloadThroughput(
+                bytes=total_throughput.bytes - bdmv_throughput.bytes,
+                count=total_throughput.count - bdmv_throughput.count,
+            ),
+            window_seconds=7 * 86400.0,
+            now=now,
+        )
+
+    async def _fetch_download_eta() -> DownloadEta:
+        cached = await _read_download_eta_cache()
+        if cached is not None:
+            return cached
+        async with _eta_lock:
+            cached = await _read_download_eta_cache()
+            if cached is not None:
+                return cached
+            value = await _compute_download_eta()
+            await _write_download_eta_cache(value)
+            return value
+
     @app.get("/")
     async def progress(render: Render) -> HTMLResponse:
-        ctx = await _fetch_progress_ctx(pool)
+        ctx, download_eta = await asyncio.gather(
+            _fetch_progress_ctx(pool),
+            _fetch_download_eta(),
+        )
+        ctx["download_eta"] = download_eta
         return render("index.html.j2", ctx=ctx)
 
     @app.get("/detail")
@@ -1717,6 +1966,7 @@ def create_app() -> fastapi.FastAPI:
     @app.post("/api/daily-stats/clear")
     async def clear_daily_stats() -> ORJSONResponse:
         result = await pool.execute("delete from daily_stats")
+        await pool.execute("delete from config where key = $1", ETA_DOWNLOAD_KEY)
         return ORJSONResponse({"deleted": result})
 
     @app.get("/api/config")

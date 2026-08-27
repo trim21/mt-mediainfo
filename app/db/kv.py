@@ -3,6 +3,23 @@ from datetime import datetime, timedelta
 from .database import Database
 
 
+def kv_expires_at(
+    *,
+    ttl: timedelta | None = None,
+    ex: timedelta | datetime | None = None,
+    now: datetime | None = None,
+) -> datetime | None:
+    if ttl is not None and ex is not None:
+        raise TypeError("ttl and ex are mutually exclusive")
+    if ex is not None:
+        if isinstance(ex, datetime):
+            return ex
+        return (now or datetime.now().astimezone()) + ex
+    if ttl is not None:
+        return (now or datetime.now().astimezone()) + ttl
+    return None
+
+
 class KVConfig:
     def __init__(self, db: Database):
         self.__db = db
@@ -19,8 +36,15 @@ class KVConfig:
             return val
         return default
 
-    def set(self, key: str, value: str, ttl: timedelta | None = None) -> None:
-        expires_at = datetime.now().astimezone() + ttl if ttl else None
+    def set(
+        self,
+        key: str,
+        value: str,
+        ttl: timedelta | None = None,
+        *,
+        ex: timedelta | datetime | None = None,
+    ) -> None:
+        expires_at = kv_expires_at(ttl=ttl, ex=ex)
         self.__db.execute(
             """
             insert into config (key, value, expires_at) values ($1, $2, $3)
@@ -30,7 +54,7 @@ class KVConfig:
         )
 
     def inc(self, key: str, ttl: timedelta | None = None) -> int:
-        expires_at = datetime.now().astimezone() + ttl if ttl else None
+        expires_at = kv_expires_at(ttl=ttl)
         with self.__db.connection() as conn:
             return conn.fetch_val(
                 """

@@ -136,6 +136,32 @@
         </tr>
         </tbody>
       </table>
+
+      {% if download_eta %}
+      <h3 class="mt-4">ETA</h3>
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Remaining</th>
+            <th>7-day rate</th>
+            <th>ETA</th>
+            <th>Finish at</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for e in download_eta %}
+          <tr>
+            <th>{{ e.label }}</th>
+            <td>{{ e.remaining_count }} / {{ e.remaining_size_fmt }}</td>
+            <td>{{ e.byte_rate_fmt }} ({{ e.downloaded_count }} done)</td>
+            <td>{{ e.eta_fmt }}</td>
+            <td>{{ e.finish_at_fmt }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
     </div>
   </div>
 </div>
