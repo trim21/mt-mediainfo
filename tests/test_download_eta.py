@@ -58,6 +58,18 @@ def test_eta_infinite_when_no_speed() -> None:
     assert row.finish_at_fmt == "∞"
 
 
+def test_eta_beyond_one_year_still_shows_finish_time() -> None:
+    row = _build_download_eta_kind(
+        label="BDMV",
+        remaining=DownloadRemaining(count=1, size=400 * 86400),
+        throughput=DownloadThroughput(bytes=1, count=1),
+        window_seconds=1,
+        now=NOW,
+    )
+    assert row.eta_fmt == "9600h"
+    assert row.finish_at_fmt == "2027-10-01 12:00:00"
+
+
 def test_eta_from_selected_size_byte_rate() -> None:
     row = _build_download_eta_kind(
         label="Non-BDMV",

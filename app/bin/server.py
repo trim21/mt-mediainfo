@@ -121,8 +121,8 @@ def _build_download_eta_kind(
         finish_at_fmt = "∞"
     else:
         eta_seconds = remaining.size / byte_rate
-        eta_fmt = _fmt_eta(eta_seconds)
-        finish_at_fmt = "∞" if eta_fmt == "∞" else _fmt_dt(now + timedelta(seconds=eta_seconds))
+        eta_fmt = durationpy.to_str(timedelta(seconds=int(eta_seconds)))
+        finish_at_fmt = _fmt_dt(now + timedelta(seconds=eta_seconds))
     return DownloadEtaKind(
         label=label,
         remaining_count=remaining.count,
