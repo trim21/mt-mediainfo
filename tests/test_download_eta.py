@@ -3,11 +3,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.bin.server import (
+    DownloadEtaSnapshot,
     DownloadRemaining,
     DownloadThroughput,
-    _build_download_eta,
-    _build_download_eta_kind,
     _next_shanghai_midnight,
+    _render_download_eta,
+    _render_download_eta_kind,
 )
 from app.const import TZ_SHANGHAI
 from app.db.kv import kv_expires_at
@@ -34,7 +35,7 @@ def test_next_shanghai_midnight() -> None:
 
 
 def test_eta_done_when_nothing_remaining() -> None:
-    row = _build_download_eta_kind(
+    row = _render_download_eta_kind(
         label="BDMV",
         remaining=DownloadRemaining(),
         throughput=DownloadThroughput(bytes=100, count=1),
@@ -47,7 +48,7 @@ def test_eta_done_when_nothing_remaining() -> None:
 
 
 def test_eta_infinite_when_no_speed() -> None:
-    row = _build_download_eta_kind(
+    row = _render_download_eta_kind(
         label="BDMV",
         remaining=DownloadRemaining(count=1, size=100),
         throughput=DownloadThroughput(),
@@ -59,7 +60,7 @@ def test_eta_infinite_when_no_speed() -> None:
 
 
 def test_eta_beyond_one_year_still_shows_finish_time() -> None:
-    row = _build_download_eta_kind(
+    row = _render_download_eta_kind(
         label="BDMV",
         remaining=DownloadRemaining(count=1, size=400 * 86400),
         throughput=DownloadThroughput(bytes=1, count=1),
@@ -71,7 +72,7 @@ def test_eta_beyond_one_year_still_shows_finish_time() -> None:
 
 
 def test_eta_from_selected_size_byte_rate() -> None:
-    row = _build_download_eta_kind(
+    row = _render_download_eta_kind(
         label="Non-BDMV",
         remaining=DownloadRemaining(count=2, size=50),
         throughput=DownloadThroughput(bytes=100, count=4),
@@ -84,13 +85,15 @@ def test_eta_from_selected_size_byte_rate() -> None:
 
 
 def test_build_download_eta_splits_bdmv() -> None:
-    rows = _build_download_eta(
-        bdmv_remaining=DownloadRemaining(count=2, size=50),
-        other_remaining=DownloadRemaining(count=3, size=150),
-        bdmv_throughput=DownloadThroughput(bytes=100, count=2),
-        other_throughput=DownloadThroughput(bytes=300, count=6),
-        window_seconds=10,
-        now=NOW,
+    rows = _render_download_eta(
+        DownloadEtaSnapshot(
+            bdmv_remaining=DownloadRemaining(count=2, size=50),
+            other_remaining=DownloadRemaining(count=3, size=150),
+            bdmv_throughput=DownloadThroughput(bytes=100, count=2),
+            other_throughput=DownloadThroughput(bytes=300, count=6),
+            window_seconds=10,
+        ),
+        NOW,
     )
     assert [r.label for r in rows] == ["BDMV", "Non-BDMV"]
     assert rows.bdmv.remaining_count == 2
@@ -100,3 +103,17 @@ def test_build_download_eta_splits_bdmv() -> None:
     assert rows.other.remaining_size == 150
     assert rows.other.downloaded_bytes == 300
     assert rows.other.downloaded_count == 6
+
+
+def test_render_download_eta_uses_current_time() -> None:
+    snapshot = DownloadEtaSnapshot(
+        other_remaining=DownloadRemaining(count=1, size=50),
+        other_throughput=DownloadThroughput(bytes=100, count=1),
+        window_seconds=10,
+    )
+    later = NOW + timedelta(hours=1)
+    first = _render_download_eta(snapshot, NOW)
+    second = _render_download_eta(snapshot, later)
+    assert first.other.eta_fmt == "5s"
+    assert first.other.finish_at_fmt == "2026-08-27 12:00:05"
+    assert second.other.finish_at_fmt == "2026-08-27 13:00:05"

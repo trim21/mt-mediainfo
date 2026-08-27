@@ -81,6 +81,15 @@ class DownloadThroughput:
 
 
 @dataclass(slots=True, frozen=True)
+class DownloadEtaSnapshot:
+    bdmv_remaining: DownloadRemaining = DownloadRemaining()
+    other_remaining: DownloadRemaining = DownloadRemaining()
+    bdmv_throughput: DownloadThroughput = DownloadThroughput()
+    other_throughput: DownloadThroughput = DownloadThroughput()
+    window_seconds: float = 7 * 86400.0
+
+
+@dataclass(slots=True, frozen=True)
 class DownloadEtaKind:
     label: str
     remaining_count: int
@@ -104,7 +113,7 @@ class DownloadEta:
         yield self.other
 
 
-def _build_download_eta_kind(
+def _render_download_eta_kind(
     *,
     label: str,
     remaining: DownloadRemaining,
@@ -137,28 +146,20 @@ def _build_download_eta_kind(
     )
 
 
-def _build_download_eta(
-    *,
-    bdmv_remaining: DownloadRemaining,
-    other_remaining: DownloadRemaining,
-    bdmv_throughput: DownloadThroughput,
-    other_throughput: DownloadThroughput,
-    window_seconds: float,
-    now: datetime,
-) -> DownloadEta:
+def _render_download_eta(snapshot: DownloadEtaSnapshot, now: datetime) -> DownloadEta:
     return DownloadEta(
-        bdmv=_build_download_eta_kind(
+        bdmv=_render_download_eta_kind(
             label="BDMV",
-            remaining=bdmv_remaining,
-            throughput=bdmv_throughput,
-            window_seconds=window_seconds,
+            remaining=snapshot.bdmv_remaining,
+            throughput=snapshot.bdmv_throughput,
+            window_seconds=snapshot.window_seconds,
             now=now,
         ),
-        other=_build_download_eta_kind(
+        other=_render_download_eta_kind(
             label="Non-BDMV",
-            remaining=other_remaining,
-            throughput=other_throughput,
-            window_seconds=window_seconds,
+            remaining=snapshot.other_remaining,
+            throughput=snapshot.other_throughput,
+            window_seconds=snapshot.window_seconds,
             now=now,
         ),
     )
@@ -1290,7 +1291,7 @@ def create_app() -> fastapi.FastAPI:
             node_downloaded=node_downloaded,
         )
 
-    async def _read_download_eta_cache() -> DownloadEta | None:
+    async def _read_download_eta_cache() -> DownloadEtaSnapshot | None:
         raw = await pool.fetchval(
             """
             select value from config
@@ -1301,11 +1302,11 @@ def create_app() -> fastapi.FastAPI:
         if raw is None:
             return None
         try:
-            return parse_json_as(DownloadEta, raw)
+            return parse_json_as(DownloadEtaSnapshot, raw)
         except orjson.JSONDecodeError, ValidationError, TypeError:
             return None
 
-    async def _write_download_eta_cache(value: DownloadEta) -> None:
+    async def _write_download_eta_cache(value: DownloadEtaSnapshot) -> None:
         await pool.execute(
             """
             insert into config (key, value, expires_at) values ($1, $2, $3)
@@ -1319,8 +1320,7 @@ def create_app() -> fastapi.FastAPI:
 
     _eta_lock = asyncio.Lock()
 
-    async def _compute_download_eta() -> DownloadEta:
-        now = datetime.now(TZ_SHANGHAI)
+    async def _compute_download_eta_snapshot() -> DownloadEtaSnapshot:
         today = _today_start().date()
         history_start = today - timedelta(days=7)
         await _backfill_daily_stats(history_start)
@@ -1371,7 +1371,7 @@ def create_app() -> fastapi.FastAPI:
                 bdmv_remaining = remaining
             else:
                 other_remaining = remaining
-        return _build_download_eta(
+        return DownloadEtaSnapshot(
             bdmv_remaining=bdmv_remaining,
             other_remaining=other_remaining,
             bdmv_throughput=bdmv_throughput,
@@ -1379,11 +1379,9 @@ def create_app() -> fastapi.FastAPI:
                 bytes=total_throughput.bytes - bdmv_throughput.bytes,
                 count=total_throughput.count - bdmv_throughput.count,
             ),
-            window_seconds=7 * 86400.0,
-            now=now,
         )
 
-    async def _fetch_download_eta() -> DownloadEta:
+    async def _fetch_download_eta_snapshot() -> DownloadEtaSnapshot:
         cached = await _read_download_eta_cache()
         if cached is not None:
             return cached
@@ -1391,17 +1389,17 @@ def create_app() -> fastapi.FastAPI:
             cached = await _read_download_eta_cache()
             if cached is not None:
                 return cached
-            value = await _compute_download_eta()
+            value = await _compute_download_eta_snapshot()
             await _write_download_eta_cache(value)
             return value
 
     @app.get("/")
     async def progress(render: Render) -> HTMLResponse:
-        ctx, download_eta = await asyncio.gather(
+        ctx, snapshot = await asyncio.gather(
             _fetch_progress_ctx(pool),
-            _fetch_download_eta(),
+            _fetch_download_eta_snapshot(),
         )
-        ctx["download_eta"] = download_eta
+        ctx["download_eta"] = _render_download_eta(snapshot, datetime.now(TZ_SHANGHAI))
         return render("index.html.j2", ctx=ctx)
 
     @app.get("/detail")

@@ -29,7 +29,7 @@ The web server in `app/server.py` is a FastAPI factory that serves Jinja templat
 - `_compute_today_stats()` computes today live so the app does not cache partial-day data
 - Downloaded totals are split with `bdmv_downloaded_bytes` / `bdmv_downloaded_count`; non-BDMV is total minus BDMV
 - `/` estimates BDMV vs non-BDMV ETA from the last 7 complete days of cached `daily_stats` `selected_size` throughput and remaining pending-download work (queued + currently downloading)
-- The ETA payload is cached in `config` key `eta:download` until the next Asia/Shanghai midnight
+- Raw remaining/throughput numbers are cached in `config` key `eta:download` until the next Asia/Shanghai midnight; ETA strings are rendered on each request
 - `/api/daily-stats/clear` invalidates `daily_stats` and `eta:download`, and `/admin` exposes that control
 
 ## Route Groups
