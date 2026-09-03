@@ -7,7 +7,7 @@ dependencies = [
   'orjson==3.12.0',
   'rich==15.0.0',
   'xxhash==3.8.1',
-  'click==8.4.2',
+  'click==8.5.0',
   'pydantic==2.13.4',
   'httpx==0.28.1',
   'bencode2==0.3.33',
@@ -30,7 +30,7 @@ dependencies = [
   "botocore==1.43.87",
   "boto3==1.43.87",
   "mypy-boto3-s3==1.43.66",
-  "neptune-sdk==0.0.1.dev960",
+  "neptune-sdk==0.0.1.dev997",
 ]
 
 [dependency-groups]
