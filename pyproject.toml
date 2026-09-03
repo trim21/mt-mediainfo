@@ -13,7 +13,7 @@ dependencies = [
   'bencode2==0.3.33',
   'yarl==1.24.5',
   'psycopg[binary,pool]==3.3.5',
-  'durationpy==0.10',
+  'durationpy==0.11',
   'fastapi==0.141.1',
   'uvicorn==0.52.4',
   'rapidocr-onnxruntime==1.4.4',
