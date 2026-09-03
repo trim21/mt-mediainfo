@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           activate-environment: "true"
 
@@ -42,7 +42,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           activate-environment: "true"
 
@@ -71,11 +71,11 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v10.0.1
 
       - run: uv sync
 
       - uses: jakebailey/pyright-action@v3.0.2
         with:
           # renovate: datasource=github-releases depName=microsoft/pyright
-          version: "1.1.411"
+          version: "1.1.413"
