@@ -68,12 +68,11 @@ reportUnnecessaryCast = true
 [tool.ruff]
 cache-dir = '.venv/.cache/ruff'
 line-length = 100
-preview = true
 
 [tool.ruff.format]
+preview = true
 
 [tool.ruff.lint]
-preview = true
-extend-select = ['I', 'PLW1514']
-ignore = ['BLE001', 'TRY002', 'PLW1510', 'FLY002']
+extend-select = ['I']
+ignore = ['BLE001', 'TRY002', 'PLW1510', 'FLY002', 'C420']
 unfixable = ['F401']
