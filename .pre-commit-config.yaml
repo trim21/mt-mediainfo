@@ -3,7 +3,7 @@ default_language_version:
 
 repos:
   - repo: https://github.com/abravalheri/validate-pyproject
-    rev: v0.25
+    rev: 0.26
     hooks:
       - id: validate-pyproject
         additional_dependencies: ["validate-pyproject-schema-store[all]"]
@@ -11,7 +11,7 @@ repos:
 
   - repo: https://github.com/astral-sh/uv-pre-commit
     # uv version.
-    rev: 0.12.1
+    rev: 0.12.9
     hooks:
       - id: uv-lock
 
@@ -35,7 +35,7 @@ repos:
       - id: fix-byte-order-marker
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.1
+    rev: v0.16.6
     hooks:
       - id: ruff
         args: [--fix, --fixable=ALL]
