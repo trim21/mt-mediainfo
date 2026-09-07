@@ -434,6 +434,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         downloading_node_rows,
         done_node_rows,
         scrape_status_rows,
+        archive_pending_stats,
         dormant_stats,
         skipped_by_picker_stats,
         failed_export_dates,
@@ -535,6 +536,16 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         ),
         pool.fetch(
             "select name, last_run_at, last_result, detail from scrape_status order by name"
+        ),
+        pool.fetchrow(
+            """
+        select count(1)::int as count
+        from thread
+        where deleted = false
+          and api_mediainfo != ''
+          and info_hash = ''
+          and torrent_invalid = ''
+        """,
         ),
         pool.fetchrow(
             """
@@ -646,6 +657,9 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
     dormant_stats = cast(asyncpg.Record, dormant_stats)
     dormant = cast(int, dormant_stats["count"])
 
+    archive_pending_stats = cast(asyncpg.Record, archive_pending_stats)
+    pending_torrent_archive = cast(int, archive_pending_stats["count"])
+
     skipped_by_picker_stats = cast(asyncpg.Record, skipped_by_picker_stats)
     skipped_by_picker = cast(int, skipped_by_picker_stats["count"])
 
@@ -669,6 +683,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         "done_nodes": done_nodes,
         "pending_fetch_mediainfo": pending_fetch_mediainfo,
         "pending_fetch_torrent": pending_fetch_torrent,
+        "pending_torrent_archive": pending_torrent_archive,
         "pending_to_download": pending_to_download,
         "pending_to_download_size": human_readable_size(pending_to_download_size),
         "pending_to_download_pct": size_pct(pending_to_download_size),

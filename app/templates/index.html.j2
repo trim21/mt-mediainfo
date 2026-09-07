@@ -46,6 +46,10 @@
           <th><a href="/threads/pending-torrent" class="text-reset text-decoration-none">Pending fetch torrent (info_hash)</a></th>
           <td>{{ pending_fetch_torrent }}</td>
         </tr>
+        <tr class="table-warning">
+          <th>Pending fetch torrent (server mediainfo)</th>
+          <td>{{ pending_torrent_archive }}</td>
+        </tr>
         <tr>
           <th><a href="/threads/skipped" class="text-reset text-decoration-none">Skipped by picker</a></th>
           <td>{{ skipped_by_picker }}</td>

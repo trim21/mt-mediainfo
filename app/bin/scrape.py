@@ -233,7 +233,7 @@ class Scrape:
 
     TORRENT_DL_LIMIT = 10
     TORRENT_DL_TTL = timedelta(days=2)
-    DAILY_TORRENT_LIMIT = 2900
+    DAILY_TORRENT_LIMIT = 1400
     DAILY_TORRENT_TTL = timedelta(days=2)
 
     def _torrent_dl_count_key(self, tid: int, today: str) -> str:
@@ -286,6 +286,27 @@ class Scrape:
                 """,
                 [EXCLUDED_CATEGORY],
             )
+
+        if not threads:
+            # Both mediainfo-missing tiers are drained. Fetch torrent files for
+            # threads that already have server-side mediainfo: they never enter the
+            # download pipeline, this tier only archives the .torrent file.
+            threads = self.__db.fetch_all(
+                """
+                select tid from thread
+                where deleted = false
+                  and api_mediainfo != ''
+                  and info_hash = ''
+                  and torrent_invalid = ''
+                order by seeders desc, tid asc
+                limit 100
+                """,
+            )
+            if threads:
+                logger.info(
+                    "archive mode: fetching torrent files for {} threads with server mediainfo",
+                    len(threads),
+                )
 
         if not threads:
             return True

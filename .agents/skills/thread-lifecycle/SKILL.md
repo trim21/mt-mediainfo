@@ -110,6 +110,7 @@ scrape_search() discovers thread
 - **Two paths**:
   - M-Team API mediainfo: `api_mediainfo != ''`
   - Local extraction: `mediainfo != '' AND info_hash != ''` (also has `generated_mediainfo_at`)
+- Rows with `api_mediainfo != ''` may still get their `.torrent` archived by the `fetch_torrent` archive tier once the mediainfo-missing queue is drained (see scrape-mteam skill). This fills `info_hash` but does not move them into `pending_download_threads` — only the .torrent file is fetched, never torrent content.
 
 ### skipped_threads
 
