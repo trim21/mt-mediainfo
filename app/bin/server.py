@@ -2085,7 +2085,7 @@ def create_app() -> fastapi.FastAPI:
 
         return render(
             "nodes.html.j2",
-            ctx={"nodes": sorted(nodes_data, key=lambda n: (n["alias"] or n["id"]).lower())},
+            ctx={"nodes": sorted(nodes_data, key=lambda n: str(n["alias"] or n["id"]).lower())},
         )
 
     @app.get("/nodes/{node_id}")

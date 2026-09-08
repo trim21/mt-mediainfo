@@ -159,9 +159,7 @@ def set_torrent_comment(content: bytes, comment: str) -> bytes:
 
 
 def dedupe[J: Hashable](seq: list[J]) -> list[J]:
-    seen: set[J] = set()
-    seen_add = seen.add
-    return [x for x in seq if not (x in seen or seen_add(x))]
+    return list(dict.fromkeys(seq))
 
 
 def date_to_int(d: date) -> int:
