@@ -220,6 +220,11 @@ class DownloaderConfig(BaseConfig, S3Mixin):
         Field(alias="STALLED_DAYS", default=2.0, validate_default=True),
     ]
 
+    stalled_near_complete_hours: Annotated[
+        float,
+        Field(alias="STALLED_NEAR_COMPLETE_HOURS", default=1.0, validate_default=True),
+    ]
+
     disable_status_report: Annotated[
         bool,
         Field(alias="DISABLE_STATUS_REPORT", default=False, validate_default=True),

@@ -607,10 +607,12 @@ class Downloader:
         stalled_hashes: set[str] = set()
         if managed_hashes:
             stale_cutoff = now - timedelta(days=self.config.stalled_days)
+            near_complete_cutoff = now - timedelta(hours=self.config.stalled_near_complete_hours)
             stalled_rows = self.db.fetch_all(
                 "select info_hash from job where node_id = $1 and status = $2 "
-                "and (last_progress_at < $3 or (last_progress_at is null and start_download_time < $3))",
-                [self.config.node_id, ItemStatus.DOWNLOADING, stale_cutoff],
+                "and (last_progress_at < $3 or (last_progress_at is null and start_download_time < $3) "
+                "or (progress > 0.8 and (last_progress_at < $4 or (last_progress_at is null and start_download_time < $4))))",
+                [self.config.node_id, ItemStatus.DOWNLOADING, stale_cutoff, near_complete_cutoff],
             )
             stalled_hashes = {r[0] for r in stalled_rows}
         t2 = time.monotonic()

@@ -47,7 +47,7 @@ torrents_add (with tags=[downloading], download_limit=1, sequential)
 The code in `__process_torrents()` determines the stage using torrent state, NOT tags:
 
 1. **Not in managed jobs**: Handled by `__handle_unmanaged_torrent()` — tries to reclaim if `removed-by-client`, otherwise deletes
-2. **Stalled** (no progress for N+ days via `job.last_progress_at`): Removed from client, thread marked `torrent_invalid = 'stalled'`, job marked `removed_from_download_client` (reason: `stalled`)
+2. **Stalled** (no progress for N+ days via `job.last_progress_at`, or progress > 80% with no progress for 1h+ via `stalled_near_complete_hours`): Removed from client, thread marked `torrent_invalid = 'stalled'`, job marked `removed_from_download_client` (reason: `stalled`)
 3. **Error state** (`state.is_errored`): Deleted, job marked failed with "torrent error"
 4. **Has `process-error` tag**: Skipped entirely (the one exception where a tag affects logic)
 5. **Unselected category**: Deleted, job marked skipped
@@ -71,7 +71,7 @@ The code in `__process_torrents()` determines the stage using torrent state, NOT
 - **Detected by**: Torrent state is downloading (not paused, not uploading, not errored)
 - **Entry**: After file selection or after resume from paused state
 - **Action**: `__batch_update_downloading()` uses `t.dlspeed` (instantaneous speed from BT client) directly, compares current progress against stored `job.progress` to detect changes, batch-updates job `progress`/`dlspeed`/`eta` in PostgreSQL via pipeline mode. Only updates `last_progress_at` when progress actually changed.
-- **Stalled detection**: Uses `job.last_progress_at` in PostgreSQL — jobs with no progress update for N+ days are evicted.
+- **Stalled detection**: Uses `job.last_progress_at` in PostgreSQL — jobs with no progress update for N+ days are evicted. Torrents with progress > 80% are evicted sooner: no progress for `stalled_near_complete_hours` (default 1h).
 - **Slow eviction**: `__maybe_evict_slowest()` uses `t.dlspeed` directly; if total speed < `min_download_speed` and the slowest torrent has been downloading 24h+, it is evicted.
 - **Exit**: When torrent state becomes uploading
 
@@ -96,7 +96,7 @@ In `__process_torrents()`, paused torrents are detected and resumed with tag swa
 
 ## Cleanup
 
-- **Stalled torrents**: Torrents with no progress for N+ days (detected via `job.last_progress_at` in PostgreSQL) are removed from client, thread marked `torrent_invalid = 'stalled'`, job marked `removed_from_download_client` (reason: `stalled`)
+- **Stalled torrents**: Torrents with no progress for N+ days (detected via `job.last_progress_at` in PostgreSQL), or with progress > 80% and no progress for 1h+ (`stalled_near_complete_hours`), are removed from client, thread marked `torrent_invalid = 'stalled'`, job marked `removed_from_download_client` (reason: `stalled`)
 - **Torrent error state**: Torrents in `state.is_errored` are deleted, job marked failed with "torrent error"
 - **Unselected category**: Torrents whose thread category is no longer in `SELECTED_CATEGORY` are deleted, job marked skipped
 - **Removed from client**: If a torrent disappears from qb (user deleted), job is marked `removed-by-client` (reason: `"manual"`)
