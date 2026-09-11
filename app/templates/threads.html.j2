@@ -48,8 +48,8 @@
     <div class="d-flex align-items-center gap-2">
       {% block controls_extra %}{% endblock %}
       <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
-        <a class="btn btn-outline-secondary{% if not has_prev %} disabled{% endif %}" href="?{{ pagination_qs }}page={{ prev_page if prev_page else 1 }}">Previous</a>
-        <a class="btn btn-outline-secondary{% if not has_next %} disabled{% endif %}" href="?{{ pagination_qs }}page={{ next_page if next_page else total_pages }}">Next</a>
+        <a class="btn btn-outline-secondary{% if not has_prev %} disabled{% endif %}" href="?{{ dict(query_params, page=prev_page if prev_page else 1) | urlencode }}">Previous</a>
+        <a class="btn btn-outline-secondary{% if not has_next %} disabled{% endif %}" href="?{{ dict(query_params, page=next_page if next_page else total_pages) | urlencode }}">Next</a>
       </div>
     </div>
   </div>

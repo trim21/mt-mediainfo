@@ -1006,6 +1006,7 @@ def create_app() -> fastapi.FastAPI:
         show_progress: bool,
         show_failed_reason: bool,
         show_reset: bool = False,
+        query_params: dict[str, str] | None = None,
         extra_ctx: dict[str, Any] | None = None,
         count_params: list[Any] | None = None,
         template_name: str = "threads.html.j2",
@@ -1044,7 +1045,7 @@ def create_app() -> fastapi.FastAPI:
             "has_next": pager["has_next"],
             "prev_page": pager["prev_page"],
             "next_page": pager["next_page"],
-            "pagination_qs": extra_ctx.get("pagination_qs", "") if extra_ctx else "",
+            "query_params": query_params or {},
             "show_failed_reason": show_failed_reason,
             "show_reset": show_reset,
         }
@@ -1514,6 +1515,7 @@ def create_app() -> fastapi.FastAPI:
             page=page,
             show_progress=False,
             show_failed_reason=False,
+            query_params={"tier": tier.value},
         )
 
     @app.get("/threads/pending-download")
@@ -1545,10 +1547,10 @@ def create_app() -> fastapi.FastAPI:
             show_progress=False,
             show_failed_reason=False,
             template_name="threads_pending_download.html.j2",
+            query_params={"strategy": strategy.value},
             extra_ctx={
                 "pick_strategies": [s.value for s in PickStrategy],
                 "current_strategy": strategy.value,
-                "pagination_qs": f"strategy={strategy.value}&",
             },
         )
 
