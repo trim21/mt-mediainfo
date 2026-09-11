@@ -28,6 +28,22 @@ where
 
 
 create
+or replace view pending_torrent_threads_no_seeders as
+select
+  *
+from
+  thread
+where
+  deleted = false
+  and seeders = 0
+  and api_mediainfo_at is not null
+  and mediainfo = ''
+  and api_mediainfo = ''
+  and info_hash = ''
+  and torrent_invalid = '';
+
+
+create
 or replace view pending_download_threads as
 select
   *

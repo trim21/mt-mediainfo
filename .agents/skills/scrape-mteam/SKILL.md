@@ -57,7 +57,7 @@ The scraper in `app/scrape.py` is a long-running scheduler that moves threads fr
 Three-tier priority queue; each tier is queried only when the previous one returns nothing:
 
 1. `pending_torrent_threads` view (has seeders, no local/API mediainfo, `info_hash = ''`) — highest priority
-2. Fallback tier: same mediainfo-missing predicates but `seeders = 0`
+2. Fallback tier: same mediainfo-missing predicates but `seeders = 0` (view `pending_torrent_threads_no_seeders`)
 3. Archive tier: `deleted = false`, `api_mediainfo != ''`, `info_hash = ''`, `torrent_invalid = ''` — runs only once the mediainfo-missing tiers are drained. Applies no category/seeders filter. Downloads the `.torrent` for threads that already have server-side mediainfo; these never enter the downloader pipeline (the file is archived and parsed only). New mediainfo-missing candidates automatically preempt it on the next run.
 
 - Per-thread daily download limit (`TORRENT_DL_LIMIT = 10`) avoids M-Team's "相同種子當天最多下載" error
@@ -66,7 +66,7 @@ Three-tier priority queue; each tier is queried only when the previous one retur
 - Parses files and sets `selected_size` to the largest video file size
 - Torrent download failures set `torrent_invalid = 'file error'`; parse failures set `torrent_invalid = 'parse error'`
 - Errors are logged to the `scrape_error` table
-- Dashboard index shows the tier-3 backlog as "Pending fetch torrent (server mediainfo)"
+- Dashboard index shows the tier-3 backlog as "Pending fetch torrent (server mediainfo)"; "Pending fetch torrent (info_hash)" shows the active tier-1/2 count and links to that tier's page
 
 ### `backfill_selected_size()`
 

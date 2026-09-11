@@ -39,6 +39,11 @@ class PickStrategy(str, enum.Enum):
     seeders = "seeders"
 
 
+class PendingTorrentTier(enum.StrEnum):
+    with_seeders = "with-seeders"
+    no_seeders = "no-seeders"
+
+
 def pick_order_clause(strategy: PickStrategy) -> LiteralString:
     if strategy == PickStrategy.seeders:
         return "order by seeders desc, priority desc, tid asc"

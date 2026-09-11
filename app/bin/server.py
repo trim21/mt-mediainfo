@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from html import escape
 from math import inf
 from pathlib import Path
-from typing import Annotated, Any, Literal, Protocol, cast
+from typing import Annotated, Any, Final, Literal, Protocol, cast
 
 import asyncpg
 import botocore.session
@@ -27,6 +27,7 @@ from app.const import (
     EXCLUDED_CATEGORY,
     TZ_SHANGHAI,
     ItemStatus,
+    PendingTorrentTier,
     PickStrategy,
     pick_order_clause,
     search_cursor_key,
@@ -576,11 +577,12 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
     pending_fetch_torrent_seeders_zero = cast(
         int, thread_stats["pending_fetch_torrent_seeders_zero"]
     )
-    pending_fetch_torrent = (
-        pending_fetch_torrent_seeders_gt0
-        if pending_fetch_torrent_seeders_gt0 > 0
-        else pending_fetch_torrent_seeders_zero
-    )
+    if pending_fetch_torrent_seeders_gt0 > 0:
+        pending_fetch_torrent = pending_fetch_torrent_seeders_gt0
+        pending_fetch_torrent_tier = PendingTorrentTier.with_seeders
+    else:
+        pending_fetch_torrent = pending_fetch_torrent_seeders_zero
+        pending_fetch_torrent_tier = PendingTorrentTier.no_seeders
     done = cast(int, thread_stats["done"])
     done_size = cast(int, thread_stats["done_size"])
 
@@ -683,6 +685,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         "done_nodes": done_nodes,
         "pending_fetch_mediainfo": pending_fetch_mediainfo,
         "pending_fetch_torrent": pending_fetch_torrent,
+        "pending_torrent_url": f"/threads/pending-torrent?tier={pending_fetch_torrent_tier.value}",
         "pending_torrent_archive": pending_torrent_archive,
         "pending_to_download": pending_to_download,
         "pending_to_download_size": human_readable_size(pending_to_download_size),
@@ -705,6 +708,11 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
 
 
 PAGE_SIZE = 100
+
+PENDING_TORRENT_VIEWS: Final[dict[PendingTorrentTier, str]] = {
+    PendingTorrentTier.with_seeders: "pending_torrent_threads",
+    PendingTorrentTier.no_seeders: "pending_torrent_threads_no_seeders",
+}
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -1478,19 +1486,27 @@ def create_app() -> fastapi.FastAPI:
 
     @app.get("/threads/pending-torrent")
     async def threads_pending_torrent(
-        render: Render, page: Annotated[int, Query()] = 1
+        render: Render,
+        page: Annotated[int, Query()] = 1,
+        tier: Annotated[PendingTorrentTier, Query()] = PendingTorrentTier.with_seeders,
     ) -> HTMLResponse:
+        view = PENDING_TORRENT_VIEWS[tier]
+        title = (
+            "Pending Fetch Torrent"
+            if tier == PendingTorrentTier.with_seeders
+            else "Pending Fetch Torrent (no seeders)"
+        )
         return await _render_thread_list(
             render,
-            title="Pending Fetch Torrent",
-            count_sql="""
-            select count(1)::int from pending_torrent_threads
+            title=title,
+            count_sql=f"""
+            select count(1)::int from {view}
             where not (category = any($1))
             """,
-            rows_sql="""
-            select tid, category, size, selected_size, seeders, created_at from pending_torrent_threads
+            rows_sql=f"""
+            select tid, category, size, selected_size, seeders, created_at from {view}
             where not (category = any($3))
-            order by (mediainfo = '') desc, seeders desc, tid asc
+            order by seeders desc, tid asc
             limit $1 offset $2
             """,
             params=[EXCLUDED_CATEGORY],

@@ -28,16 +28,17 @@ A thread represents a torrent page on M-Team. Threads are stored in the `thread`
 
 ## Pipeline Views
 
-Six views define the pipeline stages. All code selects from these views instead of writing raw WHERE conditions.
+Six views define the pipeline stages, plus `pending_torrent_threads_no_seeders` which mirrors `pending_torrent_threads` for the `seeders = 0` fallback tier. All code selects from these views instead of writing raw WHERE conditions.
 
-| View                        | Purpose                                    | Used by                                                |
-| --------------------------- | ------------------------------------------ | ------------------------------------------------------ |
-| `pending_mediainfo_threads` | Threads needing M-Team API mediainfo fetch | scraper `scrape_detail`, `scrape_mediainfo`            |
-| `pending_torrent_threads`   | Threads needing .torrent file download     | scraper `fetch_torrent`                                |
-| `pending_download_threads`  | Threads ready for downloader               | downloader `_pick_query`, server pending-download page |
-| `completed_threads`         | Threads with mediainfo (API or local)      | server done page                                       |
-| `skipped_threads`           | Threads that can't produce mediainfo       | reference only                                         |
-| `dormant_threads`           | Threads with no seeders or deleted         | server skipped count                                   |
+| View                                 | Purpose                                    | Used by                                                |
+| ------------------------------------ | ------------------------------------------ | ------------------------------------------------------ |
+| `pending_mediainfo_threads`          | Threads needing M-Team API mediainfo fetch | scraper `scrape_detail`, `scrape_mediainfo`            |
+| `pending_torrent_threads`            | Threads needing .torrent file download     | scraper `fetch_torrent`, server pending-torrent page   |
+| `pending_torrent_threads_no_seeders` | Same, but `seeders = 0` (fallback tier)    | server pending-torrent page (`?tier=no-seeders`)       |
+| `pending_download_threads`           | Threads ready for downloader               | downloader `_pick_query`, server pending-download page |
+| `completed_threads`                  | Threads with mediainfo (API or local)      | server done page                                       |
+| `skipped_threads`                    | Threads that can't produce mediainfo       | reference only                                         |
+| `dormant_threads`                    | Threads with no seeders or deleted         | server skipped count                                   |
 
 See `app/sql/migrations/013_thread_pipeline_view.sql` for the full definition.
 
@@ -97,6 +98,8 @@ scrape_search() discovers thread
 - **Transition**: Sets `info_hash`, `selected_size`, `torrent_fetched_at`:
   - `selected_size > 0` → `pending_download_threads`
   - `selected_size <= 0` → `skipped_threads`
+
+`pending_torrent_threads_no_seeders` is the same predicate with `seeders = 0`; `fetch_torrent` uses it as a fallback tier only when `pending_torrent_threads` is empty. The dashboard index reports whichever tier is currently active and links to the matching page.
 
 ### pending_download_threads
 

@@ -42,7 +42,7 @@ The web server in `app/server.py` is a FastAPI factory that serves Jinja templat
 ### Thread lists
 
 - `/threads/pending-mediainfo`
-- `/threads/pending-torrent`
+- `/threads/pending-torrent` (supports `?tier=with-seeders|no-seeders` for the `fetch_torrent` queue tier)
 - `/threads/pending-download` (supports `?strategy=tid|seeders` for sort order)
 - `/threads/downloading`
 - `/threads/done`
