@@ -123,27 +123,12 @@ def _run_local_sqlite_migrations(db: sqlite3.Connection) -> None:
         db.commit()
 
 
-def _pick_query(config: DownloaderConfig) -> LiteralString:
+def _pick_where(config: DownloaderConfig) -> LiteralString:
     # Inline the pending_download_threads view predicates instead of selecting from
-    # the view, because FOR UPDATE cannot be used on views.  The query locks
-    # candidate rows on the thread table directly so that concurrent downloaders
-    # pick disjoint sets without a global advisory lock — PostgreSQL's row-level
-    # SKIP LOCKED handles the coordination natively.  Columns are listed
-    # explicitly to avoid transferring the large mediainfo/api_mediainfo text
-    # columns over the wire.
-    order_clause = pick_order_clause(config.pick_strategy)
-
+    # the view, because FOR UPDATE cannot be used on views.
     seeder_clause: LiteralString = cast(LiteralString, config.seeder_condition)
 
     return f"""
-    select
-        thread.tid, thread.size, thread.info_hash, thread.seeders,
-        thread.category, thread.deleted, thread.created_at, thread.upload_at,
-        thread.api_mediainfo_at, thread.torrent_fetched_at, thread.selected_size,
-        thread.torrent_invalid, thread.generated_mediainfo_at, thread.exported_at,
-        thread.selected_index, thread.type
-    from thread
-    where
         thread.deleted = false
         and thread.seeders != 0
         and thread.mediainfo = ''
@@ -156,9 +141,38 @@ def _pick_query(config: DownloaderConfig) -> LiteralString:
         and array_length(thread.selected_index, 1) > 0
         and ({seeder_clause})
         and not exists (select 1 from job where job.tid = thread.tid)
+    """
+
+
+def _pick_query(config: DownloaderConfig) -> LiteralString:
+    # The query locks candidate rows on the thread table directly so that
+    # concurrent downloaders pick disjoint sets without a global advisory lock —
+    # PostgreSQL's row-level SKIP LOCKED handles the coordination natively.
+    # Columns are listed explicitly to avoid transferring the large
+    # mediainfo/api_mediainfo text columns over the wire.
+    order_clause = pick_order_clause(config.pick_strategy)
+
+    return f"""
+    select
+        thread.tid, thread.size, thread.info_hash, thread.seeders,
+        thread.category, thread.deleted, thread.created_at, thread.upload_at,
+        thread.api_mediainfo_at, thread.torrent_fetched_at, thread.selected_size,
+        thread.torrent_invalid, thread.generated_mediainfo_at, thread.exported_at,
+        thread.selected_index, thread.type
+    from thread
+    where {_pick_where(config)}
     {order_clause}
     limit $3
     for update of thread skip locked
+    """
+
+
+def _has_pending_query(config: DownloaderConfig) -> LiteralString:
+    """Existence check sharing the pick predicate, without ordering or row locks."""
+    return f"""
+    select 1 from thread
+    where {_pick_where(config)}
+    limit 1
     """
 
 
@@ -990,6 +1004,15 @@ class Downloader:
                     time.sleep(2)
         logger.error("failed to delete torrent {} after 3 attempts, skipping cleanup", info_hash)
 
+    def _has_pending_download(self) -> bool:
+        return (
+            self.db.fetch_val(
+                _has_pending_query(self.config),
+                [self.config.single_torrent_size_limit, EXCLUDED_CATEGORY],
+            )
+            is not None
+        )
+
     def __pick_and_add_jobs(self) -> PickContext:
         logger.info("__pick_and_add_jobs")
 
@@ -1005,7 +1028,9 @@ class Downloader:
                 human_readable_size(self.config.total_process_size),
                 human_readable_size(left_size),
             )
-            return PickContext(no_space=True)
+            # The pick query has not run yet, so has_pending must be checked
+            # explicitly — __maybe_evict_slowest() only runs when it is true.
+            return PickContext(no_space=True, has_pending=self._has_pending_download())
 
         max_count = self.config.max_downloading_count
         if max_count > 0:
@@ -1017,7 +1042,8 @@ class Downloader:
                     current_active,
                     max_count,
                 )
-                return PickContext(no_space=True)
+                # See the comment above the no-space return.
+                return PickContext(no_space=True, has_pending=self._has_pending_download())
         else:
             pick_limit = 100
 
