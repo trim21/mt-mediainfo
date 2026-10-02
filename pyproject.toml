@@ -11,8 +11,8 @@ dependencies = [
   'pydantic==2.13.5',
   'httpx==0.28.1',
   'bencode2==0.3.35',
-  'yarl==1.24.5',
-  'psycopg[binary,pool]==3.3.5',
+  'yarl==1.25.1',
+  'psycopg[binary,pool]==3.3.6',
   'durationpy==0.11',
   'fastapi==0.142.2',
   'uvicorn==0.54.0',
@@ -27,18 +27,18 @@ dependencies = [
   "opendal==0.47.10",
   "zstandard==0.25.0",
   "pg-dlock==0.0.0a2",
-  "botocore==1.43.89",
-  "boto3==1.43.89",
-  "mypy-boto3-s3==1.43.66",
-  "neptune-sdk==0.0.1.dev997",
+  "botocore==1.43.107",
+  "boto3==1.43.107",
+  "mypy-boto3-s3==1.43.106",
+  "neptune-sdk==0.0.1.dev1031",
 ]
 
 [dependency-groups]
 dev = [
   "asyncpg-stubs==0.31.3",
-  "mypy==2.3.1",
+  "mypy==2.4.0",
   "pytest==9.1.1",
-  "ty==0.0.79",
+  "ty==0.0.84",
   "types-regex==2026.9.10.20260911",
 ]
 
