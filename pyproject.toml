@@ -30,15 +30,15 @@ dependencies = [
   "botocore==1.43.89",
   "boto3==1.43.89",
   "mypy-boto3-s3==1.43.66",
-  "neptune-sdk==0.0.1.dev997",
+  "neptune-sdk==0.0.1.dev1031",
 ]
 
 [dependency-groups]
 dev = [
   "asyncpg-stubs==0.31.3",
-  "mypy==2.3.1",
+  "mypy==2.4.0",
   "pytest==9.1.1",
-  "ty==0.0.79",
+  "ty==0.0.84",
   "types-regex==2026.9.10.20260911",
 ]
 
