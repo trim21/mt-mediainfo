@@ -11,7 +11,7 @@ dependencies = [
   'pydantic==2.13.5',
   'httpx==0.28.1',
   'bencode2==0.3.35',
-  'yarl==1.24.5',
+  'yarl==1.25.1',
   'psycopg[binary,pool]==3.3.6',
   'durationpy==0.11',
   'fastapi==0.141.1',
