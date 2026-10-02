@@ -12,7 +12,7 @@ dependencies = [
   'httpx==0.28.1',
   'bencode2==0.3.35',
   'yarl==1.24.5',
-  'psycopg[binary,pool]==3.3.5',
+  'psycopg[binary,pool]==3.3.6',
   'durationpy==0.11',
   'fastapi==0.141.1',
   'uvicorn==0.54.0',
