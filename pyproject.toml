@@ -30,7 +30,7 @@ dependencies = [
   "botocore==1.43.89",
   "boto3==1.43.89",
   "mypy-boto3-s3==1.43.66",
-  "neptune-sdk==0.0.1.dev997",
+  "neptune-sdk==0.0.1.dev1031",
 ]
 
 [dependency-groups]
