@@ -10,7 +10,7 @@ on:
 
 jobs:
   mypy:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
           activate-environment: "true"
 
@@ -34,7 +34,7 @@ jobs:
       - run: ty check . --output-format=github
 
   pytest:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -42,7 +42,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
           activate-environment: "true"
 
@@ -52,7 +52,7 @@ jobs:
         run: pytest tests/ -v
 
   pre-commit:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -63,7 +63,7 @@ jobs:
       - uses: trim21/actions/prek@master
 
   pyright:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -71,7 +71,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
 
       - run: uv sync
 
