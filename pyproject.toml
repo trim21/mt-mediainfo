@@ -14,7 +14,7 @@ dependencies = [
   'yarl==1.25.1',
   'psycopg[binary,pool]==3.3.6',
   'durationpy==0.11',
-  'fastapi==0.142.2',
+  'fastapi==0.143.5',
   'uvicorn==0.54.0',
   'rapidocr-onnxruntime==1.4.4',
   'jinja2==3.1.6',
@@ -22,24 +22,24 @@ dependencies = [
   "pillow==12.3.0",
   "sslog==0.0.0a52",
   "regex==2026.9.29",
-  "asyncpg==0.31.0",
+  "asyncpg==0.32.0",
   # "polars==1.39.3",
-  "opendal==0.47.10",
+  "opendal==0.47.12",
   "zstandard==0.25.0",
   "pg-dlock==0.0.0a2",
-  "botocore==1.43.108",
-  "boto3==1.43.108",
+  "botocore==1.43.114",
+  "boto3==1.43.114",
   "mypy-boto3-s3==1.43.106",
   "neptune-sdk==0.0.1.dev1031",
 ]
 
 [dependency-groups]
 dev = [
-  "asyncpg-stubs==0.31.3",
+  "asyncpg-stubs==0.32.0",
   "mypy==2.4.0",
   "pytest==9.1.1",
   "ty==0.0.84",
-  "types-regex==2026.9.10.20260911",
+  "types-regex==2026.9.29.20261017",
 ]
 
 [tool.uv]
