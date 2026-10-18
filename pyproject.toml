@@ -10,7 +10,7 @@ dependencies = [
   'click==8.5.0',
   'pydantic==2.13.5',
   'httpx==0.28.1',
-  'bencode2==0.3.35',
+  'bencode2==0.3.38',
   'yarl==1.25.1',
   'psycopg[binary,pool]==3.3.6',
   'durationpy==0.11',
