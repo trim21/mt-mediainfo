@@ -8,7 +8,7 @@ dependencies = [
   'rich==15.0.0',
   'xxhash==4.0.1',
   'click==8.5.0',
-  'pydantic==2.13.5',
+  'pydantic==2.14.1',
   'httpx==0.28.1',
   'bencode2==0.3.35',
   'yarl==1.25.1',
