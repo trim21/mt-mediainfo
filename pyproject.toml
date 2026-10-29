@@ -6,7 +6,7 @@ description = ''
 dependencies = [
   'orjson==3.13.0',
   'rich==15.0.0',
-  'xxhash==4.0.1',
+  'xxhash==4.0.2',
   'click==8.5.0',
   'pydantic==2.14.1',
   'httpx==0.28.1',
@@ -14,11 +14,11 @@ dependencies = [
   'yarl==1.25.1',
   'psycopg[binary,pool]==3.3.6',
   'durationpy==0.11',
-  'fastapi==0.143.5',
+  'fastapi==0.162.0',
   'uvicorn==0.54.0',
   'rapidocr-onnxruntime==1.4.4',
   'jinja2==3.1.6',
-  'tzdata==2026.5',
+  'tzdata==2026.6',
   "pillow==13.0.0",
   "sslog==0.0.0a52",
   "regex==2026.9.29",
@@ -27,16 +27,16 @@ dependencies = [
   "opendal==0.47.12",
   "zstandard==0.25.0",
   "pg-dlock==0.0.0a2",
-  "botocore==1.43.114",
-  "boto3==1.43.114",
+  "botocore==1.43.121",
+  "boto3==1.43.121",
   "mypy-boto3-s3==1.43.106",
-  "neptune-sdk==0.0.1.dev1031",
+  "neptune-sdk==0.0.1.dev1037",
 ]
 
 [dependency-groups]
 dev = [
   "asyncpg-stubs==0.32.0",
-  "mypy==2.4.0",
+  "mypy==2.4.1",
   "pytest==9.1.1",
   "ty==0.0.94",
   "types-regex==2026.9.29.20261017",
