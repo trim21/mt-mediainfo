@@ -37,7 +37,7 @@ dependencies = [
 dev = [
   "asyncpg-stubs==0.32.0",
   "mypy==2.4.1",
-  "pytest==9.1.1",
+  "pytest==9.2.0",
   "ty==0.0.94",
   "types-regex==2026.9.29.20261017",
 ]
