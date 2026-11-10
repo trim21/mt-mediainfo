@@ -8,6 +8,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, LiteralString, NamedTuple, cast
@@ -384,7 +385,7 @@ class Downloader:
         except FileNotFoundError:
             logger.warning("fstrim binary not found, skip trimming")
         except subprocess.TimeoutExpired:
-            logger.warning("fstrim timed out after 60s")
+            logger.warning("fstrim timed out after 600s")
         except Exception:
             logger.exception("fstrim error")
 
@@ -398,15 +399,17 @@ class Downloader:
         )
         return {"info_hash": payload.info_hash}
 
-    def __cleanup_orphan_files(self) -> None:
+    def __cleanup_orphan_files(self, torrents: Sequence[Torrent]) -> int:
         """Delete download directories that have no corresponding active job.
 
         Scans download_path for info_hash directories and removes any that
         don't have an active job in the database.
+
+        Returns the number of removed directories.
         """
         download_path = Path(self.config.download_path)
         if not download_path.is_dir():
-            return
+            return 0
 
         logger.info("starting orphan file cleanup")
 
@@ -423,11 +426,7 @@ class Downloader:
 
         # Also include hashes with completed jobs (files might still be needed briefly)
         # and hashes currently in the download client
-        try:
-            client_hashes = {t.hash for t in self.client.torrents_info()}
-        except Exception:
-            logger.exception("failed to get torrents info for orphan cleanup")
-            return
+        client_hashes = {t.hash for t in torrents}
 
         protected_hashes = active_hashes | client_hashes
 
@@ -462,19 +461,25 @@ class Downloader:
         else:
             logger.info("orphan cleanup done: no orphan files found")
 
-        self.__trim_fs()
+        return removed_count
 
     def __run_at_interval(self) -> LoopContext:
         self._report_status("torrents")
-        completed, min_eta = self.__process_torrents()
+        t0 = time.monotonic()
+        torrents = self.client.torrents_info()
+        logger.info("torrents_info: {} torrents in {:.1f}s", len(torrents), time.monotonic() - t0)
+        completed, min_eta = self.__process_torrents(torrents)
         self._report_status("picking")
         ctx = self.__pick_and_add_jobs()
         if not completed and ctx.picked == 0 and ctx.no_space and ctx.has_pending:
             self.__maybe_evict_slowest()
         try:
-            self.__cleanup_orphan_files()
+            removed_count = self.__cleanup_orphan_files(torrents)
         except Exception:
             logger.exception("orphan cleanup failed")
+            removed_count = 0
+        if completed or removed_count > 0:
+            self.__trim_fs()
         return LoopContext(min_eta=min_eta, had_work=completed or ctx.picked > 0)
 
     def _report_status(self, status: str) -> None:
@@ -558,7 +563,7 @@ class Downloader:
                 removed_reason=removed_reason,
             )
 
-    def __process_torrents(self) -> tuple[bool, float]:
+    def __process_torrents(self, torrents: Sequence[Torrent]) -> tuple[bool, float]:
         """Process all torrents in the download client in a single pass.
 
         Returns (completed, min_eta) where min_eta is the smallest ETA
@@ -566,9 +571,6 @@ class Downloader:
         """
         t0 = time.monotonic()
         logger.info("__process_torrents")
-        torrents = self.client.torrents_info()
-        t1 = time.monotonic()
-        logger.info("torrents_info: {} torrents in {:.1f}s", len(torrents), t1 - t0)
         now = datetime.now(tz=TZ_SHANGHAI)
         completed = False
         if not torrents:
@@ -632,7 +634,7 @@ class Downloader:
         t2 = time.monotonic()
         logger.info(
             "db queries done in {:.1f}s, managed={} stalled={}",
-            t2 - t1,
+            t2 - t0,
             len(managed_hashes),
             len(stalled_hashes),
         )
@@ -763,6 +765,12 @@ class Downloader:
             )
             prev_progress = {r[0]: r[1] for r in rows}
 
+        # Fetched before opening the connection: each call is a HTTP request
+        # and must not hold a pooled connection while the pipeline is idle.
+        debug_by_hash: dict[str, str] = {}
+        if not self.config.disable_debug_info:
+            debug_by_hash = {t.hash: self.client.torrent_debug_info(t.hash) for t in torrents}
+
         with self.db.connection() as conn, conn.pipeline():
             for t in torrents:
                 new_progress = round(t.completed / t.size, 4) if t.size > 0 else 0.0
@@ -774,10 +782,7 @@ class Downloader:
                 else:
                     eta = ETA_INF
                 min_eta = min(min_eta, eta)
-                if self.config.disable_debug_info:
-                    debug = ""
-                else:
-                    debug = self.client.torrent_debug_info(t.hash)
+                debug = debug_by_hash.get(t.hash, "")
                 conn.execute(
                     "update job set progress=$1, dlspeed=$2, eta=$3,"
                     " error_message=$4, updated_at=$5, debug_info=$9"

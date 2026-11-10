@@ -1064,9 +1064,21 @@ def create_app() -> fastapi.FastAPI:
             if start_date > yesterday:
                 return
 
-            target_days = [
+            days = [
                 start_date + timedelta(days=i) for i in range((yesterday - start_date).days + 1)
             ]
+            if not days:
+                return
+
+            existing_days = {
+                row["day"]
+                for row in await pool.fetch(
+                    "select day from daily_stats where day >= $1 and day <= $2",
+                    start_date,
+                    yesterday,
+                )
+            }
+            target_days = [d for d in days if d not in existing_days]
             if not target_days:
                 return
 
