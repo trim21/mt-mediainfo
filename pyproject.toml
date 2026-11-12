@@ -36,7 +36,6 @@ dependencies = [
 [dependency-groups]
 dev = [
   "asyncpg-stubs==0.32.0",
-  "mypy==2.4.1",
   "pytest==9.2.0",
   "ty==0.0.96",
   "types-regex==2026.9.29.20261030",
@@ -48,16 +47,6 @@ package = false
 [tool.pytest.ini_options]
 pythonpath = ["."]
 cache_dir = '.venv/.cache/pytest'
-
-[tool.mypy]
-exclude = 'build,data,.kilo'
-mypy_path = '$MYPY_CONFIG_FILE_DIR'
-cache_dir = '$MYPY_CONFIG_FILE_DIR/.venv/.cache/pytest'
-python_version = '3.14'
-disable_error_code = ["no-any-return", "unused-ignore", "redundant-cast"]
-strict = true
-ignore_missing_imports = true
-check_untyped_defs = true
 
 [tool.pyright]
 pythonVersion = '3.14'

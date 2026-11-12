@@ -5,7 +5,6 @@ tasks:
     - ruff check . --fix --fixable=ALL
     - ruff format .
     - pyright .
-    - uv run mypy .
     - uv run ty check .
 
   sync:

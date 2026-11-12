@@ -431,9 +431,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         thread_stats,
         config_rows,
         pending_download_stats,
-        job_status_rows,
-        downloading_node_rows,
-        done_node_rows,
+        job_status_node_rows,
         scrape_status_rows,
         archive_pending_stats,
         dormant_stats,
@@ -488,13 +486,16 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         pool.fetch(
             """
         select job.status,
+               job.node_id,
                count(1)::int as count,
-               coalesce(sum(coalesce(nullif(thread.selected_size, 0), thread.size)), 0)::int8 as size
+               coalesce(sum(coalesce(nullif(thread.selected_size, 0), thread.size)), 0)::int8 as size,
+               coalesce(sum(job.dlspeed), 0)::int8 as dlspeed
         from job
         join thread on (thread.tid = job.tid)
         where not (thread.category = any($1))
           and job.status = any($2)
-        group by job.status
+        group by job.status, job.node_id
+        order by job.status, job.node_id
         """,
             EXCLUDED_CATEGORY,
             [
@@ -503,37 +504,6 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
                 ItemStatus.FAILED,
                 ItemStatus.REMOVED_FROM_DOWNLOAD_CLIENT,
             ],
-        ),
-        pool.fetch(
-            """
-        select job.node_id,
-               count(1)::int as count,
-               coalesce(sum(coalesce(nullif(thread.selected_size, 0), thread.size)), 0)::int8 as size,
-               coalesce(sum(job.dlspeed), 0)::int8 as dlspeed
-        from job
-        join thread on (thread.tid = job.tid)
-        where not (thread.category = any($1))
-          and job.status = $2
-        group by job.node_id
-        order by job.node_id
-        """,
-            EXCLUDED_CATEGORY,
-            ItemStatus.DOWNLOADING,
-        ),
-        pool.fetch(
-            """
-        select job.node_id,
-               count(1)::int as count,
-               coalesce(sum(coalesce(nullif(thread.selected_size, 0), thread.size)), 0)::int8 as size
-        from job
-        join thread on (thread.tid = job.tid)
-        where not (thread.category = any($1))
-          and job.status = $2
-        group by job.node_id
-        order by job.node_id
-        """,
-            EXCLUDED_CATEGORY,
-            ItemStatus.DONE,
         ),
         pool.fetch(
             "select name, last_run_at, last_result, detail from scrape_status order by name"
@@ -593,11 +563,12 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
     config_rows = cast(list[asyncpg.Record], config_rows)
     config_map = {str(r["key"]): str(r["value"]) for r in config_rows}
 
-    job_status_rows = cast(list[asyncpg.Record], job_status_rows)
-    status_stats = {
-        str(r["status"]): {"count": int(r["count"]), "size": int(r["size"])}
-        for r in job_status_rows
-    }
+    job_status_node_rows = cast(list[asyncpg.Record], job_status_node_rows)
+    status_stats: dict[str, dict[str, int]] = {}
+    for r in job_status_node_rows:
+        agg = status_stats.setdefault(str(r["status"]), {"count": 0, "size": 0})
+        agg["count"] += int(r["count"])
+        agg["size"] += int(r["size"])
 
     downloading = status_stats.get(ItemStatus.DOWNLOADING, {}).get("count", 0)
     downloading_size = status_stats.get(ItemStatus.DOWNLOADING, {}).get("size", 0)
@@ -616,7 +587,9 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
     def _node_name(nid: str) -> str:
         return node_aliases.get(nid, nid[:10])
 
-    downloading_node_rows = cast(list[asyncpg.Record], downloading_node_rows)
+    downloading_node_rows = [
+        r for r in job_status_node_rows if str(r["status"]) == ItemStatus.DOWNLOADING
+    ]
     downloading_nodes = sorted(
         [
             {
@@ -631,7 +604,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
         key=lambda n: cast(str, n["node_name"]),
     )
 
-    done_node_rows = cast(list[asyncpg.Record], done_node_rows)
+    done_node_rows = [r for r in job_status_node_rows if str(r["status"]) == ItemStatus.DONE]
     done_nodes = sorted(
         [
             {
@@ -970,7 +943,8 @@ def create_app() -> fastapi.FastAPI:
             schema="pg_catalog",
         )
 
-    pool = asyncpg.create_pool(cfg.pg_dsn(), init=_init_connection)
+    # asyncpg defaults to max_size=10, which a single dashboard page's gather can exhaust
+    pool = asyncpg.create_pool(cfg.pg_dsn(), max_size=20, init=_init_connection)
     s3_op = create_operator(load_s3_config())
     s3cfg = load_s3_config()
     s3_client = cast(
@@ -1825,7 +1799,7 @@ def create_app() -> fastapi.FastAPI:
             """
             select node_id, status, progress, failed_reason, removed_reason,
                    start_download_time, updated_at, completed_at,
-                   error_message, debug_info, dlspeed, eta,
+                   error_message, dlspeed, eta,
                    last_progress_at, info_hash
             from job
             where tid = $1
@@ -2184,7 +2158,6 @@ def create_app() -> fastapi.FastAPI:
                        job.start_download_time, job.updated_at,
                        job.dlspeed, job.eta, job.info_hash,
                        job.completed_at, job.last_progress_at,
-                       job.debug_info,
                        thread.size, thread.selected_size, thread.seeders
                 from job
                 join thread on (thread.tid = job.tid)
