@@ -671,7 +671,6 @@ class Scrape:
         env["PGPASSWORD"] = c.pg_password or ""
 
         args = [
-            "pg_dump",
             "--host",
             c.pg_host,
             "--port",
