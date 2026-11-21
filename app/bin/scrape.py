@@ -57,6 +57,11 @@ class RunResult(NamedTuple):
         return cls(RunStatus.error, message)
 
 
+class Runner(NamedTuple):
+    run: Callable[[], RunResult]
+    retry_cooldown: timedelta | None = None
+
+
 class Scrape:
     mteam_client: MTeamAPI
     __db: Database
@@ -922,10 +927,10 @@ class Scrape:
 
     def __run_regular(
         self,
-        runners: dict[str, Callable[[], RunResult]],
+        runners: dict[str, Runner],
         interval: int,
     ) -> None:
-        cooldown = timedelta(minutes=5)
+        rate_limit_cooldown = timedelta(minutes=5)
 
         epoch = datetime.now(TZ_SHANGHAI)
         next_allowed: dict[str, datetime] = {key: epoch for key in runners}
@@ -935,18 +940,23 @@ class Scrape:
             logger.info("scrape")
             now = datetime.now(TZ_SHANGHAI)
 
-            for name, run in runners.items():
+            for name, runner in runners.items():
                 if now < next_allowed[name]:
                     logger.info(
-                        "skipping {} (rate-limited until {})",
+                        "skipping {} (next attempt at {})",
                         name,
                         next_allowed[name].strftime("%H:%M:%S"),
                     )
                     continue
                 self.__update_status(name, RunStatus.running, next_allowed[name], category="scrape")
-                result = run()
+                result = runner.run()
+                finished_at = datetime.now(TZ_SHANGHAI)
                 if result.status == RunStatus.rate_limited:
-                    next_allowed[name] = datetime.now(TZ_SHANGHAI) + cooldown
+                    next_allowed[name] = finished_at + (
+                        runner.retry_cooldown or rate_limit_cooldown
+                    )
+                elif result.status != RunStatus.ok and runner.retry_cooldown is not None:
+                    next_allowed[name] = finished_at + runner.retry_cooldown
                 na = next_allowed[name]
                 self.__update_status(
                     name,
@@ -961,7 +971,7 @@ class Scrape:
             for name in runners:
                 if datetime.now(TZ_SHANGHAI) < next_allowed[name]:
                     status_parts.append(
-                        f"{name}: limited until {next_allowed[name].strftime('%H:%M:%S')}"
+                        f"{name}: next at {next_allowed[name].strftime('%H:%M:%S')}"
                     )
                 else:
                     status_parts.append(f"{name}: ok")
@@ -972,15 +982,18 @@ class Scrape:
     def start(self) -> None:
         interval = 60
         scrape_limit = parse_obj(int, os.environ.get("SCRAPE_LIMIT", "10000"))
+        daily_retry_cooldown = timedelta(hours=1)
 
-        runners: dict[str, Callable[[], RunResult]] = {
-            "0-search": lambda: self.__run_search(),
-            "1-mediainfo": lambda: self.__run_mediainfo(scrape_limit),
-            "2-fetch-detail": lambda: self.__run_scrape(scrape_limit),
-            "3-fetch-torrent": lambda: self.__run_fetch_torrents(),
-            "4-backup": lambda: self.__run_backup(),
-            "5-pg-dump": lambda: self.__run_pg_dump(),
-            "6-export-mediainfo": lambda: self.__run_export_mediainfo(),
+        runners: dict[str, Runner] = {
+            "0-search": Runner(lambda: self.__run_search()),
+            "1-mediainfo": Runner(lambda: self.__run_mediainfo(scrape_limit)),
+            "2-fetch-detail": Runner(lambda: self.__run_scrape(scrape_limit)),
+            "3-fetch-torrent": Runner(lambda: self.__run_fetch_torrents()),
+            "4-backup": Runner(lambda: self.__run_backup(), retry_cooldown=daily_retry_cooldown),
+            "5-pg-dump": Runner(lambda: self.__run_pg_dump(), retry_cooldown=daily_retry_cooldown),
+            "6-export-mediainfo": Runner(
+                lambda: self.__run_export_mediainfo(), retry_cooldown=daily_retry_cooldown
+            ),
         }
 
         backfill_runners: dict[str, Callable[[], RunResult]] = {}
