@@ -103,7 +103,12 @@
             <td>{{ s.name }}</td>
             <td>{{ s.last_run_at | timeago }}</td>
             <td>{{ s.last_result }}</td>
-            <td>{{ s.detail }}</td>
+            <td>
+              {{ s.detail }}
+              {% if s.has_error %}
+              <a href="/scrape-status/{{ s.name | urlencode }}/error" class="text-danger">error</a>
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
         </tbody>

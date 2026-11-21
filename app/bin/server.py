@@ -506,7 +506,8 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
             ],
         ),
         pool.fetch(
-            "select name, last_run_at, last_result, detail from scrape_status order by name"
+            "select name, last_run_at, last_result, detail, error != '' as has_error "
+            "from scrape_status order by name"
         ),
         pool.fetchrow(
             """
@@ -625,6 +626,7 @@ async def _fetch_progress_ctx(pool: asyncpg.Pool) -> dict[str, Any]:
             "last_run_at": r["last_run_at"],
             "last_result": str(r["last_result"]),
             "detail": str(r["detail"]),
+            "has_error": bool(r["has_error"]),
         }
         for r in scrape_status_rows
     ]
@@ -2295,6 +2297,28 @@ def create_app() -> fastapi.FastAPI:
             for r in rows
         ]
         return render("exports.html.j2", ctx={"records": records})
+
+    @app.get("/scrape-status/{name}/error")
+    async def scrape_status_error(render: Render, name: str) -> HTMLResponse:
+        row = await pool.fetchrow(
+            "select name, last_run_at, last_result, detail, error "
+            "from scrape_status where name = $1",
+            name,
+        )
+        if row is None:
+            return HTMLResponse("<h3>Scrape status not found</h3>", status_code=404)
+        return render(
+            "scrape_status_error.html.j2",
+            ctx={
+                "status": {
+                    "name": str(row["name"]),
+                    "last_run_at": row["last_run_at"],
+                    "last_result": str(row["last_result"]),
+                    "detail": str(row["detail"]),
+                    "error": str(row["error"]),
+                }
+            },
+        )
 
     @app.get("/api/job/debug-info")
     async def get_job_debug_info(

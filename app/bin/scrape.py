@@ -1,14 +1,13 @@
 import enum
 import io
 import os
-import subprocess
 import tempfile
 import threading
 import time
 from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
 from multiprocessing.pool import ThreadPool
-from typing import Any, LiteralString, cast
+from typing import Any, LiteralString, NamedTuple, Self, cast
 
 import orjson
 import psycopg.rows
@@ -31,13 +30,7 @@ from app.torrent import (
     parse_torrent,
 )
 from app.torrent_store import TorrentStore, create_operator
-from app.utils import date_to_int, get_info_hash_v1_from_content, parse_obj
-
-
-class RunResult(enum.Enum):
-    ok = "ok"
-    rate_limited = "rate_limited"
-    error = "error"
+from app.utils import date_to_int, get_info_hash_v1_from_content, must_run_command, parse_obj
 
 
 class RunStatus(str, enum.Enum):
@@ -45,6 +38,23 @@ class RunStatus(str, enum.Enum):
     ok = "ok"
     rate_limited = "rate_limited"
     error = "error"
+
+
+class RunResult(NamedTuple):
+    status: RunStatus
+    message: str = ""
+
+    @classmethod
+    def ok(cls) -> Self:
+        return cls(RunStatus.ok)
+
+    @classmethod
+    def rate_limited(cls) -> Self:
+        return cls(RunStatus.rate_limited)
+
+    @classmethod
+    def error(cls, message: str) -> Self:
+        return cls(RunStatus.error, message)
 
 
 class Scrape:
@@ -445,7 +455,7 @@ class Scrape:
                 "select count(*) from backfill_task where name = $1", [name]
             )
             if total == 0:
-                return RunResult.ok
+                return RunResult.ok()
 
         pending_count = self.__db.fetch_val(
             "select count(*) from backfill_task where name = $1 and status = 'pending'",
@@ -454,7 +464,7 @@ class Scrape:
         if pending_count == 0:
             if status_name:
                 self.__update_detail(status_name, f"done {total}/{total}")
-            return RunResult.ok
+            return RunResult.ok()
 
         tids: list[tuple[int]] = self.__db.fetch_all(
             "select tid from backfill_task where name = $1 and status = 'pending' order by tid",
@@ -489,8 +499,8 @@ class Scrape:
                     self.__update_detail(status_name, f"{done_count}/{total}")
 
         if error_count:
-            return RunResult.error
-        return RunResult.ok
+            return RunResult.error(f"{error_count} tasks failed")
+        return RunResult.ok()
 
     @staticmethod
     def __is_rate_limited(e: MTeamRequestError) -> bool:
@@ -500,35 +510,35 @@ class Scrape:
         """Returns (result, no_pending)."""
         if self._is_quota_exhausted_today():
             logger.info("daily download quota exhausted for today, skipping fetch_torrent")
-            return RunResult.rate_limited
+            return RunResult.rate_limited()
         try:
             self.fetch_torrent()
-        except httpx_network_errors:
-            return RunResult.error
+        except httpx_network_errors as e:
+            return RunResult.error(str(e))
         except MTeamRequestError as e:
             if e.message == "今日下載配額用盡":
                 self._record_quota_exhausted()
                 logger.info("daily download quota exhausted for today")
-                return RunResult.rate_limited
+                return RunResult.rate_limited()
             if self.__is_rate_limited(e):
                 logger.info("operator {!r} get rate limited: {}", e.op, e.message)
-                return RunResult.rate_limited
+                return RunResult.rate_limited()
             logger.exception("failed to fetch torrents")
-            return RunResult.error
-        return RunResult.ok
+            return RunResult.error(str(e))
+        return RunResult.ok()
 
     def __run_scrape(self, limit: int) -> RunResult:
         try:
             self.scrape_detail(limit=limit)
-        except httpx_network_errors:
-            return RunResult.error
+        except httpx_network_errors as e:
+            return RunResult.error(str(e))
         except MTeamRequestError as e:
             if self.__is_rate_limited(e):
                 logger.info("operator {!r} get rate limited: {}", e.op, e.message)
-                return RunResult.rate_limited
+                return RunResult.rate_limited()
             logger.exception("failed to fetch threads")
-            return RunResult.error
-        return RunResult.ok
+            return RunResult.error(str(e))
+        return RunResult.ok()
 
     def __run_search(self) -> RunResult:
         for mode in ("normal", "adult"):
@@ -537,15 +547,15 @@ class Scrape:
                 continue
             try:
                 self.scrape_search(mode=mode)
-            except httpx_network_errors:
-                return RunResult.error
+            except httpx_network_errors as e:
+                return RunResult.error(str(e))
             except MTeamRequestError as e:
                 if self.__is_rate_limited(e):
                     logger.info("operator {!r} get rate limited: {}", e.op, e.message)
-                    return RunResult.rate_limited
+                    return RunResult.rate_limited()
                 logger.exception("failed to search {} threads", mode)
-                return RunResult.error
-        return RunResult.ok
+                return RunResult.error(str(e))
+        return RunResult.ok()
 
     def scrape_mediainfo(self, limit: int = 10000) -> None:
         """Fetch mediainfo via /torrent/mediaInfo for threads missing it."""
@@ -586,15 +596,15 @@ class Scrape:
     def __run_mediainfo(self, limit: int) -> RunResult:
         try:
             self.scrape_mediainfo(limit=limit)
-        except httpx_network_errors:
-            return RunResult.error
+        except httpx_network_errors as e:
+            return RunResult.error(str(e))
         except MTeamRequestError as e:
             if self.__is_rate_limited(e):
                 logger.info("operator {!r} get rate limited: {}", e.op, e.message)
-                return RunResult.rate_limited
+                return RunResult.rate_limited()
             logger.exception("failed to fetch mediainfo")
-            return RunResult.error
-        return RunResult.ok
+            return RunResult.error(str(e))
+        return RunResult.ok()
 
     def backup_to_s3(self, backup_date: date) -> None:
         """Dump thread and job tables as zstd-compressed JSON Lines to S3."""
@@ -640,13 +650,13 @@ class Scrape:
         last = self.__kv.get("last_backup_date")
         if last == today.isoformat():
             logger.info("skipping backup (already done today)")
-            return RunResult.ok
+            return RunResult.ok()
         try:
             self.backup_to_s3(today)
-        except Exception:
+        except Exception as e:
             logger.exception("failed to backup to s3")
-            return RunResult.error
-        return RunResult.ok
+            return RunResult.error(str(e))
+        return RunResult.ok()
 
     def _pg_dump_to_s3(self, backup_date: date) -> None:
         """Dump the entire database with pg_dump and upload to S3."""
@@ -683,19 +693,12 @@ class Scrape:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             sql_path = os.path.join(tmp_dir, "dump.sql")
-            args_with_file = [*args, "--file", sql_path]
-
-            result = subprocess.run(
-                args_with_file,
-                env=env,
+            must_run_command(
+                "pg_dump",
+                [*args, "--file", sql_path],
                 capture_output=True,
-                check=False,
+                env=env,
             )
-
-            if result.returncode != 0:
-                err = result.stderr.decode(errors="replace")
-                logger.error("pg_dump failed (exit {}): {}", result.returncode, err)
-                raise RuntimeError(f"pg_dump failed: {err}")
 
             zst_path = os.path.join(tmp_dir, "dump.sql.zst")
             with (
@@ -733,14 +736,14 @@ class Scrape:
         last = self.__kv.get("last_pg_dump_date")
         if last == today.isoformat():
             logger.info("skipping pg_dump (already done today)")
-            return RunResult.ok
+            return RunResult.ok()
         try:
             self._pg_dump_to_s3(today)
             self.__kv.set("last_pg_dump_date", today.isoformat())
-        except Exception:
+        except Exception as e:
             logger.exception("failed to pg_dump to s3")
-            return RunResult.error
-        return RunResult.ok
+            return RunResult.error(str(e))
+        return RunResult.ok()
 
     def _export_mediainfo_to_s3(self, export_date: date) -> int:
         """Export incremental mediainfo and return count."""
@@ -807,11 +810,11 @@ class Scrape:
     def __run_export_mediainfo(self) -> RunResult:
         today = datetime.now(TZ_SHANGHAI).date()
         if today.day not in {1, 16}:
-            return RunResult.ok
+            return RunResult.ok()
         last = self.__kv.get("last_export_mediainfo_date")
         if last == today.isoformat():
             logger.info("skipping mediainfo export (already done today)")
-            return RunResult.ok
+            return RunResult.ok()
         try:
             self._export_mediainfo_to_s3(today)
             self.__kv.set("last_export_mediainfo_date", today.isoformat())
@@ -821,8 +824,8 @@ class Scrape:
                 [today.isoformat(), str(e)],
             )
             logger.exception("failed to export mediainfo to s3")
-            return RunResult.error
-        return RunResult.ok
+            return RunResult.error(str(e))
+        return RunResult.ok()
 
     def __update_status(
         self,
@@ -832,19 +835,21 @@ class Scrape:
         *,
         category: str = "",
         detail: str = "",
+        error: str = "",
     ) -> None:
         self.__db.execute(
             """
-            insert into scrape_status (name, last_run_at, last_result, next_allowed_at, category, detail)
-            values ($1, current_timestamp, $2, $3, $4, $5)
+            insert into scrape_status (name, last_run_at, last_result, next_allowed_at, category, detail, error)
+            values ($1, current_timestamp, $2, $3, $4, $5, $6)
             on conflict (name) do update set
               last_run_at = case when excluded.last_result = 'running' then current_timestamp else scrape_status.last_run_at end,
               last_result = excluded.last_result,
               next_allowed_at = excluded.next_allowed_at,
               category = excluded.category,
-              detail = excluded.detail
+              detail = excluded.detail,
+              error = excluded.error
             """,
-            [name, result.value, next_allowed, category, detail],
+            [name, result.value, next_allowed, category, detail, error],
         )
 
     def __update_detail(self, name: str, detail: str) -> None:
@@ -887,26 +892,28 @@ class Scrape:
                 all_done = False
                 self.__update_status(name, RunStatus.running, None, category="backfill")
                 try:
-                    run()
-                except Exception:
+                    result = run()
+                except Exception as e:
                     logger.exception("backfill {} failed", name)
-                    self.__update_status(name, RunStatus.error, None, category="backfill")
+                    self.__update_status(
+                        name,
+                        RunStatus.error,
+                        None,
+                        category="backfill",
+                        error=str(e),
+                    )
                     continue
                 done = self.__db.fetch_val(
                     "select count(*) from backfill_task where name = $1 and status = 'done'",
                     [backfill_name],
                 )
-                remaining = self.__db.fetch_val(
-                    "select count(*) from backfill_task where name = $1 and status = 'pending'",
-                    [backfill_name],
-                )
-                status = RunStatus.running if remaining > 0 else RunStatus.ok
                 self.__update_status(
                     name,
-                    status,
+                    result.status,
                     None,
                     category="backfill",
                     detail=f"{done}/{total}",
+                    error=result.message,
                 )
             if all_done:
                 logger.info("all backfills completed")
@@ -938,15 +945,16 @@ class Scrape:
                     continue
                 self.__update_status(name, RunStatus.running, next_allowed[name], category="scrape")
                 result = run()
-                if result == RunResult.rate_limited:
+                if result.status == RunStatus.rate_limited:
                     next_allowed[name] = datetime.now(TZ_SHANGHAI) + cooldown
                 na = next_allowed[name]
                 self.__update_status(
                     name,
-                    RunStatus(result.value),
+                    result.status,
                     na,
                     category="scrape",
                     detail=na.astimezone(TZ_SHANGHAI).strftime("%Y-%m-%d %H:%M:%S"),
+                    error=result.message,
                 )
 
             status_parts: list[str] = []
